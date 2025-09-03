@@ -5,12 +5,6 @@ import datetime as dt
 import time
 import os
 
-st.write("Working directory:", os.getcwd())
-st.write("Files in root:", os.listdir())
-if os.path.exists("db"):
-    st.write("Files in db/:", os.listdir("db"))
-else:
-    st.error("❌ db folder not found!")
 # =====================
 # Paths / Files
 # =====================
