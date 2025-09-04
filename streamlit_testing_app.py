@@ -11,6 +11,22 @@ import os
 
 st.write("Files in db/:", os.listdir("db"))
 
+st.write("Available sheets in Result 2.xlsx:", pd.ExcelFile(os.path.join("db", "Result 2.xlsx")).sheet_names)
+st.write("Available sheets in info.xlsx:", pd.ExcelFile(os.path.join("db", "info.xlsx")).sheet_names)
+
+# Preview first rows
+try:
+    df_emp = pd.read_excel(os.path.join("db", "Result 2.xlsx"), sheet_name=0)
+    st.write("Preview Result 2.xlsx (first sheet):", df_emp.head())
+except Exception as e:
+    st.write("Error reading Result 2.xlsx:", e)
+
+try:
+    df_info = pd.read_excel(os.path.join("db", "info.xlsx"), sheet_name=0)
+    st.write("Preview info.xlsx (first sheet):", df_info.head())
+except Exception as e:
+    st.write("Error reading info.xlsx:", e)
+
 BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
