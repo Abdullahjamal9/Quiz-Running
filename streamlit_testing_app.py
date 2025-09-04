@@ -8,40 +8,10 @@ import os
 # =====================
 # Paths / Files
 # =====================
-BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
-DB_FOLDER = os.path.join(BASE_DIR, "db")
+DB_FOLDER = "db"
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 EMP_STD_FILE = os.path.join(DB_FOLDER, "Result 2.xlsx")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
-
-# =====================
-# Debug section
-# =====================
-st.write("📂 Files in db/:", os.listdir(DB_FOLDER))
-
-try:
-    st.write("📑 Sheets in Result 2.xlsx:", pd.ExcelFile(EMP_STD_FILE).sheet_names)
-except Exception as e:
-    st.write("⚠️ Error reading Result 2.xlsx:", e)
-
-try:
-    st.write("📑 Sheets in info.xlsx:", pd.ExcelFile(INFO_FILE).sheet_names)
-except Exception as e:
-    st.write("⚠️ Error reading info.xlsx:", e)
-
-# Preview first sheet of each file
-try:
-    df_emp_preview = pd.read_excel(EMP_STD_FILE, sheet_name=0)
-    st.write("👀 Preview Result 2.xlsx (first sheet):", df_emp_preview.head())
-except Exception as e:
-    st.write("⚠️ Error previewing Result 2.xlsx:", e)
-
-try:
-    df_info_preview = pd.read_excel(INFO_FILE, sheet_name=0)
-    st.write("👀 Preview info.xlsx (first sheet):", df_info_preview.head())
-except Exception as e:
-    st.write("⚠️ Error previewing info.xlsx:", e)
-
 
 # =====================
 # Cached Loaders
@@ -65,7 +35,6 @@ def load_employees_and_standards():
     standards["Standard"] = standards["Standard"].astype(str).str.strip()
     standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
     return employees, standards
-
 
 @st.cache_data
 def load_questions():
@@ -110,7 +79,6 @@ def load_questions():
     q["Standard"] = q["Standard"].astype(str).str.strip()
     return q[expected]
 
-
 @st.cache_data
 def get_info_for_standard(standards_df, selected_standard):
     if standards_df.empty or selected_standard == "":
@@ -133,7 +101,6 @@ def get_info_for_standard(standards_df, selected_standard):
         return total, criteria, h, m, s
     except Exception:
         return 0, 0, "00", "00", "00"
-
 
 # =====================
 # Helpers
@@ -167,14 +134,12 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
     }
     return True, ""
 
-
 def format_timer(h, m, s):
     try:
         hh = int(h); mm = int(m); ss = int(s)
         return hh*3600 + mm*60 + ss
     except Exception:
         return 0
-
 
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
@@ -211,7 +176,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         return True, ""
     except Exception as e:
         return False, str(e)
-
 
 # =====================
 # UI
