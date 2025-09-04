@@ -145,34 +145,30 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
     try:
         now = dt.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
         pct = (right/total)*100 if total else 0.0
-        row = [int(emp_id), emp_name, int(total), int(right), int(wrong),
-               f"{pct:.2f}%", f"{criteria_pct:.0f}%", status, test_type, now]
-        try:
-            df_old = pd.read_excel(EMP_STD_FILE, sheet_name="Result")
-        except Exception:
-            df_old = pd.DataFrame(columns=[
-                "ID","Name","Total","Right","Wrong","%","Criteria%",
-                "Status","Type","DateTime"
-            ])
-        cols = df_old.columns.tolist() if len(df_old.columns) else [
-            "ID","Name","Total","Right","Wrong","%","Criteria%",
-            "Status","Type","DateTime"
-        ]
-        df_new = pd.DataFrame([row], columns=cols)
-        out = pd.concat([df_old, df_new], ignore_index=True)
 
-        with pd.ExcelWriter(EMP_STD_FILE, mode="a", if_sheet_exists="replace") as xw:
-            try:
-                emp = pd.read_excel(EMP_STD_FILE, sheet_name="Emloyees Data")
-                emp.to_excel(xw, sheet_name="Emloyees Data", index=False)
-            except Exception:
-                pass
-            try:
-                std = pd.read_excel(EMP_STD_FILE, sheet_name="Standard")
-                std.to_excel(xw, sheet_name="Standard", index=False)
-            except Exception:
-                pass
-            out.to_excel(xw, sheet_name="Result", index=False)
+        new_row = {
+            "ID": emp_id,
+            "Name": emp_name,
+            "Total": total,
+            "Right": right,
+            "Wrong": wrong,
+            "%": f"{pct:.2f}%",
+            "Criteria%": f"{criteria_pct:.0f}%",
+            "Status": status,
+            "Type": test_type,
+            "DateTime": now,
+        }
+
+        # Load existing data
+        df = conn.read(worksheet="Result")
+        if df is None or df.empty:
+            df = pd.DataFrame(columns=new_row.keys())
+
+        updated = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+
+        # Update back to Google Sheets
+        conn.update(worksheet="Result", data=updated)
+
         return True, ""
     except Exception as e:
         return False, str(e)
