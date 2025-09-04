@@ -9,6 +9,7 @@ import os
 # Paths / Files
 # =====================
 
+st.write("Files in db/:", os.listdir("db"))
 
 BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
