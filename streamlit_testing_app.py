@@ -8,7 +8,10 @@ import os
 # =====================
 # Paths / Files
 # =====================
-DB_FOLDER = "db"
+
+
+BASE_DIR = os.path.dirname(__file__)
+DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 EMP_STD_FILE = os.path.join(DB_FOLDER, "Result 2.xlsx")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
