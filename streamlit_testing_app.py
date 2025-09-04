@@ -4,14 +4,25 @@ import numpy as np
 import datetime as dt
 import time
 import os
+import gspread
+from google.oauth2.service_account import Credentials
 
 # =====================
-# Paths / Files
+# Paths / Files (local Excel for reading only)
 # =====================
-DB_FOLDER = "db"
+BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
+DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 EMP_STD_FILE = os.path.join(DB_FOLDER, "Result 2.xlsx")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
+
+# =====================
+# Google Sheets Setup (for saving results)
+# =====================
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+client = gspread.authorize(creds)
+GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 # =====================
 # Cached Loaders
@@ -35,6 +46,7 @@ def load_employees_and_standards():
     standards["Standard"] = standards["Standard"].astype(str).str.strip()
     standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
     return employees, standards
+
 
 @st.cache_data
 def load_questions():
@@ -78,6 +90,7 @@ def load_questions():
 
     q["Standard"] = q["Standard"].astype(str).str.strip()
     return q[expected]
+
 
 @st.cache_data
 def get_info_for_standard(standards_df, selected_standard):
@@ -134,6 +147,7 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
     }
     return True, ""
 
+
 def format_timer(h, m, s):
     try:
         hh = int(h); mm = int(m); ss = int(s)
@@ -141,34 +155,23 @@ def format_timer(h, m, s):
     except Exception:
         return 0
 
+# =====================
+# Save to Google Sheets
+# =====================
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
+        sheet = client.open_by_url(GSHEET_URL)
+        worksheet = sheet.worksheet("Result")
+
         now = dt.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
         pct = (right/total)*100 if total else 0.0
 
-        new_row = {
-            "ID": emp_id,
-            "Name": emp_name,
-            "Total": total,
-            "Right": right,
-            "Wrong": wrong,
-            "%": f"{pct:.2f}%",
-            "Criteria%": f"{criteria_pct:.0f}%",
-            "Status": status,
-            "Type": test_type,
-            "DateTime": now,
-        }
+        new_row = [
+            str(emp_id), str(emp_name), int(total), int(right), int(wrong),
+            f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
+        ]
 
-        # Load existing data
-        df = conn.read(worksheet="Result")
-        if df is None or df.empty:
-            df = pd.DataFrame(columns=new_row.keys())
-
-        updated = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-
-        # Update back to Google Sheets
-        conn.update(worksheet="Result", data=updated)
-
+        worksheet.append_row(new_row)
         return True, ""
     except Exception as e:
         return False, str(e)
