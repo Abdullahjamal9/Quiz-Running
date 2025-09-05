@@ -157,11 +157,7 @@ def format_timer(h, m, s):
         return 0
 
 def show_live_timer(standards, qstate):
-    """Live timer with auto-refresh"""
-    # Auto-refresh every second only during quiz
-    if len(qstate.get("queue", [])) > 0:
-        st_autorefresh(interval=1000, limit=None, key="timer_refresh")
-    
+    """Live timer with auto-refresh using Streamlit's built-in rerun"""
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
     total_secs = format_timer(h, m, s)
     
@@ -252,6 +248,15 @@ def show_live_timer(standards, qstate):
                 "></div>
             </div>
         </div>
+        
+        <script>
+        // Auto-refresh every 5 seconds during quiz
+        setTimeout(function(){{
+            if ({len(qstate.get("queue", []))}) {{
+                window.parent.location.reload();
+            }}
+        }}, 5000);
+        </script>
         """
         
         st.markdown(timer_html, unsafe_allow_html=True)
@@ -263,6 +268,11 @@ def show_live_timer(standards, qstate):
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
+        
+        # Auto-refresh using Streamlit's rerun every 5 seconds
+        if len(qstate.get("queue", [])) > 0 and remaining > 0:
+            time.sleep(5)
+            st.rerun()
 
 # =====================
 # Save to Google Sheets
