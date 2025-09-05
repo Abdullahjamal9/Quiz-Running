@@ -414,7 +414,7 @@ else:
                 color = "#16A34A" if status == "Pass" else "#DC2626"
                 st.markdown(
                     f"""
-                    <div style="padding:20px; border-radius:12px; background-color:#111827; color:white; text-align:center; margin-top:20px;">
+                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
                         <h3 style="color:{color};">Final Result : {status}</h3>
                         <p style="font-size:18px;">
                             <b>Score:</b> {right}/{total_q}<br>
