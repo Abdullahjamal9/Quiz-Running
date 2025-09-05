@@ -170,7 +170,7 @@ def show_live_timer(standards, qstate):
             qstate["wrong"] += len(qstate["queue"])
             qstate["queue"] = []
             st.session_state.quiz = qstate
-            st.experimental_rerun()
+            st.rerun()
             return
 
         rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
@@ -259,7 +259,7 @@ if "last_timer_refresh" in st.session_state:
     now = time.time()
     if now - st.session_state.last_timer_refresh >= 1.0:
         st.session_state.last_timer_refresh = now
-        st.experimental_rerun()
+        st.rerun()
 
 
 # =====================
