@@ -6,6 +6,7 @@ import time
 import os
 import gspread
 from google.oauth2.service_account import Credentials
+from streamlit_autorefresh import st_autorefresh
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -155,6 +156,114 @@ def format_timer(h, m, s):
     except Exception:
         return 0
 
+def show_live_timer(standards, qstate):
+    """Live timer with auto-refresh"""
+    # Auto-refresh every second only during quiz
+    if len(qstate.get("queue", [])) > 0:
+        st_autorefresh(interval=1000, limit=None, key="timer_refresh")
+    
+    total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
+    total_secs = format_timer(h, m, s)
+    
+    if total_secs > 0:
+        elapsed = int(time.time() - qstate["start_ts"])
+        remaining = max(0, total_secs - elapsed)
+        
+        # Auto-submit if time is up
+        if remaining <= 0 and len(qstate["queue"]) > 0:
+            st.error("Time is up! Auto-submitting your test...")
+            qstate["wrong"] += len(qstate["queue"])
+            qstate["queue"] = []
+            st.session_state.quiz = qstate
+            st.rerun()
+            return
+        
+        rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
+        
+        # Color coding based on remaining time
+        if remaining <= 300:  # Last 5 minutes - red with warning
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "🚨"
+            pulse_class = "timer-pulse"
+        elif remaining <= 900:  # Last 15 minutes - red
+            bg_color = "#DC2626" 
+            text_color = "white"
+            icon = "⚠️"
+            pulse_class = ""
+        elif remaining <= 1800:  # Last 30 minutes - orange
+            bg_color = "#D97706"
+            text_color = "white" 
+            icon = "⏰"
+            pulse_class = ""
+        else:  # Normal - blue
+            bg_color = "#1E3A8A"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
+        
+        # Progress bar percentage
+        progress_percent = (remaining / total_secs) * 100
+        
+        timer_html = f"""
+        <style>
+        @keyframes pulse {{
+            0% {{ transform: scale(1); opacity: 1; }}
+            50% {{ transform: scale(1.05); opacity: 0.8; }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        .timer-pulse {{
+            animation: pulse 1s infinite;
+        }}
+        </style>
+        <div class="timer-container {pulse_class}" style="
+            background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
+            color: {text_color};
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.1);
+        ">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <span style="font-size: 28px;">{icon}</span>
+                <span>Time Remaining:</span>
+                <span style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                    {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
+                </span>
+            </div>
+            <div style="
+                width: 100%;
+                height: 6px;
+                background-color: rgba(255,255,255,0.3);
+                border-radius: 3px;
+                overflow: hidden;
+                margin-top: 15px;
+            ">
+                <div style="
+                    height: 100%;
+                    background: linear-gradient(90deg, #10B981, #34D399);
+                    width: {progress_percent:.1f}%;
+                    border-radius: 3px;
+                    transition: width 1s ease-in-out;
+                "></div>
+            </div>
+        </div>
+        """
+        
+        st.markdown(timer_html, unsafe_allow_html=True)
+        
+        # Show warnings
+        if remaining <= 300:
+            st.warning("🚨 URGENT: Less than 5 minutes remaining!")
+        elif remaining <= 900:
+            st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
+        elif remaining <= 1800:
+            st.info("⏰ NOTICE: Less than 30 minutes remaining!")
+
 # =====================
 # Save to Google Sheets
 # =====================
@@ -232,30 +341,31 @@ if "quiz" not in st.session_state:
 
 else:
     qstate = st.session_state.quiz
-    total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
-    total_secs = format_timer(h, m, s)
-
-    elapsed = int(time.time() - qstate["start_ts"])
-    remaining = max(0, total_secs - elapsed)
-    if total_secs > 0:
-        rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
-        st.info(f"⏰ Time Left: {rem_h:02d}:{rem_m:02d}:{rem_s:02d}")
-
-        if remaining <= 0 and len(qstate["queue"]) > 0:
-            qstate["wrong"] += len(qstate["queue"])
-            qstate["queue"] = []
-            st.session_state.quiz = qstate
-            st.rerun()
+    
+    # Display live timer with auto-refresh
+    show_live_timer(standards, qstate)
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
+    # Clean info bar in single line
     st.markdown(
         f"""
-        <div style="padding:10px; border-radius:10px; background-color:#1E3A8A; color:white; text-align:center; font-size:16px; margin-bottom:15px;">
-            <b>ID:</b> {qstate['emp_id']} &nbsp; • &nbsp;
-            <b>Name:</b> {qstate['emp_name']} &nbsp; • &nbsp;
-            <b>Standard:</b> {qstate['standard']} &nbsp; • &nbsp;
-            <b>Answered:</b> {answered_count}/{qstate['total']}
+        <div style="
+            padding: 12px 15px; 
+            border-radius: 8px; 
+            background: linear-gradient(135deg, #1E3A8A, #3B82F6);
+            color: white; 
+            text-align: center; 
+            font-size: 17px; 
+            margin-bottom: 20px;
+            white-space: nowrap;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        ">
+            <b>ID:</b> {qstate['emp_id']} &nbsp;•&nbsp; 
+            <b>Name:</b> {qstate['emp_name']} &nbsp;•&nbsp; 
+            <b>Standard:</b> {qstate['standard']} &nbsp;•&nbsp; 
+            <b>Progress:</b> {answered_count}/{qstate['total']}
         </div>
         """,
         unsafe_allow_html=True
@@ -300,6 +410,7 @@ else:
                     st.rerun()
 
     if len(qstate["queue"]) == 0:
+        total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
         pct = (right/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
@@ -322,8 +433,8 @@ else:
                 color = "#16A34A" if status == "Pass" else "#DC2626"
                 st.markdown(
                     f"""
-                    <div style="padding:20px; border-radius:12px; background-color:#111827; color:white; text-align:center; margin-top:20px;">
-                        <h3 style="color:{color};">Final Result : {status}</h3>
+                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                        <h3 style="color:{color};">Final Result: {status}</h3>
                         <p style="font-size:18px;">
                             <b>Score:</b> {right}/{total_q}<br>
                             <b>Percentage:</b> {pct:.2f}%<br>
