@@ -239,17 +239,17 @@ else:
     remaining = max(0, total_secs - elapsed)
     if total_secs > 0:
         rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
-        if remaining <= 3420:  # Last 5 minute - red with warning
+        if remaining <= 300:  # Last 5 minute - red with warning
             bg_color = "#DC2626"
             text_color = "white"
             icon = "🚨"
             pulse_class = "timer-pulse"
-        elif remaining <= 3480:  # Last 15 minutes - red
+        elif remaining <= 900:  # Last 15 minutes - red
             bg_color = "#DC2626" 
             text_color = "white"
             icon = "⚠️"
             pulse_class = ""
-        elif remaining <= 3540:  # Last 30 minutes - orange
+        elif remaining <= 1800:  # Last 30 minutes - orange
             bg_color = "#D97706"
             text_color = "white" 
             icon = "⏰"
