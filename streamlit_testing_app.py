@@ -156,50 +156,44 @@ def format_timer(h, m, s):
         return 0
 
 def show_live_timer(standards, qstate):
-    """Live timer with auto-refresh using Streamlit's built-in rerun"""
+    """Live countdown timer with native rerun (no external package)."""
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
     total_secs = format_timer(h, m, s)
-    
+
     if total_secs > 0:
         elapsed = int(time.time() - qstate["start_ts"])
         remaining = max(0, total_secs - elapsed)
-        
-        # Auto-submit if time is up
+
         if remaining <= 0 and len(qstate["queue"]) > 0:
-            st.error("Time is up! Auto-submitting your test...")
+            st.error("⏰ Time is up! Auto-submitting your test...")
             qstate["wrong"] += len(qstate["queue"])
             qstate["queue"] = []
             st.session_state.quiz = qstate
-            st.rerun()
+            st.experimental_rerun()
             return
-        
+
         rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
-        
-        # Color coding based on remaining time
-        if remaining <= 300:  # Last 5 minutes - red with warning
+
+        if remaining <= 300:
             bg_color = "#DC2626"
-            text_color = "white"
             icon = "🚨"
             pulse_class = "timer-pulse"
-        elif remaining <= 900:  # Last 15 minutes - red
-            bg_color = "#DC2626" 
-            text_color = "white"
+        elif remaining <= 900:
+            bg_color = "#DC2626"
             icon = "⚠️"
             pulse_class = ""
-        elif remaining <= 1800:  # Last 30 minutes - orange
+        elif remaining <= 1800:
             bg_color = "#D97706"
-            text_color = "white" 
             icon = "⏰"
             pulse_class = ""
-        else:  # Normal - blue
+        else:
             bg_color = "#1E3A8A"
-            text_color = "white"
             icon = "⏰"
             pulse_class = ""
-        
-        # Progress bar percentage
+
+        text_color = "white"
         progress_percent = (remaining / total_secs) * 100
-        
+
         timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -248,24 +242,20 @@ def show_live_timer(standards, qstate):
             </div>
         </div>
         """
-        
         st.markdown(timer_html, unsafe_allow_html=True)
-        
-        # Show warnings
+
+        # Optional alerts
         if remaining <= 300:
             st.warning("🚨 URGENT: Less than 5 minutes remaining!")
         elif remaining <= 900:
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
-        
-        # Auto-refresh using sleep and rerun (only during active quiz)
-        if len(qstate.get("queue", [])) > 0 and remaining > 0:
-            # Use a placeholder to show refresh status
-            with st.empty():
-                st.info("Timer updating...")
-                time.sleep(3)
-                st.rerun()
+
+        # 👇 Native refresh
+        time.sleep(1)
+        st.experimental_rerun()
+
 
 # =====================
 # Save to Google Sheets
@@ -382,7 +372,7 @@ else:
         st.subheader(f"Q{current_qid+1}. {question}")
         choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
 
-        col1, col2, col3 = st.columns([1,1,1])
+        col1, col2 = st.columns([1,1])
 
         with col1:
             if st.button("Next", use_container_width=True):
@@ -411,11 +401,6 @@ else:
                     qstate["queue"].append(qstate["queue"].pop(0))
                     st.session_state.quiz = qstate
                     st.rerun()
-
-        with col3:
-            # Refresh timer button - manual refresh option
-            if st.button("🔄 Refresh Timer", use_container_width=True):
-                st.rerun()
 
     if len(qstate["queue"]) == 0:
         total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
