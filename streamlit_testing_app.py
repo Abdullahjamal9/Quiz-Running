@@ -190,7 +190,7 @@ if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
 
 if "quiz" not in st.session_state:
-    st.subheader("Login")
+    st.subheader("👤 Employee Login")
 
     emp_id = st.text_input("Employee ID", value="", key=f"id_{st.session_state.reset_counter}")
 
@@ -217,8 +217,12 @@ if "quiz" not in st.session_state:
     with c2: st.metric("Passing Criteria (%)", criteria)
     with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
 
+    st.markdown("---")
     with st.form("start_form"):
-        submitted = st.form_submit_button("Start Test")
+        st.markdown("### Ready to start your test?")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            submitted = st.form_submit_button("🚀 Start Test", use_container_width=True)
 
     if submitted:
         if not emp_id or not name or not selected_standard:
@@ -238,6 +242,17 @@ else:
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
     if total_secs > 0:
+        elapsed = int(time.time() - qstate["start_ts"])
+        remaining = max(0, total_secs - elapsed)
+        
+        # Auto-submit if time is up
+        if remaining <= 0 and len(qstate["queue"]) > 0:
+            st.error("Time is up! Auto-submitting your test...")
+            qstate["wrong"] += len(qstate["queue"])
+            qstate["queue"] = []
+            st.session_state.quiz = qstate
+            st.rerun()
+        
         rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
         if remaining <= 300:  # Last 5 minute - red with warning
             bg_color = "#DC2626"
@@ -315,11 +330,11 @@ else:
         st.markdown(timer_html, unsafe_allow_html=True)
         
         # Show warnings
-        if remaining <= 60:
+        if remaining <= 300:
             st.warning("🚨 URGENT: Less than 5 minute remaining!")
-        elif remaining <= 300:
+        elif remaining <= 900:
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
-        elif remaining <= 600:
+        elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
 
         if remaining <= 0 and len(qstate["queue"]) > 0:
