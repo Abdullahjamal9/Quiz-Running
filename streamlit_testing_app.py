@@ -365,10 +365,10 @@ else:
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         ">
-            <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; 
-            <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; 
-            <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; 
-            <b>Progress :</b> {answered_count}/{qstate['total']}
+            <b>ID:</b> {qstate['emp_id']} &nbsp;•&nbsp; 
+            <b>Name:</b> {qstate['emp_name']} &nbsp;•&nbsp; 
+            <b>Standard:</b> {qstate['standard']} &nbsp;•&nbsp; 
+            <b>Progress:</b> {answered_count}/{qstate['total']}
         </div>
         """,
         unsafe_allow_html=True
@@ -382,7 +382,7 @@ else:
         st.subheader(f"Q{current_qid+1}. {question}")
         choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
 
-        col1, col2 = st.columns([1,1])
+        col1, col2, col3 = st.columns([1,1,1])
 
         with col1:
             if st.button("Next", use_container_width=True):
@@ -411,6 +411,11 @@ else:
                     qstate["queue"].append(qstate["queue"].pop(0))
                     st.session_state.quiz = qstate
                     st.rerun()
+
+        with col3:
+            # Refresh timer button - manual refresh option
+            if st.button("🔄 Refresh Timer", use_container_width=True):
+                st.rerun()
 
     if len(qstate["queue"]) == 0:
         total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
