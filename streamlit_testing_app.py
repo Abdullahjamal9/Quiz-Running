@@ -6,7 +6,6 @@ import time
 import os
 import gspread
 from google.oauth2.service_account import Credentials
-from streamlit_autorefresh import st_autorefresh
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -248,15 +247,6 @@ def show_live_timer(standards, qstate):
                 "></div>
             </div>
         </div>
-        
-        <script>
-        // Auto-refresh every 5 seconds during quiz
-        setTimeout(function(){{
-            if ({len(qstate.get("queue", []))}) {{
-                window.parent.location.reload();
-            }}
-        }}, 5000);
-        </script>
         """
         
         st.markdown(timer_html, unsafe_allow_html=True)
@@ -269,10 +259,13 @@ def show_live_timer(standards, qstate):
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
         
-        # Auto-refresh using Streamlit's rerun every 5 seconds
+        # Auto-refresh using sleep and rerun (only during active quiz)
         if len(qstate.get("queue", [])) > 0 and remaining > 0:
-            time.sleep(5)
-            st.rerun()
+            # Use a placeholder to show refresh status
+            with st.empty():
+                st.info("Timer updating...")
+                time.sleep(3)
+                st.rerun()
 
 # =====================
 # Save to Google Sheets
@@ -372,10 +365,10 @@ else:
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         ">
-            <b>ID:</b> {qstate['emp_id']} &nbsp;•&nbsp; 
-            <b>Name:</b> {qstate['emp_name']} &nbsp;•&nbsp; 
-            <b>Standard:</b> {qstate['standard']} &nbsp;•&nbsp; 
-            <b>Progress:</b> {answered_count}/{qstate['total']}
+            <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; 
+            <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; 
+            <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; 
+            <b>Progress :</b> {answered_count}/{qstate['total']}
         </div>
         """,
         unsafe_allow_html=True
