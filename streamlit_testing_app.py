@@ -154,9 +154,10 @@ def format_timer(h, m, s):
         return hh*3600 + mm*60 + ss
     except Exception:
         return 0
-
+if "last_timer_refresh" not in st.session_state:
+    st.session_state.last_timer_refresh = time.time()
+    
 def show_live_timer(standards, qstate):
-    """Live countdown timer with native rerun (no external package)."""
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
     total_secs = format_timer(h, m, s)
 
@@ -191,9 +192,9 @@ def show_live_timer(standards, qstate):
             icon = "⏰"
             pulse_class = ""
 
-        text_color = "white"
         progress_percent = (remaining / total_secs) * 100
 
+        # TIMER HTML
         timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -207,7 +208,7 @@ def show_live_timer(standards, qstate):
         </style>
         <div class="timer-container {pulse_class}" style="
             background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
-            color: {text_color};
+            color: white;
             padding: 20px;
             border-radius: 15px;
             text-align: center;
@@ -244,16 +245,20 @@ def show_live_timer(standards, qstate):
         """
         st.markdown(timer_html, unsafe_allow_html=True)
 
-        # Optional alerts
+        # Show alerts
         if remaining <= 300:
             st.warning("🚨 URGENT: Less than 5 minutes remaining!")
         elif remaining <= 900:
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
-
-        # 👇 Native refresh
-        time.sleep(1)
+if "quiz" in st.session_state:
+    qstate = st.session_state.quiz
+# Auto-rerun every second during quiz
+if "last_timer_refresh" in st.session_state:
+    now = time.time()
+    if now - st.session_state.last_timer_refresh >= 1.0:
+        st.session_state.last_timer_refresh = now
         st.experimental_rerun()
 
 
