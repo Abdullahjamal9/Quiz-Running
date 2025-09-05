@@ -4,25 +4,256 @@ import numpy as np
 import datetime as dt
 import time
 import os
-import gspread
-from google.oauth2.service_account import Credentials
 
 # =====================
-# Paths / Files (local Excel for reading only)
+# Paths / Files
 # =====================
-BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
-DB_FOLDER = os.path.join(BASE_DIR, "db")
+DB_FOLDER = "db"
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 EMP_STD_FILE = os.path.join(DB_FOLDER, "Result 2.xlsx")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
 
 # =====================
-# Google Sheets Setup (for saving results)
+# Custom CSS Styling
 # =====================
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-client = gspread.authorize(creds)
-GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+def apply_custom_styles():
+    st.markdown("""
+    <style>
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+    
+    /* Global Styling */
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        font-family: 'Poppins', sans-serif;
+    }
+    
+    /* Main container styling */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 900px;
+    }
+    
+    /* Title styling */
+    h1 {
+        color: white !important;
+        text-align: center;
+        font-weight: 700;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        margin-bottom: 2rem;
+        font-size: 2.5rem !important;
+    }
+    
+    /* Subheader styling */
+    h2, h3 {
+        color: white !important;
+        font-weight: 600;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+    }
+    
+    /* Login form container */
+    .login-container {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 2.5rem;
+        border-radius: 20px;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(255,255,255,0.2);
+        margin-bottom: 2rem;
+    }
+    
+    /* Input styling */
+    .stTextInput input {
+        border-radius: 12px !important;
+        border: 2px solid #e1e5e9 !important;
+        padding: 12px 16px !important;
+        font-size: 16px !important;
+        transition: all 0.3s ease !important;
+        background: white !important;
+    }
+    
+    .stTextInput input:focus {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+    }
+    
+    /* Selectbox styling */
+    .stSelectbox select {
+        border-radius: 12px !important;
+        border: 2px solid #e1e5e9 !important;
+        padding: 12px 16px !important;
+        font-size: 16px !important;
+        background: white !important;
+    }
+    
+    /* Button styling */
+    .stButton button {
+        background: linear-gradient(135deg, #667eea, #764ba2) !important;
+        color: white !important;
+        border: none !important;
+        border-radius: 12px !important;
+        padding: 12px 24px !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+    }
+    
+    .stButton button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4) !important;
+    }
+    
+    /* Form submit button */
+    .stForm button {
+        background: linear-gradient(135deg, #4CAF50, #45a049) !important;
+        width: 100% !important;
+        padding: 16px !important;
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        margin-top: 1rem !important;
+    }
+    
+    /* Metrics styling */
+    .metric-card {
+        background: linear-gradient(135deg, #fff, #f8f9ff);
+        padding: 1.5rem;
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        text-align: center;
+        border: 1px solid rgba(102, 126, 234, 0.1);
+        transition: transform 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+    }
+    
+    .metric-value {
+        font-size: 2rem;
+        font-weight: 700;
+        color: #667eea;
+        margin-bottom: 0.5rem;
+    }
+    
+    .metric-label {
+        font-size: 0.9rem;
+        color: #64748b;
+        font-weight: 500;
+    }
+    
+    /* Question container */
+    .question-container {
+        background: rgba(255, 255, 255, 0.95);
+        padding: 2rem;
+        border-radius: 20px;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+        backdrop-filter: blur(10px);
+    }
+    
+    /* Question title */
+    .question-title {
+        color: #2d3748 !important;
+        font-size: 1.3rem !important;
+        font-weight: 600 !important;
+        margin-bottom: 1.5rem !important;
+        line-height: 1.6 !important;
+    }
+    
+    /* Radio button styling */
+    .stRadio > div {
+        background: white;
+        padding: 1rem;
+        border-radius: 12px;
+        margin-top: 1rem;
+    }
+    
+    .stRadio label {
+        padding: 12px 16px !important;
+        margin: 8px 0 !important;
+        border-radius: 10px !important;
+        background: #f8f9fa !important;
+        border: 2px solid #e9ecef !important;
+        transition: all 0.3s ease !important;
+        cursor: pointer !important;
+        display: block !important;
+    }
+    
+    .stRadio label:hover {
+        background: #e3f2fd !important;
+        border-color: #667eea !important;
+    }
+    
+    /* Success/Error messages */
+    .stSuccess, .stError, .stWarning, .stInfo {
+        border-radius: 12px !important;
+        border: none !important;
+    }
+    
+    /* Progress info bar */
+    .progress-bar {
+        background: linear-gradient(135deg, #667eea, #764ba2);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 16px;
+        text-align: center;
+        font-weight: 500;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 8px 32px rgba(102, 126, 234, 0.3);
+    }
+    
+    /* Final result styling */
+    .result-container {
+        background: linear-gradient(135deg, #1a202c, #2d3748);
+        color: white;
+        padding: 2.5rem;
+        border-radius: 20px;
+        text-align: center;
+        margin-top: 2rem;
+        box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+    }
+    
+    .result-title {
+        font-size: 2rem !important;
+        font-weight: 700 !important;
+        margin-bottom: 1.5rem !important;
+    }
+    
+    .result-details {
+        font-size: 1.1rem !important;
+        line-height: 2 !important;
+    }
+    
+    /* Animation keyframes */
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.05); opacity: 0.8; }
+        100% { transform: scale(1); opacity: 1; }
+    }
+    
+    .timer-pulse {
+        animation: pulse 1s infinite;
+    }
+    
+    /* Fade in animation for containers */
+    .login-container, .question-container {
+        animation: fadeIn 0.8s ease-out;
+    }
+    
+    /* Hide Streamlit elements */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    </style>
+    """, unsafe_allow_html=True)
 
 # =====================
 # Cached Loaders
@@ -46,7 +277,6 @@ def load_employees_and_standards():
     standards["Standard"] = standards["Standard"].astype(str).str.strip()
     standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
     return employees, standards
-
 
 @st.cache_data
 def load_questions():
@@ -90,7 +320,6 @@ def load_questions():
 
     q["Standard"] = q["Standard"].astype(str).str.strip()
     return q[expected]
-
 
 @st.cache_data
 def get_info_for_standard(standards_df, selected_standard):
@@ -147,24 +376,27 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
     }
     return True, ""
 
-
 def format_timer(h, m, s):
     try:
         hh = int(h); mm = int(m); ss = int(s)
         return hh*3600 + mm*60 + ss
     except Exception:
         return 0
-if "last_timer_refresh" not in st.session_state:
-    st.session_state.last_timer_refresh = time.time()
-    
+
 def show_live_timer(standards, qstate):
+    """Live timer with auto-refresh and enhanced styling"""
+    # Auto-refresh every second only during quiz
+    if len(qstate.get("queue", [])) > 0:
+        st_autorefresh(interval=1000, limit=None, key="timer_refresh")
+    
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
     total_secs = format_timer(h, m, s)
-
+    
     if total_secs > 0:
         elapsed = int(time.time() - qstate["start_ts"])
         remaining = max(0, total_secs - elapsed)
-
+        
+        # Auto-submit if time is up
         if remaining <= 0 and len(qstate["queue"]) > 0:
             st.error("⏰ Time is up! Auto-submitting your test...")
             qstate["wrong"] += len(qstate["queue"])
@@ -172,113 +404,174 @@ def show_live_timer(standards, qstate):
             st.session_state.quiz = qstate
             st.rerun()
             return
-
+        
         rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
-
-        if remaining <= 300:
-            bg_color = "#DC2626"
+        
+        # Enhanced color coding with gradients
+        if remaining <= 300:  # Last 5 minutes - critical red
+            bg_gradient = "linear-gradient(135deg, #DC2626, #B91C1C, #991B1B)"
+            text_color = "white"
             icon = "🚨"
             pulse_class = "timer-pulse"
-        elif remaining <= 900:
-            bg_color = "#DC2626"
+            border_color = "#DC2626"
+        elif remaining <= 900:  # Last 15 minutes - warning red
+            bg_gradient = "linear-gradient(135deg, #EA580C, #DC2626)"
+            text_color = "white"
             icon = "⚠️"
             pulse_class = ""
-        elif remaining <= 1800:
-            bg_color = "#D97706"
+            border_color = "#EA580C"
+        elif remaining <= 1800:  # Last 30 minutes - caution orange
+            bg_gradient = "linear-gradient(135deg, #D97706, #F59E0B)"
+            text_color = "white"
             icon = "⏰"
             pulse_class = ""
-        else:
-            bg_color = "#1E3A8A"
-            icon = "⏰"
+            border_color = "#D97706"
+        else:  # Normal - gradient blue
+            bg_gradient = "linear-gradient(135deg, #667eea, #764ba2)"
+            text_color = "white"
+            icon = "⏱️"
             pulse_class = ""
-
+            border_color = "#667eea"
+        
+        # Progress bar percentage
         progress_percent = (remaining / total_secs) * 100
-
-        # TIMER HTML
+        
         timer_html = f"""
-        <style>
-        @keyframes pulse {{
-            0% {{ transform: scale(1); opacity: 1; }}
-            50% {{ transform: scale(1.05); opacity: 0.8; }}
-            100% {{ transform: scale(1); opacity: 1; }}
-        }}
-        .timer-pulse {{
-            animation: pulse 1s infinite;
-        }}
-        </style>
         <div class="timer-container {pulse_class}" style="
-            background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
-            color: white;
-            padding: 20px;
-            border-radius: 15px;
+            background: {bg_gradient};
+            color: {text_color};
+            padding: 25px;
+            border-radius: 20px;
             text-align: center;
             font-size: 22px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-            border: 3px solid rgba(255, 255, 255, 0.1);
+            font-weight: 600;
+            margin-bottom: 25px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2), 0 5px 15px rgba(0, 0, 0, 0.1);
+            border: 3px solid {border_color};
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
         ">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                <span style="font-size: 28px;">{icon}</span>
-                <span>Time Remaining:</span>
-                <span style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+            <!-- Decorative background pattern -->
+            <div style="
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                bottom: 0;
+                background: radial-gradient(circle at 20% 80%, rgba(255,255,255,0.1) 0%, transparent 50%),
+                           radial-gradient(circle at 80% 20%, rgba(255,255,255,0.1) 0%, transparent 50%);
+                pointer-events: none;
+            "></div>
+            
+            <div style="
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                gap: 20px;
+                position: relative;
+                z-index: 2;
+            ">
+                <span style="font-size: 32px; filter: drop-shadow(2px 2px 4px rgba(0,0,0,0.3));">{icon}</span>
+                <span style="font-weight: 500; text-shadow: 1px 1px 2px rgba(0,0,0,0.3);">Time Remaining:</span>
+                <span style="
+                    font-family: 'Courier New', monospace; 
+                    font-size: 32px; 
+                    background: rgba(0,0,0,0.3); 
+                    padding: 8px 20px; 
+                    border-radius: 12px;
+                    box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+                    border: 1px solid rgba(255,255,255,0.2);
+                    text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+                ">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
             </div>
+            
+            <!-- Enhanced progress bar -->
             <div style="
                 width: 100%;
-                height: 6px;
-                background-color: rgba(255,255,255,0.3);
-                border-radius: 3px;
+                height: 8px;
+                background: rgba(0,0,0,0.3);
+                border-radius: 4px;
                 overflow: hidden;
-                margin-top: 15px;
+                margin-top: 20px;
+                position: relative;
+                z-index: 2;
+                box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
             ">
                 <div style="
                     height: 100%;
-                    background: linear-gradient(90deg, #10B981, #34D399);
+                    background: linear-gradient(90deg, #10B981, #34D399, #6EE7B7);
                     width: {progress_percent:.1f}%;
-                    border-radius: 3px;
+                    border-radius: 4px;
                     transition: width 1s ease-in-out;
-                "></div>
+                    box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+                    position: relative;
+                ">
+                    <div style="
+                        position: absolute;
+                        top: 0;
+                        left: 0;
+                        right: 0;
+                        bottom: 0;
+                        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+                        animation: shimmer 2s infinite;
+                    "></div>
+                </div>
             </div>
         </div>
+        
+        <style>
+        @keyframes shimmer {{
+            0% {{ transform: translateX(-100%); }}
+            100% {{ transform: translateX(100%); }}
+        }}
+        </style>
         """
+        
         st.markdown(timer_html, unsafe_allow_html=True)
-
-        # Show alerts
+        
+        # Enhanced warning messages with better styling
         if remaining <= 300:
-            st.warning("🚨 URGENT: Less than 5 minutes remaining!")
+            st.error("🚨 **CRITICAL**: Less than 5 minutes remaining!")
         elif remaining <= 900:
-            st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
+            st.warning("⚠️ **WARNING**: Less than 15 minutes remaining!")
         elif remaining <= 1800:
-            st.info("⏰ NOTICE: Less than 30 minutes remaining!")
-if "quiz" in st.session_state:
-    qstate = st.session_state.quiz
-# Auto-rerun every second during quiz
-if "last_timer_refresh" in st.session_state:
-    now = time.time()
-    if now - st.session_state.last_timer_refresh >= 1.0:
-        st.session_state.last_timer_refresh = now
-        st.rerun()
+            st.info("⏰ **NOTICE**: Less than 30 minutes remaining!")
 
-
-# =====================
-# Save to Google Sheets
-# =====================
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
-        sheet = client.open_by_url(GSHEET_URL)
-        worksheet = sheet.worksheet("Result")
-
         now = dt.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
         pct = (right/total)*100 if total else 0.0
-
-        new_row = [
-            str(emp_id), str(emp_name), int(total), int(right), int(wrong),
-            f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
+        row = [int(emp_id), emp_name, int(total), int(right), int(wrong),
+               f"{pct:.2f}%", f"{criteria_pct:.0f}%", status, test_type, now]
+        try:
+            df_old = pd.read_excel(EMP_STD_FILE, sheet_name="Result")
+        except Exception:
+            df_old = pd.DataFrame(columns=[
+                "ID","Name","Total","Right","Wrong","%","Criteria%",
+                "Status","Type","DateTime"
+            ])
+        cols = df_old.columns.tolist() if len(df_old.columns) else [
+            "ID","Name","Total","Right","Wrong","%","Criteria%",
+            "Status","Type","DateTime"
         ]
+        df_new = pd.DataFrame([row], columns=cols)
+        out = pd.concat([df_old, df_new], ignore_index=True)
 
-        worksheet.append_row(new_row)
+        with pd.ExcelWriter(EMP_STD_FILE, mode="a", if_sheet_exists="replace") as xw:
+            try:
+                emp = pd.read_excel(EMP_STD_FILE, sheet_name="Emloyees Data")
+                emp.to_excel(xw, sheet_name="Emloyees Data", index=False)
+            except Exception:
+                pass
+            try:
+                std = pd.read_excel(EMP_STD_FILE, sheet_name="Standard")
+                std.to_excel(xw, sheet_name="Standard", index=False)
+            except Exception:
+                pass
+            out.to_excel(xw, sheet_name="Result", index=False)
         return True, ""
     except Exception as e:
         return False, str(e)
@@ -286,8 +579,17 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 # =====================
 # UI
 # =====================
-st.set_page_config(page_title="PTIS Online Testing", page_icon="📝", layout="centered")
-st.title("PTIS Online Testing Module")
+st.set_page_config(
+    page_title="PTIS Online Testing", 
+    page_icon="🎓", 
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
+
+# Apply custom styling
+apply_custom_styles()
+
+st.title("🎓 PTIS Online Testing Module")
 
 employees, standards = load_employees_and_standards()
 questions = load_questions()
@@ -297,9 +599,18 @@ if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
 
 if "quiz" not in st.session_state:
-    st.subheader("Login")
-
-    emp_id = st.text_input("Employee ID", value="", key=f"id_{st.session_state.reset_counter}")
+    # Login Section with enhanced styling
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
+    
+    st.markdown("### 📋 Student Login")
+    st.markdown("Please enter your details to begin the test")
+    
+    emp_id = st.text_input(
+        "🆔 Employee ID", 
+        value="", 
+        key=f"id_{st.session_state.reset_counter}",
+        placeholder="Enter your employee ID"
+    )
 
     fetched_name = ""
     if emp_id and not employees.empty:
@@ -309,32 +620,74 @@ if "quiz" not in st.session_state:
                 fetched_name = str(fetched.iloc[0,1])
         except Exception:
             pass
-    name = st.text_input("Name (auto-fills if ID found)", value=fetched_name, key=f"name_{st.session_state.reset_counter}")
+    
+    name = st.text_input(
+        "👤 Name (auto-fills if ID found)", 
+        value=fetched_name, 
+        key=f"name_{st.session_state.reset_counter}",
+        placeholder="Enter your full name"
+    )
 
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
     if "Cummulative" not in options:
         options = ["Cummulative"] + options
-    selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
+    
+    selected_standard = st.selectbox(
+        "📚 Select Standard", 
+        options, 
+        index=0 if options else None, 
+        key=f"std_{st.session_state.reset_counter}"
+    )
 
     total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
 
+    # Enhanced metrics display
+    st.markdown("### 📊 Test Information")
     c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Total Questions", total)
-    with c2: st.metric("Passing Criteria (%)", criteria)
-    with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
+    
+    with c1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{total}</div>
+            <div class="metric-label">📝 Total Questions</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with c2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{criteria}%</div>
+            <div class="metric-label">🎯 Passing Criteria</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with c3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <div class="metric-value">{h}:{m}:{s}</div>
+            <div class="metric-label">⏱️ Time Limit</div>
+        </div>
+        """, unsafe_allow_html=True)
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Start test form
     with st.form("start_form"):
-        submitted = st.form_submit_button("Start Test")
+        st.markdown("### 🚀 Ready to Start?")
+        st.markdown("Make sure all your details are correct before starting the test.")
+        submitted = st.form_submit_button("🎯 Start Test", use_container_width=True)
 
     if submitted:
         if not emp_id or not name or not selected_standard:
-            st.error("Please enter ID, Name and select a Standard.")
+            st.error("❌ Please enter ID, Name and select a Standard.")
         else:
             ok, msg = start_quiz_session(emp_id, name, selected_standard, questions, total)
             if not ok:
-                st.error(msg)
+                st.error(f"❌ {msg}")
             else:
+                st.success("✅ Test started successfully!")
+                time.sleep(1)
                 st.rerun()
 
 else:
@@ -345,25 +698,33 @@ else:
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
-    # Clean info bar in single line
+    # Enhanced progress info bar
+    progress_percentage = (answered_count / qstate["total"]) * 100
     st.markdown(
         f"""
-        <div style="
-            padding: 12px 15px; 
-            border-radius: 8px; 
-            background: linear-gradient(135deg, #1E3A8A, #3B82F6);
-            color: white; 
-            text-align: center; 
-            font-size: 17px; 
-            margin-bottom: 20px;
-            white-space: nowrap;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        ">
-            <b>ID:</b> {qstate['emp_id']} &nbsp;•&nbsp; 
-            <b>Name:</b> {qstate['emp_name']} &nbsp;•&nbsp; 
-            <b>Standard:</b> {qstate['standard']} &nbsp;•&nbsp; 
-            <b>Progress:</b> {answered_count}/{qstate['total']}
+        <div class="progress-bar">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+                <div><strong>🆔 ID:</strong> {qstate['emp_id']}</div>
+                <div><strong>👤 Name:</strong> {qstate['emp_name']}</div>
+                <div><strong>📚 Standard:</strong> {qstate['standard']}</div>
+                <div><strong>📊 Progress:</strong> {answered_count}/{qstate['total']} ({progress_percentage:.1f}%)</div>
+            </div>
+            <div style="
+                width: 100%;
+                height: 6px;
+                background: rgba(255,255,255,0.3);
+                border-radius: 3px;
+                margin-top: 15px;
+                overflow: hidden;
+            ">
+                <div style="
+                    height: 100%;
+                    background: linear-gradient(90deg, #10B981, #34D399);
+                    width: {progress_percentage:.1f}%;
+                    border-radius: 3px;
+                    transition: width 0.5s ease;
+                "></div>
+            </div>
         </div>
         """,
         unsafe_allow_html=True
@@ -374,71 +735,25 @@ else:
         row = qstate["rows"].iloc[current_qid]
         qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
 
-        st.subheader(f"Q{current_qid+1}. {question}")
-        choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
+        # Question container with enhanced styling
+        st.markdown('<div class="question-container">', unsafe_allow_html=True)
+        
+        st.markdown(f'<h3 class="question-title">❓ Question {current_qid+1}: {question}</h3>', unsafe_allow_html=True)
+        
+        choice = st.radio(
+            "Select your answer:", 
+            [A, B, C, D], 
+            index=None, 
+            key=f"q_{current_qid}"
+        )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
+        # Action buttons with enhanced styling
         col1, col2 = st.columns([1,1])
 
         with col1:
-            if st.button("Next", use_container_width=True):
+            if st.button("➡️ Next Question", use_container_width=True):
                 if choice is None:
                     st.warning("⚠️ Please select an option before moving on.")
                 else:
-                    mapping = {"A": A, "B": B, "C": C, "D": D}
-                    correct_text = mapping.get(str(correct).strip(), str(correct).strip())
-                    is_correct = str(choice).strip() == str(correct_text).strip()
-                    qstate["answers"][current_qid] = {
-                        "choice": choice,
-                        "correct": correct_text,
-                        "is_correct": is_correct
-                    }
-                    if is_correct:
-                        qstate["right"] += 1
-                    else:
-                        qstate["wrong"] += 1
-                    qstate["queue"].pop(0)
-                    st.session_state.quiz = qstate
-                    st.rerun()
-
-        with col2:
-            if len(qstate["queue"]) > 1:
-                if st.button("Skip", use_container_width=True):
-                    qstate["queue"].append(qstate["queue"].pop(0))
-                    st.session_state.quiz = qstate
-                    st.rerun()
-
-    if len(qstate["queue"]) == 0:
-        total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
-        right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-        pct = (right/total_q)*100 if total_q else 0.0
-        status = "Pass" if pct >= float(criteria) else "Fail"
-
-        if "submitted" not in st.session_state:
-            st.success("All questions attempted. You can now submit your test.")
-
-            submit_clicked = st.button("Submit", use_container_width=True)
-            if submit_clicked:
-                ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-                )
-                st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-                st.rerun()
-        else:
-            if "submit_result" in st.session_state:
-                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
-
-                color = "#16A34A" if status == "Pass" else "#DC2626"
-                st.markdown(
-                    f"""
-                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
-                        <h3 style="color:{color};">Final Result: {status}</h3>
-                        <p style="font-size:18px;">
-                            <b>Score:</b> {right}/{total_q}<br>
-                            <b>Percentage:</b> {pct:.2f}%<br>
-                            <b>Passing Criteria:</b> {criteria:.0f}%
-                        </p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
