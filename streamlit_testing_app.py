@@ -426,7 +426,7 @@ else:
             if "submit_result" in st.session_state:
                 ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
 
-                color = "#16A34A" if status == "Pass" else "#DC2626"
+                color = "#043006" if status == "Pass" else "#DC2626"
                 st.markdown(
                     f"""
                     <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
