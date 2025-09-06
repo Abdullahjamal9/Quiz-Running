@@ -427,36 +427,90 @@ else:
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
 
-    # Display final time after submission or when no questions remain
-    elif total_secs > 0 and "submitted" in st.session_state:
+    # Display stopped timer with same style after submission or when no questions remain
+    elif total_secs > 0 and ("submitted" in st.session_state or len(qstate["queue"]) == 0):
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
         rem_s = remaining % 60
-        st.markdown(
-            f"""
-            <div style="
-                padding: 20px;
-                border-radius: 15px;
-                text-align: center;
-                font-size: 22px;
-                font-weight: bold;
-                margin-bottom: 20px;
-                background: linear-gradient(135deg, #6B7280, #4B5563);
-                color: white;
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-                border: 3px solid rgba(255, 255, 255, 0.1);
-            ">
-                <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                    <span style="font-size: 28px;">⏹️</span>
-                    <span>Test Submitted - Time Remaining:</span>
-                    <span style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
-                        {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
-                    </span>
-                </div>
+
+        # Determine styling based on remaining time at submission
+        if remaining <= 300:  # Last 5 minutes
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "🚨"
+            pulse_class = "timer-pulse"
+        elif remaining <= 900:  # Last 15 minutes
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "⚠️"
+            pulse_class = ""
+        elif remaining <= 1800:  # Last 30 minutes
+            bg_color = "#D97706"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
+        else:  # Normal
+            bg_color = "#1E3A8A"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
+
+        # Progress bar percentage at submission
+        progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
+
+        # Static timer display with same style as active timer
+        stopped_timer_html = f"""
+        <style>
+        @keyframes pulse {{
+            0% {{ transform: scale(1); opacity: 1; }}
+            50% {{ transform: scale(1.05); opacity: 0.8; }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        .timer-pulse {{
+            animation: pulse 1s infinite;
+        }}
+        .timer-container {{
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.1);
+        }}
+        </style>
+        <div id="timer_container" class="timer-container {pulse_class}" style="
+            background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
+            color: {text_color};
+        ">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <span id="timer_icon" style="font-size: 28px;">{icon}</span>
+                <span>Test Submitted - Time Remaining:</span>
+                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                    {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
+                </span>
             </div>
-            """,
-            unsafe_allow_html=True
-        )
+            <div style="
+                width: 100%;
+                height: 6px;
+                background-color: rgba(255,255,255,0.3);
+                border-radius: 3px;
+                overflow: hidden;
+                margin-top: 15px;
+            ">
+                <div id="progress_bar" style="
+                    height: 100%;
+                    background: linear-gradient(90deg, #10B981, #34D399);
+                    width: {progress_percent:.1f}%;
+                    border-radius: 3px;
+                "></div>
+            </div>
+        </div>
+        """
+
+        # Render the stopped timer
+        components.html(stopped_timer_html, height=150)
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
@@ -499,7 +553,7 @@ else:
                     st.warning("⚠️ Please select an option before moving on.")
                 else:
                     mapping = {"A": A, "B": B, "C": C, "D": D}
-                    correct_text = mapping.get(str(correct).strip(), str(correct).strip())
+                    strange_text = mapping.get(str(correct).strip(), str(correct).strip())
                     is_correct = str(choice).strip() == str(correct_text).strip()
                     qstate["answers"][current_qid] = {
                         "choice": choice,
