@@ -242,9 +242,6 @@ else:
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
     if total_secs > 0:
-        elapsed = int(time.time() - qstate["start_ts"])
-        remaining = max(0, total_secs - elapsed)
-        
         # Auto-submit if time is up
         if remaining <= 0 and len(qstate["queue"]) > 0:
             st.error("Time is up! Auto-submitting your test...")
@@ -253,8 +250,11 @@ else:
             st.session_state.quiz = qstate
             st.rerun()
         
-        rem_h, rem_m, rem_s = remaining // 3600, (remaining % 3600) // 60, remaining % 60
-        if remaining <= 300:  # Last 5 minute - red with warning
+        rem_h = remaining // 3600
+        rem_m = (remaining % 3600) // 60
+        rem_s = remaining % 60
+        
+        if remaining <= 300:  # Last 5 minutes - red with warning
             bg_color = "#DC2626"
             text_color = "white"
             icon = "🚨"
@@ -276,7 +276,7 @@ else:
             pulse_class = ""
         
         # Progress bar percentage
-        progress_percent = (remaining / total_secs) * 100
+        progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
         
         timer_html = f"""
         <style>
@@ -288,10 +288,7 @@ else:
         .timer-pulse {{
             animation: pulse 1s infinite;
         }}
-        </style>
-        <div class="timer-container {pulse_class}" style="
-            background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
-            color: {text_color};
+        .timer-container {{
             padding: 20px;
             border-radius: 15px;
             text-align: center;
@@ -300,11 +297,16 @@ else:
             margin-bottom: 20px;
             box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
             border: 3px solid rgba(255, 255, 255, 0.1);
+        }}
+        </style>
+        <div id="timer_container" class="timer-container" style="
+            background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
+            color: {text_color};
         ">
             <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                <span style="font-size: 28px;">{icon}</span>
+                <span id="timer_icon" style="font-size: 28px;">{icon}</span>
                 <span>Time Remaining:</span>
-                <span style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
             </div>
@@ -316,32 +318,78 @@ else:
                 overflow: hidden;
                 margin-top: 15px;
             ">
-                <div style="
+                <div id="progress_bar" style="
                     height: 100%;
                     background: linear-gradient(90deg, #10B981, #34D399);
                     width: {progress_percent:.1f}%;
                     border-radius: 3px;
-                    transition: width 1s ease-in-out;
+                    transition: width 0.5s ease-in-out;
                 "></div>
             </div>
         </div>
+        <script>
+        var remaining = {remaining};
+        var total_secs = {total_secs};
+        var interval = null;
+        function updateTimer() {{
+            if (remaining <= 0) {{
+                document.getElementById('timer_display').innerText = '00:00:00';
+                clearInterval(interval);
+                window.location.reload();
+                return;
+            }}
+            var h = Math.floor(remaining / 3600);
+            var m = Math.floor((remaining % 3600) / 60);
+            var s = remaining % 60;
+            document.getElementById('timer_display').innerText = `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
+            var progress = (remaining / total_secs) * 100;
+            document.getElementById('progress_bar').style.width = progress + '%';
+            // Update colors, icon, and pulse
+            var container = document.getElementById('timer_container');
+            var iconElem = document.getElementById('timer_icon');
+            var bg_color, text_color, icon, pulse_class = '';
+            if (remaining <= 300) {{
+                bg_color = '#DC2626';
+                text_color = 'white';
+                icon = '🚨';
+                pulse_class = 'timer-pulse';
+            }} else if (remaining <= 900) {{
+                bg_color = '#DC2626';
+                text_color = 'white';
+                icon = '⚠️';
+            }} else if (remaining <= 1800) {{
+                bg_color = '#D97706';
+                text_color = 'white';
+                icon = '⏰';
+            }} else {{
+                bg_color = '#1E3A8A';
+                text_color = 'white';
+                icon = '⏰';
+            }}
+            container.style.background = `linear-gradient(135deg, ${{bg_color}}, ${{bg_color}}CC)`;
+            container.style.color = text_color;
+            iconElem.innerText = icon;
+            if (pulse_class) {{
+                container.classList.add(pulse_class);
+            }} else {{
+                container.classList.remove('timer-pulse');
+            }}
+            remaining--;
+        }}
+        updateTimer();  // Initial update
+        interval = setInterval(updateTimer, 1000);
+        </script>
         """
         
         st.markdown(timer_html, unsafe_allow_html=True)
         
-        # Show warnings
+        # Show warnings (server-side, updates on interaction)
         if remaining <= 300:
-            st.warning("🚨 URGENT: Less than 5 minute remaining!")
+            st.warning("🚨 URGENT: Less than 5 minutes remaining!")
         elif remaining <= 900:
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
-
-        if remaining <= 0 and len(qstate["queue"]) > 0:
-            qstate["wrong"] += len(qstate["queue"])
-            qstate["queue"] = []
-            st.session_state.quiz = qstate
-            st.rerun()
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
