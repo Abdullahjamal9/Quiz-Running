@@ -6,6 +6,7 @@ import time
 import os
 import gspread
 from google.oauth2.service_account import Credentials
+import streamlit.components.v1 as components
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -249,35 +250,37 @@ else:
             qstate["queue"] = []
             st.session_state.quiz = qstate
             st.rerun()
-        
+
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
         rem_s = remaining % 60
-        
-        if remaining <= 300:  # Last 5 minutes - red with warning
+
+        # Determine timer styling based on remaining time
+        if remaining <= 300:  # Last 5 minutes
             bg_color = "#DC2626"
             text_color = "white"
             icon = "🚨"
             pulse_class = "timer-pulse"
-        elif remaining <= 900:  # Last 15 minutes - red
-            bg_color = "#DC2626" 
+        elif remaining <= 900:  # Last 15 minutes
+            bg_color = "#DC2626"
             text_color = "white"
             icon = "⚠️"
             pulse_class = ""
-        elif remaining <= 1800:  # Last 30 minutes - orange
+        elif remaining <= 1800:  # Last 30 minutes
             bg_color = "#D97706"
-            text_color = "white" 
+            text_color = "white"
             icon = "⏰"
             pulse_class = ""
-        else:  # Normal - blue
+        else:  # Normal
             bg_color = "#1E3A8A"
             text_color = "white"
             icon = "⏰"
             pulse_class = ""
-        
+
         # Progress bar percentage
         progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
-        
+
+        # JavaScript-powered timer using components.html
         timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -299,7 +302,7 @@ else:
             border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
-        <div id="timer_container" class="timer-container" style="
+        <div id="timer_container" class="timer-container {pulse_class}" style="
             background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
             color: {text_color};
         ">
@@ -328,61 +331,92 @@ else:
             </div>
         </div>
         <script>
-        var remaining = {remaining};
-        var total_secs = {total_secs};
-        var interval = null;
-        function updateTimer() {{
-            if (remaining <= 0) {{
-                document.getElementById('timer_display').innerText = '00:00:00';
-                clearInterval(interval);
-                window.location.reload();
-                return;
-            }}
-            var h = Math.floor(remaining / 3600);
-            var m = Math.floor((remaining % 3600) / 60);
-            var s = remaining % 60;
-            document.getElementById('timer_display').innerText = `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
-            var progress = (remaining / total_secs) * 100;
-            document.getElementById('progress_bar').style.width = progress + '%';
-            // Update colors, icon, and pulse
-            var container = document.getElementById('timer_container');
-            var iconElem = document.getElementById('timer_icon');
-            var bg_color, text_color, icon, pulse_class = '';
-            if (remaining <= 300) {{
-                bg_color = '#DC2626';
-                text_color = 'white';
-                icon = '🚨';
-                pulse_class = 'timer-pulse';
-            }} else if (remaining <= 900) {{
-                bg_color = '#DC2626';
-                text_color = 'white';
-                icon = '⚠️';
-            }} else if (remaining <= 1800) {{
-                bg_color = '#D97706';
-                text_color = 'white';
-                icon = '⏰';
-            }} else {{
-                bg_color = '#1E3A8A';
-                text_color = 'white';
-                icon = '⏰';
-            }}
-            container.style.background = `linear-gradient(135deg, ${{bg_color}}, ${{bg_color}}CC)`;
-            container.style.color = text_color;
-            iconElem.innerText = icon;
-            if (pulse_class) {{
-                container.classList.add(pulse_class);
-            }} else {{
-                container.classList.remove('timer-pulse');
-            }}
-            remaining--;
-        }}
-        updateTimer();  // Initial update
-        interval = setInterval(updateTimer, 1000);
+            (function() {{
+                var remaining = {remaining};
+                var total_secs = {total_secs};
+                var interval = null;
+
+                function updateTimer() {{
+                    if (remaining <= 0) {{
+                        document.getElementById('timer_display').innerText = '00:00:00';
+                        document.getElementById('progress_bar').style.width = '0%';
+                        clearInterval(interval);
+                        // Trigger form submission to auto-submit the quiz
+                        var form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = window.location.href;
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'timeout';
+                        input.value = 'true';
+                        form.appendChild(input);
+                        document.body.appendChild(form);
+                        form.submit();
+                        return;
+                    }}
+
+                    var h = Math.floor(remaining / 3600);
+                    var m = Math.floor((remaining % 3600) / 60);
+                    var s = remaining % 60;
+                    document.getElementById('timer_display').innerText = 
+                        `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
+                    var progress = (remaining / total_secs) * 100;
+                    document.getElementById('progress_bar').style.width = progress + '%';
+
+                    // Update colors, icon, and pulse
+                    var container = document.getElementById('timer_container');
+                    var iconElem = document.getElementById('timer_icon');
+                    var bg_color, text_color, icon, pulse_class = '';
+                    if (remaining <= 300) {{
+                        bg_color = '#DC2626';
+                        text_color = 'white';
+                        icon = '🚨';
+                        pulse_class = 'timer-pulse';
+                    }} else if (remaining <= 900) {{
+                        bg_color = '#DC2626';
+                        text_color = 'white';
+                        icon = '⚠️';
+                    }} else if (remaining <= 1800) {{
+                        bg_color = '#D97706';
+                        text_color = 'white';
+                        icon = '⏰';
+                    }} else {{
+                        bg_color = '#1E3A8A';
+                        text_color = 'white';
+                        icon = '⏰';
+                    }}
+                    container.style.background = `linear-gradient(135deg, ${{bg_color}}, ${{bg_color}}CC)`;
+                    container.style.color = text_color;
+                    iconElem.innerText = icon;
+                    if (pulse_class) {{
+                        container.classList.add(pulse_class);
+                    }} else {{
+                        container.classList.remove('timer-pulse');
+                    }}
+                    remaining--;
+                }}
+
+                // Clear any existing intervals to prevent duplicates
+                if (interval) clearInterval(interval);
+                updateTimer(); // Initial update
+                interval = setInterval(updateTimer, 1000);
+            })();
         </script>
         """
-        
-        st.markdown(timer_html, unsafe_allow_html=True)
-        
+
+        # Render the timer using components.html
+        components.html(timer_html, height=150)
+
+        # Handle timeout form submission
+        if st.experimental_get_query_params().get("timeout", ["false"])[0] == "true":
+            if len(qstate["queue"]) > 0:
+                st.error("Time is up! Auto-submitting your test...")
+                qstate["wrong"] += len(qstate["queue"])
+                qstate["queue"] = []
+                st.session_state.quiz = qstate
+                st.experimental_set_query_params()  # Clear query params
+                st.rerun()
+
         # Show warnings (server-side, updates on interaction)
         if remaining <= 300:
             st.warning("🚨 URGENT: Less than 5 minutes remaining!")
