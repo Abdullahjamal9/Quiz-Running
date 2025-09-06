@@ -242,9 +242,11 @@ else:
 
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
-    if total_secs > 0:
+
+    # Only render timer if quiz is active (not submitted and questions remain)
+    if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
         # Auto-submit if time is up
-        if remaining <= 0 and len(qstate["queue"]) > 0:
+        if remaining <= 0:
             st.error("Time is up! Auto-submitting your test...")
             qstate["wrong"] += len(qstate["queue"])
             qstate["queue"] = []
@@ -425,11 +427,42 @@ else:
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
 
+    # Display final time after submission or when no questions remain
+    elif total_secs > 0 and "submitted" in st.session_state:
+        rem_h = remaining // 3600
+        rem_m = (remaining % 3600) // 60
+        rem_s = remaining % 60
+        st.markdown(
+            f"""
+            <div style="
+                padding: 20px;
+                border-radius: 15px;
+                text-align: center;
+                font-size: 22px;
+                font-weight: bold;
+                margin-bottom: 20px;
+                background: linear-gradient(135deg, #6B7280, #4B5563);
+                color: white;
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                border: 3px solid rgba(255, 255, 255, 0.1);
+            ">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                    <span style="font-size: 28px;">⏹️</span>
+                    <span>Test Submitted - Time Remaining:</span>
+                    <span style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                        {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
+                    </span>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
     answered_count = qstate["total"] - len(qstate["queue"])
 
     st.markdown(
         f"""
-       <div style="
+        <div style="
             padding: 12px 15px; 
             border-radius: 8px; 
             background: linear-gradient(135deg, #1E3A8A, #3B82F6);
