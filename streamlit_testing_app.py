@@ -310,7 +310,7 @@ else:
         ">
             <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
                 <span id="timer_icon" style="font-size: 28px;">{icon}</span>
-                <span>Time Remaining:</span>
+                <span>Time Remaining :</span>
                 <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
@@ -486,7 +486,7 @@ else:
         ">
             <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
                 <span id="timer_icon" style="font-size: 28px;">{icon}</span>
-                <span>Test Submitted - Time Remaining:</span>
+                <span>Test Submitted - Time Remaining :</span>
                 <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
