@@ -408,13 +408,13 @@ else:
         components.html(timer_html, height=150)
 
         # Handle timeout form submission
-        if st.experimental_get_query_params().get("timeout", ["false"])[0] == "true":
+        if st.query_params.get("timeout", ["false"])[0] == "true":
             if len(qstate["queue"]) > 0:
                 st.error("Time is up! Auto-submitting your test...")
                 qstate["wrong"] += len(qstate["queue"])
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
-                st.experimental_set_query_params()  # Clear query params
+                st.query_params.clear()  # Clear query params
                 st.rerun()
 
         # Show warnings (server-side, updates on interaction)
