@@ -120,7 +120,7 @@ def get_info_for_standard(standards_df, selected_standard):
 # Helpers
 # =====================
 def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
-    if standard == "Cumulative":
+    if standard == "Cummulative":
         cand = questions_df.copy()
     else:
         cand = questions_df[
@@ -225,8 +225,8 @@ if "quiz" not in st.session_state:
 
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
-    if "Cumulative" not in options:
-        options = ["Cumulative"] + options
+    if "Cummulative" not in options:
+        options = ["Cummulative"] + options
     selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
 
     total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
