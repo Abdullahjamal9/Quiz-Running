@@ -211,7 +211,7 @@ if "quiz" not in st.session_state:
         options = ["Cummulative"] + options
     selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
 
-    total, cyclient_emailriteria, h, m, s = get_info_for_standard(standards, selected_standard)
+    total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
 
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("Total Questions", total)
@@ -251,7 +251,7 @@ else:
             qstate["wrong"] += len(qstate["queue"])
             qstate["queue"] = []
             st.session_state.quiz = qstate
-            st.session_state["submitted"] = True  # Set submitted to show static timer
+            st.session_state["submitted"] = True  # Set submitted for static timer
             st.rerun()
 
         rem_h = remaining // 3600
