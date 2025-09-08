@@ -194,8 +194,18 @@ if "reset_counter" not in st.session_state:
 if "quiz" not in st.session_state:
     st.subheader("👤 Employee Login")
 
-    emp_id = st.text_input("Employee ID", value="", key=f"id_{st.session_state.reset_counter}")
+    # Create two columns for better layout
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        emp_id = st.text_input(
+            "Employee ID", 
+            value="", 
+            key=f"id_{st.session_state.reset_counter}",
+            help="Enter your employee identification number"
+        )
 
+    # Auto-fill name if employee ID is found
     fetched_name = ""
     if emp_id and not employees.empty:
         try:
@@ -204,7 +214,14 @@ if "quiz" not in st.session_state:
                 fetched_name = str(fetched.iloc[0,1])
         except Exception:
             pass
-    name = st.text_input("Name (auto-fills if ID found)", value=fetched_name, key=f"name_{st.session_state.reset_counter}")
+    
+    with col2:
+        name = st.text_input(
+            "Name", 
+            value=fetched_name, 
+            key=f"name_{st.session_state.reset_counter}",
+            help="This will auto-fill if your Employee ID is found"
+        )
 
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
