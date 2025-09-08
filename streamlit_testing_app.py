@@ -44,7 +44,7 @@ def load_employees_and_standards():
             standards.columns = ["Standard","ShortName"]
     except Exception:
         standards = pd.DataFrame(columns=["Standard","ShortName"])
-    standards["Standard"] = standards["Standard"].astype(str).str.strip()
+    standards["Standard"] = standards["Standard"].astype(str).str.strip().str.lower()
     standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
     return employees, standards
 
@@ -67,8 +67,8 @@ def load_questions():
             q = pd.read_excel(single_file)
             q = q.rename(columns=rename_map)
             all_q.append(q)
-        except Exception:
-            pass
+        except Exception as e:
+            st.write(f"Debug: Error loading Questions.xlsx: {e}")
 
     if os.path.isdir(QUESTIONS_FOLDER):
         for fname in os.listdir(QUESTIONS_FOLDER):
@@ -77,8 +77,8 @@ def load_questions():
                     q = pd.read_excel(os.path.join(QUESTIONS_FOLDER, fname))
                     q = q.rename(columns=rename_map)
                     all_q.append(q)
-                except Exception:
-                    pass
+                except Exception as e:
+                    st.write(f"Debug: Error loading {fname}: {e}")
 
     if all_q:
         q = pd.concat(all_q, ignore_index=True)
@@ -89,7 +89,8 @@ def load_questions():
         if col not in q.columns:
             q[col] = np.nan
 
-    q["Standard"] = q["Standard"].astype(str).str.strip()
+    q["Standard"] = q["Standard"].astype(str).str.strip().str.lower()
+    st.write(f"Debug: Loaded {len(q)} questions with standards: {q['Standard'].unique().tolist()}")
     return q[expected]
 
 
@@ -116,23 +117,37 @@ def get_info_for_standard(standards_df, selected_standard):
     except Exception:
         return 0, 0, "00", "00", "00"
 
+
 # =====================
 # Helpers
 # =====================
 def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
-    if standard == "Cummulative":
+    # Normalize standard for comparison
+    standard = str(standard).strip().lower()
+    st.write(f"Debug: Starting quiz for standard={standard}, total={total}, questions_df shape={questions_df.shape}")
+    
+    if standard == "cumulative":
         cand = questions_df.copy()
+        st.write(f"Debug: Cumulative standard selected, copied {len(cand)} questions")
     else:
         cand = questions_df[
-            questions_df["Standard"].astype(str).str.strip().str.upper()
-            == str(standard).strip().upper()
+            questions_df["Standard"].str.upper() == standard.upper()
         ]
+        st.write(f"Debug: Filtered for standard '{standard}', found {len(cand)} questions")
+    
     cand = cand.dropna(subset=["Question","A","B","C","D","Answer"])
+    st.write(f"Debug: After dropna, {len(cand)} questions remain")
+    
     if total <= 0 or cand.empty:
+        st.write(f"Debug: Invalid total ({total}) or no questions found")
         return False, "Questions not defined for this standard."
+    
     if len(cand) < total:
         total = len(cand)
+        st.write(f"Debug: Adjusted total to {total} due to insufficient questions")
+    
     sampled = cand.sample(total, random_state=None).reset_index(drop=True)
+    st.write(f"Debug: Sampled {len(sampled)} questions")
 
     st.session_state.quiz = {
         "emp_id": str(emp_id),
@@ -177,6 +192,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         return True, ""
     except Exception as e:
         return False, str(e)
+
 
 # =====================
 # UI
@@ -225,9 +241,14 @@ if "quiz" not in st.session_state:
 
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
-    if "Cummulative" not in options:
-        options = ["Cummulative"] + options
-    selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
+    if "cumulative" not in options:
+        options = ["cumulative"] + options
+    selected_standard = st.selectbox(
+        "Select Standard", 
+        options, 
+        index=0 if options else None,
+        key=f"std_{st.session_state.reset_counter}"
+    )
 
     total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
 
@@ -263,22 +284,12 @@ else:
 
     # Only render active timer if quiz is active (not submitted and questions remain)
     if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
-        # Auto-submit if time is up
+        # Move to submit screen if time is up
         if remaining <= 0:
-            st.error("Time is up! Auto-submitting your test...")
+            st.error("Time is up! Please submit your test.")
             qstate["wrong"] += len(qstate["queue"])
             qstate["queue"] = []
             st.session_state.quiz = qstate
-            
-            # Calculate results and save to Google Sheets
-            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            pct = (right/total_q)*100 if total_q else 0.0
-            status = "Pass" if pct >= float(criteria) else "Fail"
-            ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-            )
-            st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
             st.query_params.clear()  # Clear any query params
             st.rerun()
 
@@ -372,7 +383,7 @@ else:
                         document.getElementById('timer_display').innerText = '00:00:00';
                         document.getElementById('progress_bar').style.width = '0%';
                         clearInterval(interval);
-                        // Trigger form submission to auto-submit the quiz
+                        // Trigger form submission to move to submit screen
                         var form = document.createElement('form');
                         form.method = 'POST';
                         form.action = window.location.href;
@@ -441,20 +452,10 @@ else:
         # Handle timeout form submission
         if st.query_params.get("timeout", ["false"])[0] == "true":
             if len(qstate["queue"]) > 0:
-                st.error("Time is up! Auto-submitting your test...")
+                st.error("Time is up! Please submit your test.")
                 qstate["wrong"] += len(qstate["queue"])
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
-                
-                # Calculate results and save to Google Sheets
-                right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                pct = (right/total_q)*100 if total_q else 0.0
-                status = "Pass" if pct >= float(criteria) else "Fail"
-                ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-                )
-                st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
                 st.query_params.clear()  # Clear query params
                 st.rerun()
 
@@ -473,7 +474,7 @@ else:
         rem_s = remaining % 60
 
         # Determine styling based on remaining time at submission
-        if remaining <= 300:  # Last 5 minutes (or 0 for auto-submit)
+        if remaining <= 300:  # Last 5 minutes (or 0 for timer expiry)
             bg_color = "#DC2626"
             text_color = "white"
             icon = "🚨"
@@ -642,9 +643,9 @@ else:
                 <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
                     <h3 style="color:{color};">Final Result : {status}</h3>
                     <p style="font-size:18px;">
-                        <b>Score:</b> {right}/{total_q}<br>
-                        <b>Percentage:</b> {pct:.2f}%<br>
-                        <b>Passing Criteria:</b> {criteria:.0f}%
+                        <b>Score :</b> {right}/{total_q}<br>
+                        <b>Percentage :</b> {pct:.2f}%<br>
+                        <b>Passing Criteria :</b> {criteria:.0f}%
                     </p>
                 </div>
                 """,
