@@ -156,6 +156,7 @@ def format_timer(h, m, s):
     except Exception:
         return 0
 
+
 # =====================
 # Save to Google Sheets
 # =====================
@@ -251,7 +252,17 @@ else:
             qstate["wrong"] += len(qstate["queue"])
             qstate["queue"] = []
             st.session_state.quiz = qstate
-            st.session_state["submitted"] = True  # Set submitted for static timer
+            
+            # Calculate results and save to Google Sheets
+            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+            pct = (right/total_q)*100 if total_q else 0.0
+            status = "Pass" if pct >= float(criteria) else "Fail"
+            ok, msg = append_result(
+                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+            )
+            st.session_state["submitted"] = True
+            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+            st.query_params.clear()  # Clear any query params
             st.rerun()
 
         rem_h = remaining // 3600
@@ -311,7 +322,7 @@ else:
         ">
             <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
                 <span id="timer_icon" style="font-size: 28px;">{icon}</span>
-                <span>Time Remaining :</span>
+                <span>Time Remaining:</span>
                 <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
@@ -417,7 +428,16 @@ else:
                 qstate["wrong"] += len(qstate["queue"])
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
-                st.session_state["submitted"] = True  # Set submitted for static timer
+                
+                # Calculate results and save to Google Sheets
+                right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+                pct = (right/total_q)*100 if total_q else 0.0
+                status = "Pass" if pct >= float(criteria) else "Fail"
+                ok, msg = append_result(
+                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                )
+                st.session_state["submitted"] = True
+                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
                 st.query_params.clear()  # Clear query params
                 st.rerun()
 
@@ -436,7 +456,7 @@ else:
         rem_s = remaining % 60
 
         # Determine styling based on remaining time at submission
-        if remaining <= 300:  # Last 5 minutes
+        if remaining <= 300:  # Last 5 minutes (or 0 for auto-submit)
             bg_color = "#DC2626"
             text_color = "white"
             icon = "🚨"
@@ -488,7 +508,7 @@ else:
         ">
             <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
                 <span id="timer_icon" style="font-size: 28px;">{icon}</span>
-                <span>Test Submitted - Time Remaining :</span>
+                <span>Test Submitted - Time Remaining:</span>
                 <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
@@ -596,6 +616,8 @@ else:
     if "submitted" in st.session_state:
         if "submit_result" in st.session_state:
             ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+            if not ok:
+                st.error(f"Failed to save results to Google Sheets: {msg}")
 
             color = "#043006" if status == "Pass" else "#DC2626"
             st.markdown(
