@@ -211,7 +211,7 @@ if "quiz" not in st.session_state:
         options = ["Cummulative"] + options
     selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
 
-    total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
+    total, cyclient_emailriteria, h, m, s = get_info_for_standard(standards, selected_standard)
 
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("Total Questions", total)
@@ -243,7 +243,7 @@ else:
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
 
-    # Only render timer if quiz is active (not submitted and questions remain)
+    # Only render active timer if quiz is active (not submitted and questions remain)
     if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
         # Auto-submit if time is up
         if remaining <= 0:
@@ -251,6 +251,7 @@ else:
             qstate["wrong"] += len(qstate["queue"])
             qstate["queue"] = []
             st.session_state.quiz = qstate
+            st.session_state["submitted"] = True  # Set submitted to show static timer
             st.rerun()
 
         rem_h = remaining // 3600
@@ -416,6 +417,7 @@ else:
                 qstate["wrong"] += len(qstate["queue"])
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
+                st.session_state["submitted"] = True  # Set submitted for static timer
                 st.query_params.clear()  # Clear query params
                 st.rerun()
 
@@ -427,8 +429,8 @@ else:
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
 
-    # Display stopped timer with same style after submission or when no questions remain
-    elif total_secs > 0 and ("submitted" in st.session_state or len(qstate["queue"]) == 0):
+    # Display stopped timer with same style after submission
+    elif total_secs > 0 and "submitted" in st.session_state:
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
         rem_s = remaining % 60
@@ -575,37 +577,37 @@ else:
                     st.session_state.quiz = qstate
                     st.rerun()
 
-    if len(qstate["queue"]) == 0:
+    if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
         pct = (right/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
 
-        if "submitted" not in st.session_state:
-            st.success("All questions attempted. You can now submit your test.")
+        st.success("All questions attempted. You can now submit your test.")
 
-            submit_clicked = st.button("Submit", use_container_width=True)
-            if submit_clicked:
-                ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-                )
-                st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-                st.rerun()
-        else:
-            if "submit_result" in st.session_state:
-                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+        submit_clicked = st.button("Submit", use_container_width=True)
+        if submit_clicked:
+            ok, msg = append_result(
+                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+            )
+            st.session_state["submitted"] = True
+            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+            st.rerun()
 
-                color = "#043006" if status == "Pass" else "#DC2626"
-                st.markdown(
-                    f"""
-                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
-                        <h3 style="color:{color};">Final Result : {status}</h3>
-                        <p style="font-size:18px;">
-                            <b>Score:</b> {right}/{total_q}<br>
-                            <b>Percentage:</b> {pct:.2f}%<br>
-                            <b>Passing Criteria:</b> {criteria:.0f}%
-                        </p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+    if "submitted" in st.session_state:
+        if "submit_result" in st.session_state:
+            ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+
+            color = "#043006" if status == "Pass" else "#DC2626"
+            st.markdown(
+                f"""
+                <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                    <h3 style="color:{color};">Final Result : {status}</h3>
+                    <p style="font-size:18px;">
+                        <b>Score:</b> {right}/{total_q}<br>
+                        <b>Percentage:</b> {pct:.2f}%<br>
+                        <b>Passing Criteria:</b> {criteria:.0f}%
+                    </p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
