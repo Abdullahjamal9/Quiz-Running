@@ -643,7 +643,9 @@ else:
             st.markdown(
                 f"""
                 <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
-                    <h3 style="color:{color};"><b>Final Result :</b> <b>{status}</b></h3>
+                    <h3 style="color:{color}; font-weight:700;">
+                        Final Result : <span style="font-weight:700;">{status}</span>
+                    </h3>
                     <p style="font-size:18px;">
                         <b>Score :</b> {right}/{total_q}<br>
                         <b>Percentage :</b> {pct:.2f}%<br>
