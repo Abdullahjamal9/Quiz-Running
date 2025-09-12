@@ -194,8 +194,10 @@ if "reset_counter" not in st.session_state:
 if "quiz" not in st.session_state:
     st.subheader("👤 Employee Login")
 
-    # Single column for mobile, stacked layout
-    with st.container():
+    # Create two columns for better layout
+    col1, col2 = st.columns(2)
+    
+    with col1:
         emp_id = st.text_input(
             "Employee ID", 
             value="", 
@@ -203,16 +205,17 @@ if "quiz" not in st.session_state:
             help="Enter your employee identification number"
         )
 
-        # Auto-fill name if employee ID is found
-        fetched_name = ""
-        if emp_id and not employees.empty:
-            try:
-                fetched = employees[employees.iloc[:,0].astype(str).str.strip() == str(emp_id).strip()]
-                if not fetched.empty:
-                    fetched_name = str(fetched.iloc[0,1])
-            except Exception:
-                pass
-        
+    # Auto-fill name if employee ID is found
+    fetched_name = ""
+    if emp_id and not employees.empty:
+        try:
+            fetched = employees[employees.iloc[:,0].astype(str).str.strip() == str(emp_id).strip()]
+            if not fetched.empty:
+                fetched_name = str(fetched.iloc[0,1])
+        except Exception:
+            pass
+    
+    with col2:
         name = st.text_input(
             "Name", 
             value=fetched_name, 
@@ -220,24 +223,24 @@ if "quiz" not in st.session_state:
             help="This will auto-fill if your Employee ID is found"
         )
 
-        options = standards["Standard"].dropna().unique().tolist()
-        options = sorted(options)
-        if "Cummulative" not in options:
-            options = ["Cummulative"] + options
-        selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
+    options = standards["Standard"].dropna().unique().tolist()
+    options = sorted(options)
+    if "Cummulative" not in options:
+        options = ["Cummulative"] + options
+    selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
 
-        total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
+    total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
 
-        # Stack metrics vertically on mobile
-        with st.container():
-            c1, c2, c3 = st.columns([1, 1, 1])
-            with c1: st.metric("Total Questions", total)
-            with c2: st.metric("Passing Criteria (%)", criteria)
-            with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
+    c1, c2, c3 = st.columns(3)
+    with c1: st.metric("Total Questions", total)
+    with c2: st.metric("Passing Criteria (%)", criteria)
+    with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
 
-        st.markdown("---")
-        with st.form("start_form"):
-            st.markdown("### Ready to start your test?")
+    st.markdown("---")
+    with st.form("start_form"):
+        st.markdown("### Ready to start your test?")
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
             submitted = st.form_submit_button("🚀 Start Test", use_container_width=True)
 
     if submitted:
@@ -308,7 +311,7 @@ else:
         # Progress bar percentage
         progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
 
-        # JavaScript-powered timer using components.html with responsive styling
+        # JavaScript-powered timer using components.html
         timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -320,65 +323,42 @@ else:
             animation: pulse 1s infinite;
         }}
         .timer-container {{
-            padding: 1.5rem;
+            padding: 20px;
             border-radius: 15px;
             text-align: center;
-            font-size: 1.2rem;
+            font-size: 22px;
             font-weight: bold;
-            margin-bottom: 1rem;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            width: 90%;
-            margin-left: auto;
-            margin-right: auto;
-        }}
-        .timer-display {{
-            font-family: 'Courier New', monospace;
-            background: rgba(0,0,0,0.2);
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-        }}
-        .progress-bar-container {{
-            width: 100%;
-            height: 0.4rem;
-            background-color: rgba(255,255,255,0.3);
-            border-radius: 3px;
-            overflow: hidden;
-            margin-top: 0.5rem;
-        }}
-        .progress-bar {{
-            height: 100%;
-            background: linear-gradient(90deg, #10B981, #34D399);
-            border-radius: 3px;
-            transition: width 0.5s ease-in-out;
-        }}
-        @media (max-width: 768px) {{
-            .timer-container {{
-                padding: 1rem;
-                font-size: 1rem;
-            }}
-            .timer-display {{
-                font-size: 1.2rem;
-                padding: 0.3rem 0.8rem;
-            }}
-            .progress-bar-container {{
-                height: 0.3rem;
-            }}
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
         <div id="timer_container" class="timer-container {pulse_class}" style="
             background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
             color: {text_color};
         ">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;">
-                <span id="timer_icon" style="font-size: 1.5rem;">{icon}</span>
-                <span>Time Remaining:</span>
-                <span id="timer_display" class="timer-display">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <span id="timer_icon" style="font-size: 28px;">{icon}</span>
+                <span>Time Remaining :</span>
+                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
             </div>
-            <div class="progress-bar-container">
-                <div id="progress_bar" class="progress-bar" style="width: {progress_percent:.1f}%;"></div>
+            <div style="
+                width: 100%;
+                height: 6px;
+                background-color: rgba(255,255,255,0.3);
+                border-radius: 3px;
+                overflow: hidden;
+                margin-top: 15px;
+            ">
+                <div id="progress_bar" style="
+                    height: 100%;
+                    background: linear-gradient(90deg, #10B981, #34D399);
+                    width: {progress_percent:.1f}%;
+                    border-radius: 3px;
+                    transition: width 0.5s ease-in-out;
+                "></div>
             </div>
         </div>
         <script>
@@ -392,6 +372,7 @@ else:
                         document.getElementById('timer_display').innerText = '00:00:00';
                         document.getElementById('progress_bar').style.width = '0%';
                         clearInterval(interval);
+                        // Trigger form submission to auto-submit the quiz
                         var form = document.createElement('form');
                         form.method = 'POST';
                         form.action = window.location.href;
@@ -413,6 +394,7 @@ else:
                     var progress = (remaining / total_secs) * 100;
                     document.getElementById('progress_bar').style.width = progress + '%';
 
+                    // Update colors, icon, and pulse
                     var container = document.getElementById('timer_container');
                     var iconElem = document.getElementById('timer_icon');
                     var bg_color, text_color, icon, pulse_class = '';
@@ -445,15 +427,18 @@ else:
                     remaining--;
                 }}
 
+                // Clear any existing intervals to prevent duplicates
                 if (interval) clearInterval(interval);
-                updateTimer();
+                updateTimer(); // Initial update
                 interval = setInterval(updateTimer, 1000);
             }})();
         </script>
         """
 
+        # Render the timer using components.html
         components.html(timer_html, height=150)
 
+        # Handle timeout form submission
         if st.query_params.get("timeout", ["false"])[0] == "true":
             if len(qstate["queue"]) > 0:
                 st.error("Time is up! Auto-submitting your test...")
@@ -461,6 +446,7 @@ else:
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
                 
+                # Calculate results and save to Google Sheets
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
                 pct = (right/total_q)*100 if total_q else 0.0
                 status = "Pass" if pct >= float(criteria) else "Fail"
@@ -469,9 +455,10 @@ else:
                 )
                 st.session_state["submitted"] = True
                 st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-                st.query_params.clear()
+                st.query_params.clear()  # Clear query params
                 st.rerun()
 
+        # Show warnings (server-side, updates on interaction)
         if remaining <= 300:
             st.warning("🚨 URGENT: Less than 5 minutes remaining!")
         elif remaining <= 900:
@@ -479,34 +466,38 @@ else:
         elif remaining <= 1800:
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
 
+    # Display stopped timer with same style after submission
     elif total_secs > 0 and "submitted" in st.session_state:
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
         rem_s = remaining % 60
 
-        if remaining <= 300:
+        # Determine styling based on remaining time at submission
+        if remaining <= 300:  # Last 5 minutes (or 0 for auto-submit)
             bg_color = "#DC2626"
             text_color = "white"
             icon = "🚨"
             pulse_class = "timer-pulse"
-        elif remaining <= 900:
+        elif remaining <= 900:  # Last 15 minutes
             bg_color = "#DC2626"
             text_color = "white"
             icon = "⚠️"
             pulse_class = ""
-        elif remaining <= 1800:
+        elif remaining <= 1800:  # Last 30 minutes
             bg_color = "#D97706"
             text_color = "white"
             icon = "⏰"
             pulse_class = ""
-        else:
+        else:  # Normal
             bg_color = "#1E3A8A"
             text_color = "white"
             icon = "⏰"
             pulse_class = ""
 
+        # Progress bar percentage at submission
         progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
 
+        # Static timer display with same style as active timer
         stopped_timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -518,68 +509,46 @@ else:
             animation: pulse 1s infinite;
         }}
         .timer-container {{
-            padding: 1.5rem;
+            padding: 20px;
             border-radius: 15px;
             text-align: center;
-            font-size: 1.2rem;
+            font-size: 22px;
             font-weight: bold;
-            margin-bottom: 1rem;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            width: 90%;
-            margin-left: auto;
-            margin-right: auto;
-        }}
-        .timer-display {{
-            font-family: 'Courier New', monospace;
-            background: rgba(0,0,0,0.2);
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-        }}
-        .progress-bar-container {{
-            width: 100%;
-            height: 0.4rem;
-            background-color: rgba(255,255,255,0.3);
-            border-radius: 3px;
-            overflow: hidden;
-            margin-top: 0.5rem;
-        }}
-        .progress-bar {{
-            height: 100%;
-            background: linear-gradient(90deg, #10B981, #34D399);
-            border-radius: 3px;
-        }}
-        @media (max-width: 768px) {{
-            .timer-container {{
-                padding: 1rem;
-                font-size: 1rem;
-            }}
-            .timer-display {{
-                font-size: 1.2rem;
-                padding: 0.3rem 0.8rem;
-            }}
-            .progress-bar-container {{
-                height: 0.3rem;
-            }}
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
         <div id="timer_container" class="timer-container {pulse_class}" style="
             background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
             color: {text_color};
         ">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap;">
-                <span id="timer_icon" style="font-size: 1.5rem;">{icon}</span>
-                <span>Test Submitted - Time Remaining:</span>
-                <span id="timer_display" class="timer-display">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <span id="timer_icon" style="font-size: 28px;">{icon}</span>
+                <span>Test Submitted - Time Remaining :</span>
+                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
             </div>
-            <div class="progress-bar-container">
-                <div id="progress_bar" class="progress-bar" style="width: {progress_percent:.1f}%;"></div>
+            <div style="
+                width: 100%;
+                height: 6px;
+                background-color: rgba(255,255,255,0.3);
+                border-radius: 3px;
+                overflow: hidden;
+                margin-top: 15px;
+            ">
+                <div id="progress_bar" style="
+                    height: 100%;
+                    background: linear-gradient(90deg, #10B981, #34D399);
+                    width: {progress_percent:.1f}%;
+                    border-radius: 3px;
+                "></div>
             </div>
         </div>
         """
 
+        # Render the stopped timer
         components.html(stopped_timer_html, height=150)
 
     answered_count = qstate["total"] - len(qstate["queue"])
@@ -587,24 +556,21 @@ else:
     st.markdown(
         f"""
         <div style="
-            padding: 0.75rem; 
+            padding: 12px 15px; 
             border-radius: 8px; 
             background: linear-gradient(135deg, #1E3A8A, #3B82F6);
             color: white; 
             text-align: center; 
-            font-size: 1rem; 
-            margin-bottom: 1rem;
+            font-size: 17px; 
+            margin-bottom: 20px;
             white-space: nowrap;
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            width: 90%;
-            margin-left: auto;
-            margin-right: auto;
         ">
-            <b>ID:</b> {qstate['emp_id']} &nbsp;•&nbsp; 
-            <b>Name:</b> {qstate['emp_name']} &nbsp;•&nbsp; 
-            <b>Standard:</b> {qstate['standard']} &nbsp;•&nbsp; 
-            <b>Progress:</b> {answered_count}/{qstate['total']}
+            <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; 
+            <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; 
+            <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; 
+            <b>Progress :</b> {answered_count}/{qstate['total']}
         </div>
         """,
         unsafe_allow_html=True
@@ -616,37 +582,37 @@ else:
         qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
 
         st.subheader(f"Q{current_qid+1}. {question}")
-        choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}", horizontal=False)
+        choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
 
-        with st.container():
-            col1, col2 = st.columns([1, 1])
-            with col1:
-                if st.button("Next", use_container_width=True):
-                    if choice is None:
-                        st.warning("⚠️ Please select an option before moving on.")
+        col1, col2 = st.columns([1,1])
+
+        with col1:
+            if st.button("Next", use_container_width=True):
+                if choice is None:
+                    st.warning("⚠️ Please select an option before moving on.")
+                else:
+                    mapping = {"A": A, "B": B, "C": C, "D": D}
+                    correct_text = mapping.get(str(correct).strip(), str(correct).strip())
+                    is_correct = str(choice).strip() == str(correct_text).strip()
+                    qstate["answers"][current_qid] = {
+                        "choice": choice,
+                        "correct": correct_text,
+                        "is_correct": is_correct
+                    }
+                    if is_correct:
+                        qstate["right"] += 1
                     else:
-                        mapping = {"A": A, "B": B, "C": C, "D": D}
-                        correct_text = mapping.get(str(correct).strip(), str(correct).strip())
-                        is_correct = str(choice).strip() == str(correct_text).strip()
-                        qstate["answers"][current_qid] = {
-                            "choice": choice,
-                            "correct": correct_text,
-                            "is_correct": is_correct
-                        }
-                        if is_correct:
-                            qstate["right"] += 1
-                        else:
-                            qstate["wrong"] += 1
-                        qstate["queue"].pop(0)
-                        st.session_state.quiz = qstate
-                        st.rerun()
+                        qstate["wrong"] += 1
+                    qstate["queue"].pop(0)
+                    st.session_state.quiz = qstate
+                    st.rerun()
 
-            with col2:
-                if len(qstate["queue"]) > 1:
-                    if st.button("Skip", use_container_width=True):
-                        qstate["queue"].append(qstate["queue"].pop(0))
-                        st.session_state.quiz = qstate
-                        st.rerun()
+        with col2:
+            if len(qstate["queue"]) > 1:
+                if st.button("Skip", use_container_width=True):
+                    qstate["queue"].append(qstate["queue"].pop(0))
+                    st.session_state.quiz = qstate
+                    st.rerun()
 
     if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
@@ -673,22 +639,12 @@ else:
             color = "#043006" if status == "Pass" else "#DC2626"
             st.markdown(
                 f"""
-                <div style="
-                    padding: 1.25rem; 
-                    border-radius: 12px; 
-                    background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); 
-                    color: white; 
-                    text-align: center; 
-                    margin-top: 1rem;
-                    width: 90%;
-                    margin-left: auto;
-                    margin-right: auto;
-                ">
-                    <h3 style="color:{color}; font-size: 1.5rem;">Final Result: {status}</h3>
-                    <p style="font-size: 1rem;">
-                        <b>Score:</b> {right}/{total_q}<br>
-                        <b>Percentage:</b> {pct:.2f}%<br>
-                        <b>Passing Criteria:</b> {criteria:.0f}%
+                <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                    <h3 style="color:{color};">Final Result : {status}</h3>
+                    <p style="font-size:18px;">
+                        <b>Score :</b> {right}/{total_q}<br>
+                        <b>Percentage :</b> {pct:.2f}%<br>
+                        <b>Passing Criteria :</b> {criteria:.0f}%
                     </p>
                 </div>
                 """,
