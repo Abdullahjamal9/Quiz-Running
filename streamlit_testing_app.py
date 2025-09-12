@@ -133,7 +133,8 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         return False, "Questions not defined for this standard."
     if len(cand) < total:
         total = len(cand)
-    sampled = cand.sample(total, random_state=None).reset_index(drop=True)
+    # Use a session-specific random seed to ensure unique sampling per session
+    sampled = cand.sample(total, random_state=int(time.time())).reset_index(drop=True)
 
     st.session_state.quiz = {
         "emp_id": str(emp_id),
