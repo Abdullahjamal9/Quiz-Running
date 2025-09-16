@@ -145,11 +145,7 @@ def load_all_results():
         worksheet = None
         
         # Get all worksheet names first for debugging
-        try:
-            all_worksheets = [ws.title for ws in sheet.worksheets()]
-            st.write(f"Available worksheets: {all_worksheets}")  # Debug info - remove after fixing
-        except:
-            pass
+
         
         # Try to find the correct worksheet
         for name in worksheet_names:
