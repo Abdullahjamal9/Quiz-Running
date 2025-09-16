@@ -139,12 +139,73 @@ def get_info_for_standard(standards_df, selected_standard):
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        # Changed from "Result" to "Result 2" worksheet
-        worksheet = sheet.worksheet("Result 2")
+        
+        # Try different possible worksheet names
+        worksheet_names = ["Result 2", "Result2", "Result", "Results"]
+        worksheet = None
+        
+        # Get all worksheet names first for debugging
+        try:
+            all_worksheets = [ws.title for ws in sheet.worksheets()]
+            st.write(f"Available worksheets: {all_worksheets}")  # Debug info - remove after fixing
+        except:
+            pass
+        
+        # Try to find the correct worksheet
+        for name in worksheet_names:
+            try:
+                worksheet = sheet.worksheet(name)
+                break
+            except Exception:
+                continue
+        
+        if worksheet is None:
+            # If no worksheet found, try to find any worksheet with "result" in the name
+            try:
+                all_worksheets = sheet.worksheets()
+                for ws in all_worksheets:
+                    if "result" in ws.title.lower():
+                        worksheet = ws
+                        break
+            except:
+                pass
+        
+        if worksheet is None:
+            st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+        
         records = worksheet.get_all_records()
         if not records:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+        
         df = pd.DataFrame(records)
+        
+        # Map column names to handle variations
+        column_mapping = {
+            'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
+            'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
+            'Total': ['TOTAL QUESTION', 'Total Question', 'Total', 'total', 'Total Questions'],
+            'Right': ['CORRECT ANSWER', 'Correct Answer', 'Right', 'right', 'Correct'],
+            'Wrong': ['WRONG ANSWER', 'Wrong Answer', 'Wrong', 'wrong', 'Incorrect'],
+            'Percentage': ['PERCENTAGE', 'Percentage', 'percentage', 'Score', 'score'],
+            'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
+            'Status': ['STATUS', 'Status', 'status', 'Result'],
+            'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
+            'Timestamp': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time']
+        }
+        
+        # Rename columns to standard names
+        for standard_name, possible_names in column_mapping.items():
+            for col in df.columns:
+                if col in possible_names:
+                    df = df.rename(columns={col: standard_name})
+                    break
+        
+        # Ensure all required columns exist
+        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"]
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = ""
         
         # Handle numeric columns more robustly
         numeric_cols = ["Total", "Right", "Wrong"]
@@ -154,18 +215,30 @@ def load_all_results():
         
         # Handle percentage columns more robustly
         if "Percentage" in df.columns:
-            df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").replace("", "0")
+            # Remove % sign and convert to numeric
+            df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
         if "Criteria" in df.columns:
-            df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "").replace("", "0")
+            # Remove % sign and convert to numeric
+            df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
         
-        return df
+        # Sort by timestamp if available (most recent first)
+        if "Timestamp" in df.columns:
+            try:
+                df = df.sort_values("Timestamp", ascending=False)
+            except:
+                pass
+        
+        return df[required_columns]
+        
     except Exception as e:
-        st.error(f"Error loading results from Result 2 sheet: {str(e)}")
+        st.error(f"Error loading results: {str(e)}")
+        # Show more detailed error information
+        import traceback
+        st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
-
 # =====================
 # Helpers
 # =====================
@@ -206,24 +279,99 @@ def format_timer(h, m, s):
     except Exception:
         return 0
 
-
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        # Changed from "Result" to "Result 2" worksheet for saving as well
-        worksheet = sheet.worksheet("Result 2")
+        
+        # Try different possible worksheet names for saving results
+        worksheet_names = ["Result 2", "Result2", "Result", "Results"]
+        worksheet = None
+        
+        # Try to find the correct worksheet
+        for name in worksheet_names:
+            try:
+                worksheet = sheet.worksheet(name)
+                break
+            except Exception:
+                continue
+        
+        if worksheet is None:
+            # If no worksheet found, try to find any worksheet with "result" in the name
+            try:
+                all_worksheets = sheet.worksheets()
+                for ws in all_worksheets:
+                    if "result" in ws.title.lower():
+                        worksheet = ws
+                        break
+            except:
+                pass
+        
+        if worksheet is None:
+            return False, "Could not find results worksheet to save data"
 
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = dt.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
         pct = (right/total)*100 if total else 0.0
 
-        new_row = [
-            str(emp_id), str(emp_name), int(total), int(right), int(wrong),
-            f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
-        ]
+        # Get headers to ensure we're appending in the right format
+        try:
+            headers = worksheet.row_values(1)
+        except:
+            headers = []
+        
+        # Create row based on existing headers or default format
+        if headers:
+            # Map data to existing headers
+            data_mapping = {
+                'ID': str(emp_id),
+                'NAME': str(emp_name),
+                'TOTAL QUESTION': int(total),
+                'CORRECT ANSWER': int(right),
+                'WRONG ANSWER': int(wrong),
+                'PERCENTAGE': f"{pct:.2f}%",
+                'PASSING CRITERIA %': f"{criteria_pct:.0f}%",
+                'STATUS': str(status),
+                'STANDARD': str(test_type),
+                'DATE': now
+            }
+            
+            new_row = []
+            for header in headers:
+                header_upper = header.upper()
+                if header_upper in data_mapping:
+                    new_row.append(data_mapping[header_upper])
+                elif 'ID' in header_upper:
+                    new_row.append(str(emp_id))
+                elif 'NAME' in header_upper:
+                    new_row.append(str(emp_name))
+                elif 'TOTAL' in header_upper and 'QUESTION' in header_upper:
+                    new_row.append(int(total))
+                elif 'CORRECT' in header_upper:
+                    new_row.append(int(right))
+                elif 'WRONG' in header_upper:
+                    new_row.append(int(wrong))
+                elif 'PERCENTAGE' in header_upper:
+                    new_row.append(f"{pct:.2f}%")
+                elif 'CRITERIA' in header_upper:
+                    new_row.append(f"{criteria_pct:.0f}%")
+                elif 'STATUS' in header_upper:
+                    new_row.append(str(status))
+                elif 'STANDARD' in header_upper:
+                    new_row.append(str(test_type))
+                elif 'DATE' in header_upper or 'TIME' in header_upper:
+                    new_row.append(now)
+                else:
+                    new_row.append('')  # Empty for unknown columns
+        else:
+            # Default format if no headers found
+            new_row = [
+                str(emp_id), str(emp_name), int(total), int(right), int(wrong),
+                f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
+            ]
 
         worksheet.append_row(new_row)
         return True, ""
+        
     except Exception as e:
         return False, str(e)
 
