@@ -8,7 +8,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 import pytz
-import io
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -136,22 +135,35 @@ def get_info_for_standard(standards_df, selected_standard):
         return 0, 0, "00", "00", "00"
 
 
-@st.cache_data(ttl=10)  # Refresh every 10 seconds
+@st.cache_data
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        worksheet = sheet.worksheet("Result")
+        # Changed from "Result" to "Result 2" worksheet
+        worksheet = sheet.worksheet("Result 2")
         records = worksheet.get_all_records()
         if not records:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         df = pd.DataFrame(records)
+        
+        # Handle numeric columns more robustly
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-        df["Percentage"] = df["Percentage"].str.replace("%", "").astype(float)
-        df["Criteria"] = df["Criteria"].str.replace("%", "").astype(float)
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+        
+        # Handle percentage columns more robustly
+        if "Percentage" in df.columns:
+            df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").replace("", "0")
+            df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
+        
+        if "Criteria" in df.columns:
+            df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "").replace("", "0")
+            df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
+        
         return df
-    except Exception:
+    except Exception as e:
+        st.error(f"Error loading results from Result 2 sheet: {str(e)}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
 
 # =====================
@@ -198,7 +210,8 @@ def format_timer(h, m, s):
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        worksheet = sheet.worksheet("Result")
+        # Changed from "Result" to "Result 2" worksheet for saving as well
+        worksheet = sheet.worksheet("Result 2")
 
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = dt.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
@@ -242,20 +255,42 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
 # Admin dashboard
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
+    
+    # Add a refresh button to reload the data
+    if st.button("🔄 Refresh Data"):
+        st.cache_data.clear()
+        st.rerun()
+    
     results_df = load_all_results()
     if not results_df.empty:
-        st.dataframe(results_df, use_container_width=True)
-        # Convert DataFrame to CSV and provide download button
-        csv = results_df.to_csv(index=False)
-        b64 = io.BytesIO(csv.encode())
-        st.download_button(
-            label="Download Results as CSV",
-            data=b64,
-            file_name="employee_results.csv",
-            mime="text/csv"
+        # Display some summary statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Tests", len(results_df))
+        with col2:
+            pass_count = len(results_df[results_df["Status"] == "Pass"]) if "Status" in results_df.columns else 0
+            st.metric("Passed", pass_count)
+        with col3:
+            fail_count = len(results_df[results_df["Status"] == "Fail"]) if "Status" in results_df.columns else 0
+            st.metric("Failed", fail_count)
+        with col4:
+            if "Percentage" in results_df.columns and len(results_df) > 0:
+                avg_score = results_df["Percentage"].mean()
+                st.metric("Avg Score", f"{avg_score:.1f}%")
+            else:
+                st.metric("Avg Score", "N/A")
+        
+        st.markdown("---")
+        
+        # Display the full results table
+        st.dataframe(
+            results_df,
+            use_container_width=True,
+            hide_index=True
         )
     else:
-        st.write("No results available yet.")
+        st.info("No results available yet in the Result 2 sheet.")
+    
     if st.button("Logout"):
         st.session_state.admin_logged_in = False
         st.session_state.pop("quiz", None)
@@ -613,47 +648,4 @@ if not st.session_state.admin_logged_in:
                         if is_correct:
                             qstate["right"] += 1
                         else:
-                            qstate["wrong"] += 1
-                        qstate["queue"].pop(0)
-                        st.session_state.quiz = qstate
-                        st.rerun()
-
-            with col2:
-                if len(qstate["queue"]) > 1:
-                    if st.button("Skip", use_container_width=True):
-                        qstate["queue"].append(qstate["queue"].pop(0))
-                        st.session_state.quiz = qstate
-                        st.rerun()
-
-        if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
-            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            pct = (right/total_q)*100 if total_q else 0.0
-            status = "Pass" if pct >= float(criteria) else "Fail"
-
-            st.success("All questions attempted. You can now submit your test.")
-
-            submit_clicked = st.button("Submit", use_container_width=True)
-            if submit_clicked:
-                ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-                )
-                st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-                st.rerun()
-
-        if "submitted" in st.session_state:
-            if "submit_result" in st.session_state:
-                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
-                if not ok:
-                    st.error(f"Failed to save results to Google Sheets: {msg}")
-
-                color = "#043006" if status == "Pass" else "#DC2626"
-                st.markdown(
-                    f"""
-                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
-                        <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
-                        <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+                            qstate["
