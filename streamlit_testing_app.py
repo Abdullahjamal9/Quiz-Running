@@ -8,6 +8,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 import pytz
+import io
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -243,7 +244,16 @@ if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     results_df = load_all_results()
     if not results_df.empty:
-        st.dataframe(results_df)
+        st.dataframe(results_df)  # Display full DataFrame
+        # Convert DataFrame to CSV and provide download button
+        csv = results_df.to_csv(index=False)
+        b64 = io.BytesIO(csv.encode())
+        st.download_button(
+            label="Download Results as CSV",
+            data=b64,
+            file_name="employee_results.csv",
+            mime="text/csv"
+        )
     else:
         st.write("No results available yet.")
     if st.button("Logout"):
