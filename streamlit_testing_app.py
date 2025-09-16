@@ -136,7 +136,7 @@ def get_info_for_standard(standards_df, selected_standard):
         return 0, 0, "00", "00", "00"
 
 
-@st.cache_data
+@st.cache_data(ttl=10)  # Refresh every 10 seconds
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
@@ -233,7 +233,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     admin_username = st.text_input("Username", key="admin_username")
     admin_password = st.text_input("Password", type="password", key="admin_password")
     if st.button("Login"):
-        if admin_username == "admin" and admin_password == "admin123":  # Hardcoded for simplicity
+        if admin_username == "admin" and admin_password = "admin123":  # Hardcoded for simplicity
             st.session_state.admin_logged_in = True
             st.rerun()
         else:
@@ -244,7 +244,7 @@ if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     results_df = load_all_results()
     if not results_df.empty:
-        st.dataframe(results_df)  # Display full DataFrame
+        st.dataframe(results_df, use_container_width=True)
         # Convert DataFrame to CSV and provide download button
         csv = results_df.to_csv(index=False)
         b64 = io.BytesIO(csv.encode())
