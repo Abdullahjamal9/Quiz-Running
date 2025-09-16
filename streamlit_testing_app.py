@@ -144,7 +144,6 @@ def load_all_results():
         if not records:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         df = pd.DataFrame(records)
-        # Ensure numeric columns are properly typed
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
@@ -376,9 +375,24 @@ if not st.session_state.admin_logged_in:
 
             timer_html = f"""
             <style>
-            @keyframes pulse {{ 0% {{ transform: scale(1); opacity: 1; }} 50% {{ transform: scale(1.05); opacity: 0.8; }} 100% {{ transform: scale(1); opacity: 1; }} }}
-            .timer-pulse {{ animation: pulse 1s infinite; }}
-            .timer-container {{ padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); border: 3px solid rgba(255, 255, 255, 0.1); }}
+            @keyframes pulse {{
+                0% {{ transform: scale(1); opacity: 1; }}
+                50% {{ transform: scale(1.05); opacity: 0.8; }}
+                100% {{ transform: scale(1); opacity: 1; }}
+            }}
+            .timer-pulse {{
+                animation: pulse 1s infinite;
+            }}
+            .timer-container {{
+                padding: 20px;
+                border-radius: 15px;
+                text-align: center;
+                font-size: 22px;
+                font-weight: bold;
+                margin-bottom: 20px;
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                border: 3px solid rgba(255, 255, 255, 0.1);
+            }}
             </style>
             <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
                 <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
@@ -393,16 +407,72 @@ if not st.session_state.admin_logged_in:
                 </div>
             </div>
             <script>
-            (function() {{ var remaining = {remaining}; var total_secs = {total_secs}; var interval = null;
-                function updateTimer() {{ if (remaining <= 0) {{ document.getElementById('timer_display').innerText = '00:00:00'; document.getElementById('progress_bar').style.width = '0%'; clearInterval(interval); var form = document.createElement('form'); form.method = 'POST'; form.action = window.location.href; var input = document.createElement('input'); input.type = 'hidden'; input.name = 'timeout'; input.value = 'true'; form.appendChild(input); document.body.appendChild(form); form.submit(); return; }}
-                    var h = Math.floor(remaining / 3600); var m = Math.floor((remaining % 3600) / 60); var s = remaining % 60;
+            (function() {{
+                var remaining = {remaining};
+                var total_secs = {total_secs};
+                var interval = null;
+
+                function updateTimer() {{
+                    if (remaining <= 0) {{
+                        document.getElementById('timer_display').innerText = '00:00:00';
+                        document.getElementById('progress_bar').style.width = '0%';
+                        clearInterval(interval);
+                        var form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = window.location.href;
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'timeout';
+                        input.value = 'true';
+                        form.appendChild(input);
+                        document.body.appendChild(form);
+                        form.submit();
+                        return;
+                    }}
+                    var h = Math.floor(remaining / 3600);
+                    var m = Math.floor((remaining % 3600) / 60);
+                    var s = remaining % 60;
                     document.getElementById('timer_display').innerText = `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
-                    var progress = (remaining / total_secs) * 100; document.getElementById('progress_bar').style.width = progress + '%';
-                    var container = document.getElementById('timer_container'); var iconElem = document.getElementById('timer_icon');
-                    var bg_color, text_color, icon, pulse_class = ''; if (remaining <= 300) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '🚨'; pulse_class = 'timer-pulse'; }} else if (remaining <= 900) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '⚠️'; }} else if (remaining <= 1800) {{ bg_color = '#D97706'; text_color = 'white'; icon = '⏰'; }} else {{ bg_color = '#1E3A8A'; text_color = 'white'; icon = '⏰'; }}
-                    container.style.background = `linear-gradient(135deg, ${bg_color}, ${bg_color}CC)`; container.style.color = text_color; iconElem.innerText = icon;
-                    if (pulse_class) {{ container.classList.add(pulse_class); }} else {{ container.classList.remove('timer-pulse'); }} remaining--; }}
-                if (interval) clearInterval(interval); updateTimer(); interval = setInterval(updateTimer, 1000); })();
+                    var progress = (remaining / total_secs) * 100;
+                    document.getElementById('progress_bar').style.width = progress + '%';
+                    var container = document.getElementById('timer_container');
+                    var iconElem = document.getElementById('timer_icon');
+                    var bg_color, text_color, icon, pulse_class = '';
+                    if (remaining <= 300) {{
+                        bg_color = '#DC2626';
+                        text_color = 'white';
+                        icon = '🚨';
+                        pulse_class = 'timer-pulse';
+                    }} else if (remaining <= 900) {{
+                        bg_color = '#DC2626';
+                        text_color = 'white';
+                        icon = '⚠️';
+                    }} else if (remaining <= 1800) {{
+                        bg_color = '#D97706';
+                        text_color = 'white';
+                        icon = '⏰';
+                    }} else {{
+                        bg_color = '#1E3A8A';
+                        text_color = 'white';
+                        icon = '⏰';
+                    }}
+                    container.style.background = `linear-gradient(135deg, ${bg_color}, ${bg_color}CC)`;
+                    container.style.color = text_color;
+                    iconElem.innerText = icon;
+                    if (pulse_class) {{
+                        container.classList.add(pulse_class);
+                    }} else {{
+                        container.classList.remove('timer-pulse');
+                    }}
+                    remaining--;
+                }}
+
+                if (interval) {{
+                    clearInterval(interval);
+                }}
+                updateTimer();
+                interval = setInterval(updateTimer, 1000);
+            }})();
             </script>
             """
             components.html(timer_html, height=150)
@@ -462,9 +532,24 @@ if not st.session_state.admin_logged_in:
 
             stopped_timer_html = f"""
             <style>
-            @keyframes pulse {{ 0% {{ transform: scale(1); opacity: 1; }} 50% {{ transform: scale(1.05); opacity: 0.8; }} 100% {{ transform: scale(1); opacity: 1; }} }}
-            .timer-pulse {{ animation: pulse 1s infinite; }}
-            .timer-container {{ padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); border: 3px solid rgba(255, 255, 255, 0.1); }}
+            @keyframes pulse {{
+                0% {{ transform: scale(1); opacity: 1; }}
+                50% {{ transform: scale(1.05); opacity: 0.8; }}
+                100% {{ transform: scale(1); opacity: 1; }}
+            }}
+            .timer-pulse {{
+                animation: pulse 1s infinite;
+            }}
+            .timer-container {{
+                padding: 20px;
+                border-radius: 15px;
+                text-align: center;
+                font-size: 22px;
+                font-weight: bold;
+                margin-bottom: 20px;
+                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+                border: 3px solid rgba(255, 255, 255, 0.1);
+            }}
             </style>
             <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
                 <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
