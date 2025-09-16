@@ -389,7 +389,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     admin_username = st.text_input("Username", key="admin_username")
     admin_password = st.text_input("Password", type="password", key="admin_password")
     if st.button("Login"):
-        if admin_username == "admin" and admin_password == "adminptis-3692":  # Hardcoded for simplicity
+        if admin_username == "admin" and admin_password == "AdminPtis-3692":  # Hardcoded for simplicity
             st.session_state.admin_logged_in = True
             st.rerun()
         else:
