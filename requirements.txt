@@ -6,4 +6,3 @@ gspread
 oauth2client
 google-auth
 pytz
-io
