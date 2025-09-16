@@ -15,11 +15,10 @@ import pytz
 BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-EMP_STD_FILE = os.path.join(DB_FOLDER, "Result 2.xlsx")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
 
 # =====================
-# Google Sheets Setup (for saving results)
+# Google Sheets Setup (for saving and reading results)
 # =====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -32,22 +31,41 @@ GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 @st.cache_data
 def load_employees_and_standards():
     try:
-        employees = pd.read_excel(EMP_STD_FILE, sheet_name="Emloyees Data")
+        sheet = client.open_by_url(GSHEET_URL)
+        # Load Employees Data
+        try:
+            employees_data = sheet.worksheet("Emloyees Data").get_all_records()
+            employees = pd.DataFrame(employees_data)
+            if employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
+                employees = pd.DataFrame(columns=["ID", "Name"])
+            else:
+                # Ensure columns are named "ID" and "Name" (case-insensitive mapping)
+                id_col = next((col for col in employees.columns if "id" in col.lower()), "ID")
+                name_col = next((col for col in employees.columns if "name" in col.lower()), "Name")
+                employees = employees[[id_col, name_col]].rename(columns={id_col: "ID", name_col: "Name"})
+        except Exception:
+            employees = pd.DataFrame(columns=["ID", "Name"])
+        # Load Standards
+        try:
+            standards_data = sheet.worksheet("Standard").get_all_records()
+            standards = pd.DataFrame(standards_data)
+            if standards.empty or len(standards.columns) < 2:
+                while len(standards.columns) < 2:
+                    standards[standards.columns[-1] + "_dup" + str(len(standards.columns))] = ""
+                standards.columns = ["Standard", "ShortName"]
+            else:
+                standards.columns = ["Standard", "ShortName"]
+        except Exception:
+            standards = pd.DataFrame(columns=["Standard", "ShortName"])
+        standards["Standard"] = standards["Standard"].astype(str).str.strip()
+        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+        return employees, standards
     except Exception:
-        employees = pd.DataFrame(columns=["ID","Name"])
-    try:
-        standards = pd.read_excel(EMP_STD_FILE, sheet_name="Standard")
-        if len(standards.columns) < 2:
-            while len(standards.columns) < 2:
-                standards[standards.columns[-1] + "_dup" + str(len(standards.columns))] = ""
-            standards.columns = ["Standard","ShortName"]
-        else:
-            standards.columns = ["Standard","ShortName"]
-    except Exception:
-        standards = pd.DataFrame(columns=["Standard","ShortName"])
-    standards["Standard"] = standards["Standard"].astype(str).str.strip()
-    standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
-    return employees, standards
+        employees = pd.DataFrame(columns=["ID", "Name"])
+        standards = pd.DataFrame(columns=["Standard", "ShortName"])
+        standards["Standard"] = standards["Standard"].astype(str).str.strip()
+        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+        return employees, standards
 
 
 @st.cache_data
@@ -206,18 +224,22 @@ if "quiz" not in st.session_state:
             "Employee ID", 
             value="", 
             key=f"id_{st.session_state.reset_counter}",
-            help="Enter your employee identification number"
+            help="Enter your employee identification number",
+            on_change=lambda: st.session_state.update({"name": fetch_name(employees, st.session_state[f"id_{st.session_state.reset_counter}"])})
         )
 
+    def fetch_name(employees_df, emp_id_input):
+        if emp_id_input and not employees_df.empty:
+            try:
+                fetched = employees_df[employees_df["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
+                if not fetched.empty:
+                    return str(fetched.iloc[0]["Name"])
+            except Exception:
+                pass
+        return ""
+
     # Auto-fill name if employee ID is found
-    fetched_name = ""
-    if emp_id and not employees.empty:
-        try:
-            fetched = employees[employees.iloc[:,0].astype(str).str.strip() == str(emp_id).strip()]
-            if not fetched.empty:
-                fetched_name = str(fetched.iloc[0,1])
-        except Exception:
-            pass
+    fetched_name = fetch_name(employees, emp_id) if "name" not in st.session_state else st.session_state["name"]
     
     with col2:
         name = st.text_input(
