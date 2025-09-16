@@ -39,7 +39,6 @@ def load_employees_and_standards():
             if employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
                 employees = pd.DataFrame(columns=["ID", "Name"])
             else:
-                # Ensure columns are named "ID" and "Name" (case-insensitive mapping)
                 id_col = next((col for col in employees.columns if "id" in col.lower()), "ID")
                 name_col = next((col for col in employees.columns if "name" in col.lower()), "Name")
                 employees = employees[[id_col, name_col]].rename(columns={id_col: "ID", name_col: "Name"})
@@ -135,6 +134,26 @@ def get_info_for_standard(standards_df, selected_standard):
     except Exception:
         return 0, 0, "00", "00", "00"
 
+
+@st.cache_data
+def load_all_results():
+    try:
+        sheet = client.open_by_url(GSHEET_URL)
+        worksheet = sheet.worksheet("Result")
+        records = worksheet.get_all_records()
+        if not records:
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+        df = pd.DataFrame(records)
+        # Ensure numeric columns are properly typed
+        numeric_cols = ["Total", "Right", "Wrong"]
+        for col in numeric_cols:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+        df["Percentage"] = df["Percentage"].str.replace("%", "").astype(float)
+        df["Criteria"] = df["Criteria"].str.replace("%", "").astype(float)
+        return df
+    except Exception:
+        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+
 # =====================
 # Helpers
 # =====================
@@ -151,7 +170,6 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         return False, "Questions not defined for this standard."
     if len(cand) < total:
         total = len(cand)
-    # Use a session-specific random seed to ensure unique sampling per session
     sampled = cand.sample(total, random_state=int(time.time())).reset_index(drop=True)
 
     st.session_state.quiz = {
@@ -177,16 +195,12 @@ def format_timer(h, m, s):
         return 0
 
 
-# =====================
-# Save to Google Sheets
-# =====================
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
         sheet = client.open_by_url(GSHEET_URL)
         worksheet = sheet.worksheet("Result")
 
-        # Use PKT timezone for timestamp
-        pkt_tz = pytz.timezone('Asia/Karachi')  # PKT timezone
+        pkt_tz = pytz.timezone('Asia/Karachi')
         now = dt.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
         pct = (right/total)*100 if total else 0.0
 
@@ -209,270 +223,119 @@ st.title("PTIS Online Testing Module")
 employees, standards = load_employees_and_standards()
 questions = load_questions()
 
-# Counter for reset
-if "reset_counter" not in st.session_state:
-    st.session_state.reset_counter = 0
+# Admin login state
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
 
-if "quiz" not in st.session_state:
-    st.subheader("👤 Employee Login")
-
-    # Create two columns for better layout
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        emp_id = st.text_input(
-            "Employee ID", 
-            value="", 
-            key=f"id_{st.session_state.reset_counter}",
-            help="Enter your employee identification number",
-            on_change=lambda: st.session_state.update({"name": fetch_name(employees, st.session_state[f"id_{st.session_state.reset_counter}"])})
-        )
-
-    def fetch_name(employees_df, emp_id_input):
-        if emp_id_input and not employees_df.empty:
-            try:
-                fetched = employees_df[employees_df["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
-                if not fetched.empty:
-                    return str(fetched.iloc[0]["Name"])
-            except Exception:
-                pass
-        return ""
-
-    # Auto-fill name if employee ID is found
-    fetched_name = fetch_name(employees, emp_id) if "name" not in st.session_state else st.session_state["name"]
-    
-    with col2:
-        name = st.text_input(
-            "Name", 
-            value=fetched_name, 
-            key=f"name_{st.session_state.reset_counter}",
-            help="This will auto-fill if your Employee ID is found"
-        )
-
-    options = standards["Standard"].dropna().unique().tolist()
-    options = sorted(options)
-    if "Cummulative" not in options:
-        options = ["Cummulative"] + options
-    selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
-
-    total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
-
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Total Questions", total)
-    with c2: st.metric("Passing Criteria (%)", criteria)
-    with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
-
-    st.markdown("---")
-    with st.form("start_form"):
-        st.markdown("### Ready to start your test?")
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            submitted = st.form_submit_button("🚀 Start Test", use_container_width=True)
-
-    if submitted:
-        if not emp_id or not name or not selected_standard:
-            st.error("Please enter ID, Name and select a Standard.")
-        else:
-            ok, msg = start_quiz_session(emp_id, name, selected_standard, questions, total)
-            if not ok:
-                st.error(msg)
-            else:
-                st.rerun()
-
-else:
-    qstate = st.session_state.quiz
-    total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
-    total_secs = format_timer(h, m, s)
-
-    elapsed = int(time.time() - qstate["start_ts"])
-    remaining = max(0, total_secs - elapsed)
-
-    # Only render active timer if quiz is active (not submitted and questions remain)
-    if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
-        # Auto-submit if time is up
-        if remaining <= 0:
-            st.error("Time is up! Auto-submitting your test...")
-            qstate["wrong"] += len(qstate["queue"])
-            qstate["queue"] = []
-            st.session_state.quiz = qstate
-            
-            # Calculate results and save to Google Sheets
-            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            pct = (right/total_q)*100 if total_q else 0.0
-            status = "Pass" if pct >= float(criteria) else "Fail"
-            ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-            )
-            st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-            st.query_params.clear()  # Clear any query params
+# Admin login page
+if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
+    st.subheader("Admin Login")
+    admin_username = st.text_input("Username", key="admin_username")
+    admin_password = st.text_input("Password", type="password", key="admin_password")
+    if st.button("Login"):
+        if admin_username == "admin" and admin_password == "admin123":  # Hardcoded for simplicity
+            st.session_state.admin_logged_in = True
             st.rerun()
+        else:
+            st.error("Invalid username or password")
 
-        rem_h = remaining // 3600
-        rem_m = (remaining % 3600) // 60
-        rem_s = remaining % 60
+# Admin dashboard
+if st.session_state.admin_logged_in:
+    st.subheader("Admin Dashboard - Employee Results")
+    results_df = load_all_results()
+    if not results_df.empty:
+        st.dataframe(results_df)
+    else:
+        st.write("No results available yet.")
+    if st.button("Logout"):
+        st.session_state.admin_logged_in = False
+        st.session_state.pop("quiz", None)
+        st.rerun()
 
-        # Determine timer styling based on remaining time
-        if remaining <= 300:  # Last 5 minutes
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "🚨"
-            pulse_class = "timer-pulse"
-        elif remaining <= 900:  # Last 15 minutes
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "⚠️"
-            pulse_class = ""
-        elif remaining <= 1800:  # Last 30 minutes
-            bg_color = "#D97706"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
-        else:  # Normal
-            bg_color = "#1E3A8A"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
+# Employee login and quiz
+if not st.session_state.admin_logged_in:
+    if "reset_counter" not in st.session_state:
+        st.session_state.reset_counter = 0
 
-        # Progress bar percentage
-        progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
+    if "quiz" not in st.session_state:
+        st.subheader("👤 Employee Login")
 
-        # JavaScript-powered timer using components.html
-        timer_html = f"""
-        <style>
-        @keyframes pulse {{
-            0% {{ transform: scale(1); opacity: 1; }}
-            50% {{ transform: scale(1.05); opacity: 0.8; }}
-            100% {{ transform: scale(1); opacity: 1; }}
-        }}
-        .timer-pulse {{
-            animation: pulse 1s infinite;
-        }}
-        .timer-container {{
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            font-size: 22px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-            border: 3px solid rgba(255, 255, 255, 0.1);
-        }}
-        </style>
-        <div id="timer_container" class="timer-container {pulse_class}" style="
-            background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
-            color: {text_color};
-        ">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                <span id="timer_icon" style="font-size: 28px;">{icon}</span>
-                <span>Time Remaining :</span>
-                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
-                    {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
-                </span>
-            </div>
-            <div style="
-                width: 100%;
-                height: 6px;
-                background-color: rgba(255,255,255,0.3);
-                border-radius: 3px;
-                overflow: hidden;
-                margin-top: 15px;
-            ">
-                <div id="progress_bar" style="
-                    height: 100%;
-                    background: linear-gradient(90deg, #10B981, #34D399);
-                    width: {progress_percent:.1f}%;
-                    border-radius: 3px;
-                    transition: width 0.5s ease-in-out;
-                "></div>
-            </div>
-        </div>
-        <script>
-            (function() {{
-                var remaining = {remaining};
-                var total_secs = {total_secs};
-                var interval = null;
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            emp_id = st.text_input(
+                "Employee ID", 
+                value="", 
+                key=f"id_{st.session_state.reset_counter}",
+                help="Enter your employee identification number",
+                on_change=lambda: st.session_state.update({"name": fetch_name(employees, st.session_state[f"id_{st.session_state.reset_counter}"])})
+            )
 
-                function updateTimer() {{
-                    if (remaining <= 0) {{
-                        document.getElementById('timer_display').innerText = '00:00:00';
-                        document.getElementById('progress_bar').style.width = '0%';
-                        clearInterval(interval);
-                        // Trigger form submission to auto-submit the quiz
-                        var form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = window.location.href;
-                        var input = document.createElement('input');
-                        input.type = 'hidden';
-                        input.name = 'timeout';
-                        input.value = 'true';
-                        form.appendChild(input);
-                        document.body.appendChild(form);
-                        form.submit();
-                        return;
-                    }}
+        def fetch_name(employees_df, emp_id_input):
+            if emp_id_input and not employees_df.empty:
+                try:
+                    fetched = employees_df[employees_df["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
+                    if not fetched.empty:
+                        return str(fetched.iloc[0]["Name"])
+                except Exception:
+                    pass
+            return ""
 
-                    var h = Math.floor(remaining / 3600);
-                    var m = Math.floor((remaining % 3600) / 60);
-                    var s = remaining % 60;
-                    document.getElementById('timer_display').innerText = 
-                        `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
-                    var progress = (remaining / total_secs) * 100;
-                    document.getElementById('progress_bar').style.width = progress + '%';
+        fetched_name = fetch_name(employees, emp_id) if "name" not in st.session_state else st.session_state["name"]
+        
+        with col2:
+            name = st.text_input(
+                "Name", 
+                value=fetched_name, 
+                key=f"name_{st.session_state.reset_counter}",
+                help="This will auto-fill if your Employee ID is found"
+            )
 
-                    // Update colors, icon, and pulse
-                    var container = document.getElementById('timer_container');
-                    var iconElem = document.getElementById('timer_icon');
-                    var bg_color, text_color, icon, pulse_class = '';
-                    if (remaining <= 300) {{
-                        bg_color = '#DC2626';
-                        text_color = 'white';
-                        icon = '🚨';
-                        pulse_class = 'timer-pulse';
-                    }} else if (remaining <= 900) {{
-                        bg_color = '#DC2626';
-                        text_color = 'white';
-                        icon = '⚠️';
-                    }} else if (remaining <= 1800) {{
-                        bg_color = '#D97706';
-                        text_color = 'white';
-                        icon = '⏰';
-                    }} else {{
-                        bg_color = '#1E3A8A';
-                        text_color = 'white';
-                        icon = '⏰';
-                    }}
-                    container.style.background = `linear-gradient(135deg, ${bg_color}, ${bg_color}CC)`;
-                    container.style.color = text_color;
-                    iconElem.innerText = icon;
-                    if (pulse_class) {{
-                        container.classList.add(pulse_class);
-                    }} else {{
-                        container.classList.remove('timer-pulse');
-                    }}
-                    remaining--;
-                }}
+        options = standards["Standard"].dropna().unique().tolist()
+        options = sorted(options)
+        if "Cummulative" not in options:
+            options = ["Cummulative"] + options
+        selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
 
-                // Clear any existing intervals to prevent duplicates
-                if (interval) clearInterval(interval);
-                updateTimer(); // Initial update
-                interval = setInterval(updateTimer, 1000);
-            }})();
-        </script>
-        """
+        total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
 
-        # Render the timer using components.html
-        components.html(timer_html, height=150)
+        c1, c2, c3 = st.columns(3)
+        with c1: st.metric("Total Questions", total)
+        with c2: st.metric("Passing Criteria (%)", criteria)
+        with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
 
-        # Handle timeout form submission
-        if st.query_params.get("timeout", ["false"])[0] == "true":
-            if len(qstate["queue"]) > 0:
+        st.markdown("---")
+        with st.form("start_form"):
+            st.markdown("### Ready to start your test?")
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col2:
+                submitted = st.form_submit_button("🚀 Start Test", use_container_width=True)
+
+        if submitted:
+            if not emp_id or not name or not selected_standard:
+                st.error("Please enter ID, Name and select a Standard.")
+            else:
+                ok, msg = start_quiz_session(emp_id, name, selected_standard, questions, total)
+                if not ok:
+                    st.error(msg)
+                else:
+                    st.rerun()
+
+    else:
+        qstate = st.session_state.quiz
+        total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
+        total_secs = format_timer(h, m, s)
+
+        elapsed = int(time.time() - qstate["start_ts"])
+        remaining = max(0, total_secs - elapsed)
+
+        if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
+            if remaining <= 0:
                 st.error("Time is up! Auto-submitting your test...")
                 qstate["wrong"] += len(qstate["queue"])
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
                 
-                # Calculate results and save to Google Sheets
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
                 pct = (right/total_q)*100 if total_q else 0.0
                 status = "Pass" if pct >= float(criteria) else "Fail"
@@ -481,200 +344,221 @@ else:
                 )
                 st.session_state["submitted"] = True
                 st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-                st.query_params.clear()  # Clear query params
+                st.query_params.clear()
                 st.rerun()
 
-        # Show warnings (server-side, updates on interaction)
-        if remaining <= 300:
-            st.warning("🚨 URGENT: Less than 5 minutes remaining!")
-        elif remaining <= 900:
-            st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
-        elif remaining <= 1800:
-            st.info("⏰ NOTICE: Less than 30 minutes remaining!")
+            rem_h = remaining // 3600
+            rem_m = (remaining % 3600) // 60
+            rem_s = remaining % 60
 
-    # Display stopped timer with same style after submission
-    elif total_secs > 0 and "submitted" in st.session_state:
-        rem_h = remaining // 3600
-        rem_m = (remaining % 3600) // 60
-        rem_s = remaining % 60
+            if remaining <= 300:
+                bg_color = "#DC2626"
+                text_color = "white"
+                icon = "🚨"
+                pulse_class = "timer-pulse"
+            elif remaining <= 900:
+                bg_color = "#DC2626"
+                text_color = "white"
+                icon = "⚠️"
+                pulse_class = ""
+            elif remaining <= 1800:
+                bg_color = "#D97706"
+                text_color = "white"
+                icon = "⏰"
+                pulse_class = ""
+            else:
+                bg_color = "#1E3A8A"
+                text_color = "white"
+                icon = "⏰"
+                pulse_class = ""
 
-        # Determine styling based on remaining time at submission
-        if remaining <= 300:  # Last 5 minutes (or 0 for auto-submit)
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "🚨"
-            pulse_class = "timer-pulse"
-        elif remaining <= 900:  # Last 15 minutes
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "⚠️"
-            pulse_class = ""
-        elif remaining <= 1800:  # Last 30 minutes
-            bg_color = "#D97706"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
-        else:  # Normal
-            bg_color = "#1E3A8A"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
+            progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
 
-        # Progress bar percentage at submission
-        progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
-
-        # Static timer display with same style as active timer
-        stopped_timer_html = f"""
-        <style>
-        @keyframes pulse {{
-            0% {{ transform: scale(1); opacity: 1; }}
-            50% {{ transform: scale(1.05); opacity: 0.8; }}
-            100% {{ transform: scale(1); opacity: 1; }}
-        }}
-        .timer-pulse {{
-            animation: pulse 1s infinite;
-        }}
-        .timer-container {{
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            font-size: 22px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-            border: 3px solid rgba(255, 255, 255, 0.1);
-        }}
-        </style>
-        <div id="timer_container" class="timer-container {pulse_class}" style="
-            background: linear-gradient(135deg, {bg_color}, {bg_color}CC);
-            color: {text_color};
-        ">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                <span id="timer_icon" style="font-size: 28px;">{icon}</span>
-                <span>Test Submitted - Time Remaining :</span>
-                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
-                    {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
-                </span>
-            </div>
-            <div style="
-                width: 100%;
-                height: 6px;
-                background-color: rgba(255,255,255,0.3);
-                border-radius: 3px;
-                overflow: hidden;
-                margin-top: 15px;
-            ">
-                <div id="progress_bar" style="
-                    height: 100%;
-                    background: linear-gradient(90deg, #10B981, #34D399);
-                    width: {progress_percent:.1f}%;
-                    border-radius: 3px;
-                "></div>
-            </div>
-        </div>
-        """
-
-        # Render the stopped timer
-        components.html(stopped_timer_html, height=150)
-
-    answered_count = qstate["total"] - len(qstate["queue"])
-
-    st.markdown(
-        f"""
-        <div style="
-            padding: 12px 15px; 
-            border-radius: 8px; 
-            background: linear-gradient(135deg, #1E3A8A, #3B82F6);
-            color: white; 
-            text-align: center; 
-            font-size: 17px; 
-            margin-bottom: 20px;
-            white-space: nowrap;
-            overflow: hidden;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        ">
-            <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; 
-            <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; 
-            <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; 
-            <b>Progress :</b> {answered_count}/{qstate['total']}
-        </div>
-        """,
-        unsafe_allow_html=True
-    )
-
-    if len(qstate["queue"]) > 0:
-        current_qid = qstate["queue"][0]
-        row = qstate["rows"].iloc[current_qid]
-        qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
-
-        st.subheader(f"Q{current_qid+1}. {question}")
-        choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
-
-        col1, col2 = st.columns([1,1])
-
-        with col1:
-            if st.button("Next", use_container_width=True):
-                if choice is None:
-                    st.warning("⚠️ Please select an option before moving on.")
-                else:
-                    mapping = {"A": A, "B": B, "C": C, "D": D}
-                    correct_text = mapping.get(str(correct).strip(), str(correct).strip())
-                    is_correct = str(choice).strip() == str(correct_text).strip()
-                    qstate["answers"][current_qid] = {
-                        "choice": choice,
-                        "correct": correct_text,
-                        "is_correct": is_correct
-                    }
-                    if is_correct:
-                        qstate["right"] += 1
-                    else:
-                        qstate["wrong"] += 1
-                    qstate["queue"].pop(0)
-                    st.session_state.quiz = qstate
-                    st.rerun()
-
-        with col2:
-            if len(qstate["queue"]) > 1:
-                if st.button("Skip", use_container_width=True):
-                    qstate["queue"].append(qstate["queue"].pop(0))
-                    st.session_state.quiz = qstate
-                    st.rerun()
-
-    if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
-        right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-        pct = (right/total_q)*100 if total_q else 0.0
-        status = "Pass" if pct >= float(criteria) else "Fail"
-
-        st.success("All questions attempted. You can now submit your test.")
-
-        submit_clicked = st.button("Submit", use_container_width=True)
-        if submit_clicked:
-            ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-            )
-            st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-            st.rerun()
-
-    if "submitted" in st.session_state:
-        if "submit_result" in st.session_state:
-            ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
-            if not ok:
-                st.error(f"Failed to save results to Google Sheets: {msg}")
-
-            color = "#043006" if status == "Pass" else "#DC2626"
-            st.markdown(
-                f"""
-                <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
-                    <h3 style="color:{color}; font-weight:700;">
-                        Final Result : <span style="font-weight:700;">{status}</span>
-                    </h3>
-                    <p style="font-size:18px;">
-                        <b>Score :</b> {right}/{total_q}<br>
-                        <b>Percentage :</b> {pct:.2f}%<br>
-                        <b>Passing Criteria :</b> {criteria:.0f}%
-                    </p>
+            timer_html = f"""
+            <style>
+            @keyframes pulse {{ 0% {{ transform: scale(1); opacity: 1; }} 50% {{ transform: scale(1.05); opacity: 0.8; }} 100% {{ transform: scale(1); opacity: 1; }} }}
+            .timer-pulse {{ animation: pulse 1s infinite; }}
+            .timer-container {{ padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); border: 3px solid rgba(255, 255, 255, 0.1); }}
+            </style>
+            <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                    <span id="timer_icon" style="font-size: 28px;">{icon}</span>
+                    <span>Time Remaining :</span>
+                    <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                        {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
+                    </span>
                 </div>
-                """,
-                unsafe_allow_html=True
-            )
+                <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px; overflow: hidden; margin-top: 15px;">
+                    <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px; transition: width 0.5s ease-in-out;"></div>
+                </div>
+            </div>
+            <script>
+            (function() {{ var remaining = {remaining}; var total_secs = {total_secs}; var interval = null;
+                function updateTimer() {{ if (remaining <= 0) {{ document.getElementById('timer_display').innerText = '00:00:00'; document.getElementById('progress_bar').style.width = '0%'; clearInterval(interval); var form = document.createElement('form'); form.method = 'POST'; form.action = window.location.href; var input = document.createElement('input'); input.type = 'hidden'; input.name = 'timeout'; input.value = 'true'; form.appendChild(input); document.body.appendChild(form); form.submit(); return; }}
+                    var h = Math.floor(remaining / 3600); var m = Math.floor((remaining % 3600) / 60); var s = remaining % 60;
+                    document.getElementById('timer_display').innerText = `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
+                    var progress = (remaining / total_secs) * 100; document.getElementById('progress_bar').style.width = progress + '%';
+                    var container = document.getElementById('timer_container'); var iconElem = document.getElementById('timer_icon');
+                    var bg_color, text_color, icon, pulse_class = ''; if (remaining <= 300) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '🚨'; pulse_class = 'timer-pulse'; }} else if (remaining <= 900) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '⚠️'; }} else if (remaining <= 1800) {{ bg_color = '#D97706'; text_color = 'white'; icon = '⏰'; }} else {{ bg_color = '#1E3A8A'; text_color = 'white'; icon = '⏰'; }}
+                    container.style.background = `linear-gradient(135deg, ${bg_color}, ${bg_color}CC)`; container.style.color = text_color; iconElem.innerText = icon;
+                    if (pulse_class) {{ container.classList.add(pulse_class); }} else {{ container.classList.remove('timer-pulse'); }} remaining--; }}
+                if (interval) clearInterval(interval); updateTimer(); interval = setInterval(updateTimer, 1000); })();
+            </script>
+            """
+            components.html(timer_html, height=150)
+
+            if st.query_params.get("timeout", ["false"])[0] == "true":
+                if len(qstate["queue"]) > 0:
+                    st.error("Time is up! Auto-submitting your test...")
+                    qstate["wrong"] += len(qstate["queue"])
+                    qstate["queue"] = []
+                    st.session_state.quiz = qstate
+                    
+                    right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+                    pct = (right/total_q)*100 if total_q else 0.0
+                    status = "Pass" if pct >= float(criteria) else "Fail"
+                    ok, msg = append_result(
+                        qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                    )
+                    st.session_state["submitted"] = True
+                    st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+                    st.query_params.clear()
+                    st.rerun()
+
+            if remaining <= 300:
+                st.warning("🚨 URGENT: Less than 5 minutes remaining!")
+            elif remaining <= 900:
+                st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
+            elif remaining <= 1800:
+                st.info("⏰ NOTICE: Less than 30 minutes remaining!")
+
+        elif total_secs > 0 and "submitted" in st.session_state:
+            rem_h = remaining // 3600
+            rem_m = (remaining % 3600) // 60
+            rem_s = remaining % 60
+
+            if remaining <= 300:
+                bg_color = "#DC2626"
+                text_color = "white"
+                icon = "🚨"
+                pulse_class = "timer-pulse"
+            elif remaining <= 900:
+                bg_color = "#DC2626"
+                text_color = "white"
+                icon = "⚠️"
+                pulse_class = ""
+            elif remaining <= 1800:
+                bg_color = "#D97706"
+                text_color = "white"
+                icon = "⏰"
+                pulse_class = ""
+            else:
+                bg_color = "#1E3A8A"
+                text_color = "white"
+                icon = "⏰"
+                pulse_class = ""
+
+            progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
+
+            stopped_timer_html = f"""
+            <style>
+            @keyframes pulse {{ 0% {{ transform: scale(1); opacity: 1; }} 50% {{ transform: scale(1.05); opacity: 0.8; }} 100% {{ transform: scale(1); opacity: 1; }} }}
+            .timer-pulse {{ animation: pulse 1s infinite; }}
+            .timer-container {{ padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold; margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); border: 3px solid rgba(255, 255, 255, 0.1); }}
+            </style>
+            <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                    <span id="timer_icon" style="font-size: 28px;">{icon}</span>
+                    <span>Test Submitted - Time Remaining :</span>
+                    <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                        {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
+                    </span>
+                </div>
+                <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px; overflow: hidden; margin-top: 15px;">
+                    <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px;"></div>
+                </div>
+            </div>
+            """
+            components.html(stopped_timer_html, height=150)
+
+        answered_count = qstate["total"] - len(qstate["queue"])
+
+        st.markdown(
+            f"""
+            <div style="padding: 12px 15px; border-radius: 8px; background: linear-gradient(135deg, #1E3A8A, #3B82F6); color: white; text-align: center; font-size: 17px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; <b>Progress :</b> {answered_count}/{qstate['total']}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        if len(qstate["queue"]) > 0:
+            current_qid = qstate["queue"][0]
+            row = qstate["rows"].iloc[current_qid]
+            qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
+
+            st.subheader(f"Q{current_qid+1}. {question}")
+            choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
+
+            col1, col2 = st.columns([1,1])
+
+            with col1:
+                if st.button("Next", use_container_width=True):
+                    if choice is None:
+                        st.warning("⚠️ Please select an option before moving on.")
+                    else:
+                        mapping = {"A": A, "B": B, "C": C, "D": D}
+                        correct_text = mapping.get(str(correct).strip(), str(correct).strip())
+                        is_correct = str(choice).strip() == str(correct_text).strip()
+                        qstate["answers"][current_qid] = {
+                            "choice": choice,
+                            "correct": correct_text,
+                            "is_correct": is_correct
+                        }
+                        if is_correct:
+                            qstate["right"] += 1
+                        else:
+                            qstate["wrong"] += 1
+                        qstate["queue"].pop(0)
+                        st.session_state.quiz = qstate
+                        st.rerun()
+
+            with col2:
+                if len(qstate["queue"]) > 1:
+                    if st.button("Skip", use_container_width=True):
+                        qstate["queue"].append(qstate["queue"].pop(0))
+                        st.session_state.quiz = qstate
+                        st.rerun()
+
+        if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
+            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+            pct = (right/total_q)*100 if total_q else 0.0
+            status = "Pass" if pct >= float(criteria) else "Fail"
+
+            st.success("All questions attempted. You can now submit your test.")
+
+            submit_clicked = st.button("Submit", use_container_width=True)
+            if submit_clicked:
+                ok, msg = append_result(
+                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                )
+                st.session_state["submitted"] = True
+                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+                st.rerun()
+
+        if "submitted" in st.session_state:
+            if "submit_result" in st.session_state:
+                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+                if not ok:
+                    st.error(f"Failed to save results to Google Sheets: {msg}")
+
+                color = "#043006" if status == "Pass" else "#DC2626"
+                st.markdown(
+                    f"""
+                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                        <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
+                        <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
