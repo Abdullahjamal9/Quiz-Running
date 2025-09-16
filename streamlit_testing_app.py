@@ -648,4 +648,48 @@ if not st.session_state.admin_logged_in:
                         if is_correct:
                             qstate["right"] += 1
                         else:
-                            qstate["
+                            qstate["wrong"] += 1
+                        qstate["queue"].pop(0)
+                        st.session_state.quiz = qstate
+                        st.rerun()
+
+            with col2:
+                if len(qstate["queue"]) > 1:
+                    if st.button("Skip", use_container_width=True):
+                        qstate["queue"].append(qstate["queue"].pop(0))
+                        st.session_state.quiz = qstate
+                        st.rerun()
+
+
+        if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
+            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+            pct = (right/total_q)*100 if total_q else 0.0
+            status = "Pass" if pct >= float(criteria) else "Fail"
+
+            st.success("All questions attempted. You can now submit your test.")
+
+            submit_clicked = st.button("Submit", use_container_width=True)
+            if submit_clicked:
+                ok, msg = append_result(
+                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                )
+                st.session_state["submitted"] = True
+                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+                st.rerun()
+
+        if "submitted" in st.session_state:
+            if "submit_result" in st.session_state:
+                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+                if not ok:
+                    st.error(f"Failed to save results to Google Sheets: {msg}")
+
+                color = "#043006" if status == "Pass" else "#DC2626"
+                st.markdown(
+                    f"""
+                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                        <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
+                        <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
