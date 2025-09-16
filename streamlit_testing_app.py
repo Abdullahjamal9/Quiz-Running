@@ -15,11 +15,10 @@ import pytz
 BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-EMP_STD_FILE = os.path.join(DB_FOLDER, "Result 2.xlsx")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
 
 # =====================
-# Google Sheets Setup (for saving results)
+# Google Sheets Setup (for saving and reading results)
 # =====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -32,22 +31,34 @@ GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 @st.cache_data
 def load_employees_and_standards():
     try:
-        employees = pd.read_excel(EMP_STD_FILE, sheet_name="Emloyees Data")
+        sheet = client.open_by_url(GSHEET_URL)
+        # Load Employees Data
+        try:
+            employees = pd.DataFrame(sheet.worksheet("Emloyees Data").get_all_records())
+            if employees.empty or "ID" not in employees.columns or "Name" not in employees.columns:
+                employees = pd.DataFrame(columns=["ID", "Name"])
+        except Exception:
+            employees = pd.DataFrame(columns=["ID", "Name"])
+        # Load Standards
+        try:
+            standards = pd.DataFrame(sheet.worksheet("Standard").get_all_records())
+            if standards.empty or len(standards.columns) < 2:
+                while len(standards.columns) < 2:
+                    standards[standards.columns[-1] + "_dup" + str(len(standards.columns))] = ""
+                standards.columns = ["Standard", "ShortName"]
+            else:
+                standards.columns = ["Standard", "ShortName"]
+        except Exception:
+            standards = pd.DataFrame(columns=["Standard", "ShortName"])
+        standards["Standard"] = standards["Standard"].astype(str).str.strip()
+        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+        return employees, standards
     except Exception:
-        employees = pd.DataFrame(columns=["ID","Name"])
-    try:
-        standards = pd.read_excel(EMP_STD_FILE, sheet_name="Standard")
-        if len(standards.columns) < 2:
-            while len(standards.columns) < 2:
-                standards[standards.columns[-1] + "_dup" + str(len(standards.columns))] = ""
-            standards.columns = ["Standard","ShortName"]
-        else:
-            standards.columns = ["Standard","ShortName"]
-    except Exception:
-        standards = pd.DataFrame(columns=["Standard","ShortName"])
-    standards["Standard"] = standards["Standard"].astype(str).str.strip()
-    standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
-    return employees, standards
+        employees = pd.DataFrame(columns=["ID", "Name"])
+        standards = pd.DataFrame(columns=["Standard", "ShortName"])
+        standards["Standard"] = standards["Standard"].astype(str).str.strip()
+        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+        return employees, standards
 
 
 @st.cache_data
@@ -213,9 +224,9 @@ if "quiz" not in st.session_state:
     fetched_name = ""
     if emp_id and not employees.empty:
         try:
-            fetched = employees[employees.iloc[:,0].astype(str).str.strip() == str(emp_id).strip()]
+            fetched = employees[employees["ID"].astype(str).str.strip() == str(emp_id).strip()]
             if not fetched.empty:
-                fetched_name = str(fetched.iloc[0,1])
+                fetched_name = str(fetched.iloc[0]["Name"])
         except Exception:
             pass
     
