@@ -603,7 +603,7 @@ if not st.session_state.admin_logged_in:
         st.session_state.reset_counter = 0
 
     if "quiz" not in st.session_state:
-        st.subheader("👤 Employee Login")
+        st.subheader("Employee Login")
 
         col1, col2 = st.columns(2)
         
