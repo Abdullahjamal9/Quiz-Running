@@ -167,7 +167,7 @@ def load_all_results():
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         
-        # Get all values to preserve exact row order
+        # Get all values to preserve exact row order from Google Sheets
         all_values = worksheet.get_all_values()
         if len(all_values) < 2:  # No data rows (only header or empty)
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
@@ -175,10 +175,16 @@ def load_all_results():
         # First row is header, rest are data
         headers = all_values[0]
         data_rows = all_values[1:]
-
-        # Create DataFrame preserving exact order
+        
+        # Create DataFrame preserving exact order from Google Sheets
         df = pd.DataFrame(data_rows, columns=headers)
-                
+        
+        # Add original row index to preserve Google Sheets order
+        df['_original_order'] = range(len(df))
+        
+        # Remove empty rows (where all values are empty strings)
+        df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
+        
         # Map column names to handle variations
         column_mapping = {
             'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
@@ -196,7 +202,7 @@ def load_all_results():
         # Rename columns to standard names
         for standard_name, possible_names in column_mapping.items():
             for col in df.columns:
-                if col in possible_names:
+                if col in possible_names and col != '_original_order':
                     df = df.rename(columns={col: standard_name})
                     break
         
@@ -218,13 +224,11 @@ def load_all_results():
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
+        # Ensure original Google Sheets order is preserved (newest entries at bottom)
+        df = df.sort_values('_original_order').drop('_original_order', axis=1)
         
-        # Sort by timestamp if available (most recent first)
-        if "Timestamp" in df.columns:
-            try:
-                df = df.sort_values("Timestamp", ascending=False)
-            except:
-                pass
+        # Reset index to ensure clean indexing
+        df = df.reset_index(drop=True)
         
         return df[required_columns]
         
@@ -234,7 +238,6 @@ def load_all_results():
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
-
 # =====================
 # Helpers
 # =====================
