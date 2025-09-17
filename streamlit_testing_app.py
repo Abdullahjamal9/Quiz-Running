@@ -66,7 +66,6 @@ def load_employees_and_standards():
         standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
         return employees, standards
 
-
 @st.cache_data
 def load_questions():
     expected = ["Qno","Question","A","B","C","D","Answer","Standard"]
@@ -110,7 +109,6 @@ def load_questions():
     q["Standard"] = q["Standard"].astype(str).str.strip()
     return q[expected]
 
-
 @st.cache_data
 def get_info_for_standard(standards_df, selected_standard):
     if standards_df.empty or selected_standard == "":
@@ -133,7 +131,6 @@ def get_info_for_standard(standards_df, selected_standard):
         return total, criteria, h, m, s
     except Exception:
         return 0, 0, "00", "00", "00"
-
 
 @st.cache_data
 def load_all_results():
@@ -271,14 +268,12 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
     }
     return True, ""
 
-
 def format_timer(h, m, s):
     try:
         hh = int(h); mm = int(m); ss = int(s)
         return hh*3600 + mm*60 + ss
     except Exception:
         return 0
-
 
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
@@ -390,17 +385,19 @@ questions = load_questions()
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
-# Admin login check
-if not st.session_state.admin_logged_in:
-    with st.sidebar:
-        st.subheader("Admin Login")
-        admin_password = st.text_input("Admin Password", type="password", key="admin_password")
-        if st.button("Login as Admin"):
-            if admin_password == "admin123":  # Replace with your desired admin password
-                st.session_state.admin_logged_in = True
-                st.rerun()
-            else:
-                st.error("Invalid admin password")
+# Admin login section
+st.subheader("Admin Login")
+col1, col2 = st.columns(2)
+with col1:
+    admin_username = st.text_input("Username", key="admin_username")
+with col2:
+    admin_password = st.text_input("Password", type="password", key="admin_password")
+if st.button("Login as Admin"):
+    if admin_username == "admin" and admin_password == "admin123":  # Replace with your desired credentials
+        st.session_state.admin_logged_in = True
+        st.rerun()
+    else:
+        st.error("Invalid username or password")
 
 # Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
@@ -586,13 +583,19 @@ if st.session_state.admin_logged_in:
             )
         else:
             st.warning("No results found matching the current filters.")
+        
+        # Logout button after the table
+        if st.button("Logout"):
+            st.session_state.admin_logged_in = False
+            st.session_state.pop("quiz", None)
+            st.rerun()
     else:
         st.info("No results available yet in the Result 2 sheet.")
-    
-    if st.button("Logout"):
-        st.session_state.admin_logged_in = False
-        st.session_state.pop("quiz", None)
-        st.rerun()
+        # Logout button when no results
+        if st.button("Logout"):
+            st.session_state.admin_logged_in = False
+            st.session_state.pop("quiz", None)
+            st.rerun()
 
 # Employee login and quiz
 if not st.session_state.admin_logged_in:
@@ -957,7 +960,6 @@ if not st.session_state.admin_logged_in:
                         qstate["queue"].append(qstate["queue"].pop(0))
                         st.session_state.quiz = qstate
                         st.rerun()
-
 
         if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
