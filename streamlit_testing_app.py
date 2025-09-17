@@ -480,7 +480,6 @@ if st.session_state.admin_logged_in:
 
         
         with filter_col8:
-            st.write("")
             # Clear filters button
             if st.button("🗑️ Clear All Filters"):
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
