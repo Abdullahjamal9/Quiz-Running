@@ -564,7 +564,7 @@ if st.session_state.admin_logged_in:
             
             # Add serial number to filtered dataframe
             display_df = filtered_df.copy()
-            display_df.insert(0, 'Sr.', range(1, len(display_df) + 1))
+            display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
             
             # Display the dataframe with enhanced formatting
             st.dataframe(
@@ -572,8 +572,8 @@ if st.session_state.admin_logged_in:
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "Sr.": st.column_config.NumberColumn(
-                        "Sr.",
+                    "S.No.": st.column_config.NumberColumn(
+                        "S.No.",
                         help="Serial Number",
                         format="%d",
                         width="small"
