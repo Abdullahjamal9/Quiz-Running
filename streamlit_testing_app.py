@@ -52,7 +52,7 @@ def load_employees_and_standards():
                 st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
                 st.rerun()
 
-        if "submitted" in st.session_state:
+        
             if "submit_result" in st.session_state:
                 ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
                 if not ok:
