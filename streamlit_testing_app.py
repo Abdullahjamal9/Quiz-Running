@@ -395,7 +395,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     password = st.text_input("Password", type="password")
     if st.button("Login"):
         # Simple authentication (replace with your actual credentials or secure method)
-        if username == "admin" and password == "AdminPtis-3692":  # Change to your desired credentials
+        if username == "admin" and password == "admin123":  # Change to your desired credentials
             st.session_state.admin_logged_in = True
             st.rerun()
 
@@ -467,13 +467,32 @@ if st.session_state.admin_logged_in:
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-            csv = display_df.to_csv(index=False)
-            st.download_button(
-                label="📄 Download as CSV",
-                data=csv,
-                file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv"
-            )
+            export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
+            with export_col1:
+                csv = display_df.to_csv(index=False)
+                st.download_button(
+                    label="📄 Download as CSV",
+                    data=csv,
+                    file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            with export_col2:
+                if st.button("⚙️ Column Settings"):
+                    st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
+            
+            # Column visibility settings
+            if st.session_state.get("show_column_settings", False):
+                st.subheader("Column Visibility")
+                cols_to_show = []
+                col_settings = st.columns(5)
+                for i, col in enumerate(filtered_df.columns):
+                    with col_settings[i % 5]:
+                        if st.checkbox(col, value=True, key=f"show_{col}"):
+                            cols_to_show.append(col)
+                filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
+                display_df = filtered_df.copy()
+                display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+            
             st.dataframe(
                 display_df,
                 use_container_width=True,
@@ -561,6 +580,7 @@ elif "quiz" in st.session_state:
     qstate = st.session_state.quiz
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
     total_secs = format_timer(h, m, s)
+    # Rest of the quiz interface code...
 
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
