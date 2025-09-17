@@ -504,15 +504,19 @@ if st.session_state.admin_logged_in:
             
             with filter_col8:
                 st.write("")  # Placeholder to align the button
+                if st.button("🗑️ Clear All Filters", key="clear_filters", help="Reset all filters"):
+                    clear_button_html = """
+                    <div class="clear-button">
+                        <button style="padding: 5px 15px; font-size: 14px;">🗑️ Clear All Filters</button>
+                    </div>
+                    """
+                    st.markdown(clear_button_html, unsafe_allow_html=True)
+                    for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
+                               "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
             
-            # Clear All Filters button with custom class
-            if st.button("🗑️ Clear All Filters", key="clear_filters", help="Reset all filters", class_="clear-button"):
-                for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
-                           "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
-        
         # Apply filters (rest of the filtering logic remains unchanged)
         filtered_df = results_df.copy()
         if selected_emp_id != "All":
