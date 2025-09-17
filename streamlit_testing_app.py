@@ -514,7 +514,7 @@ if st.session_state.admin_logged_in:
                 """
                 <style>
                 div[data-testid="column"]:nth-child(4) button {
-                    margin-top: 1.75rem !important;
+                    margin-top: 2.75rem !important;
                 }
                 </style>
                 """,
