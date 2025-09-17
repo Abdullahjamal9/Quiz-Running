@@ -36,7 +36,38 @@ def load_employees_and_standards():
         try:
             employees_data = sheet.worksheet("Emloyees Data").get_all_records()
             employees = pd.DataFrame(employees_data)
-            if employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
+            if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
+            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+            pct = (right/total_q)*100 if total_q else 0.0
+            status = "Pass" if pct >= float(criteria) else "Fail"
+
+            st.success("All questions attempted. You can now submit your test.")
+
+            submit_clicked = st.button("Submit", use_container_width=True)
+            if submit_clicked:
+                ok, msg = append_result(
+                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                )
+                st.session_state["submitted"] = True
+                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+                st.rerun()
+
+        if "submitted" in st.session_state:
+            if "submit_result" in st.session_state:
+                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+                if not ok:
+                    st.error(f"Failed to save results to Google Sheets: {msg}")
+
+                color = "#043006" if status == "Pass" else "#DC2626"
+                st.markdown(
+                    f"""
+                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                        <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
+                        <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                ) employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
                 employees = pd.DataFrame(columns=["ID", "Name"])
             else:
                 id_col = next((col for col in employees.columns if "id" in col.lower()), "ID")
@@ -477,9 +508,10 @@ if st.session_state.admin_logged_in:
             st.write("")  # Empty column for spacing
         
         with filter_col8:
-            st.write("")  # Add some spacing
-            # Clear filters button
-            if st.button("🗑️ Clear All Filters"):
+            st.write("")  # Add some spacing to align with input box
+            st.write("")  # Additional spacing
+            # Clear filters button aligned to the right
+            if st.button("🗑️ Clear All Filters", use_container_width=True):
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
                            "min_percentage_filter", "max_percentage_filter"]:
                     if key in st.session_state:
