@@ -534,7 +534,7 @@ if st.session_state.admin_logged_in:
             
             # Add serial number to filtered dataframe
             display_df = filtered_df.copy()
-            display_df.insert(0, 'Sr.', range(1, len(display_df) + 1))
+            display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
             
             with export_col1:
                 # Download as CSV (with serial numbers)
