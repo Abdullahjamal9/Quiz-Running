@@ -442,24 +442,24 @@ if st.session_state.admin_logged_in:
         # Additional filters row
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
         
-        with filter_col5:
-            # Percentage range filter
-            if "Percentage" in results_df.columns:
-                min_percentage = st.number_input("Min Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=0.0, 
-                                               step=1.0,
-                                               key="min_percentage_filter")
+        # with filter_col5:
+        #     # Percentage range filter
+        #     if "Percentage" in results_df.columns:
+        #         min_percentage = st.number_input("Min Percentage (%)", 
+        #                                        min_value=0.0, 
+        #                                        max_value=100.0, 
+        #                                        value=0.0, 
+        #                                        step=1.0,
+        #                                        key="min_percentage_filter")
         
-        with filter_col6:
-            if "Percentage" in results_df.columns:
-                max_percentage = st.number_input("Max Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=100.0, 
-                                               step=1.0,
-                                               key="max_percentage_filter")
+        # with filter_col6:
+        #     if "Percentage" in results_df.columns:
+        #         max_percentage = st.number_input("Max Percentage (%)", 
+        #                                        min_value=0.0, 
+        #                                        max_value=100.0, 
+        #                                        value=100.0, 
+        #                                        step=1.0,
+        #                                        key="max_percentage_filter")
 
         
         with filter_col8:
