@@ -375,6 +375,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 # =====================
 # UI
 # =====================
+# UI
 st.set_page_config(page_title="PTIS Online Testing Module", page_icon="📝", layout="centered")
 st.title("PTIS Online Testing Module")
 
@@ -393,8 +394,8 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
     if st.button("Login"):
-        # Add your admin authentication logic here
-        if username == "admin" and password == "password":  # Replace with actual authentication
+        # Simple authentication (replace with your actual credentials or secure method)
+        if username == "admin" and password == "admin123":  # Change to your desired credentials
             st.session_state.admin_logged_in = True
             st.rerun()
 
@@ -404,75 +405,45 @@ if st.session_state.admin_logged_in:
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
-        
+    
     results_df = load_all_results()
     if not results_df.empty:
-        # Add filters section FIRST
         st.markdown("---")
         st.subheader("🔍 Filters")
-        
-        # Create filter columns
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-        
         with filter_col1:
-            # Employee ID filter
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
             selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
-        
         with filter_col2:
-            # Employee Name filter
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
             selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
-        
         with filter_col3:
-            # Status filter
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
-        
         with filter_col4:
-            # Test Type/Standard filter
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
         
-        # Clear filters button row
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-        
         with filter_col5:
             st.write("")
-            # Clear filters button
             if st.button("🗑️ Clear All Filters"):
-                for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
-                           "date_filter_enabled"]:
+                for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", "date_filter_enabled"]:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
         
-        # Apply filters
         filtered_df = results_df.copy()
-        
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
-        
         if selected_emp_name != "All":
             filtered_df = filtered_df[filtered_df["Name"] == selected_emp_name]
-        
         if selected_status != "All":
             filtered_df = filtered_df[filtered_df["Status"] == selected_status]
-        
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
-        
-        # Date filter (if enabled and Date / Time column exists)
-        if "Date / Time" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
-            date_col1, date_col2 = st.columns(2)
-            with date_col1:
-                start_date = st.date_input("Start Date", key="start_date_filter")
-            with date_col2:
-                end_date = st.date_input("End Date", key="end_date_filter")
-        
-        # NOW Display summary statistics based on FILTERED data
+
         st.markdown("---")
-        
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Tests", len(filtered_df))
@@ -489,120 +460,51 @@ if st.session_state.admin_logged_in:
             else:
                 st.metric("Avg Score", "N/A")
         
-        # Show filtered results count
         if len(filtered_df) != len(results_df):
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
         
         st.markdown("---")
-        
-        # Display the filtered results table
         if not filtered_df.empty:
-            # Add export functionality
-            export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
-            
-            # Add serial number to filtered dataframe
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-            
-            with export_col1:
-                # Download as CSV (with serial numbers)
-                csv = display_df.to_csv(index=False)
-                st.download_button(
-                    label="📄 Download as CSV",
-                    data=csv,
-                    file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                    mime="text/csv"
-                )
-            
-            with export_col2:
-                # Show/Hide columns
-                if st.button("⚙️ Column Settings"):
-                    st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
-            
-            # Column visibility settings
-            if st.session_state.get("show_column_settings", False):
-                st.subheader("Column Visibility")
-                cols_to_show = []
-                col_settings = st.columns(5)
-                for i, col in enumerate(filtered_df.columns):
-                    with col_settings[i % 5]:
-                        if st.checkbox(col, value=True, key=f"show_{col}"):
-                            cols_to_show.append(col)
-                filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
-                
-                # Re-add serial number to filtered columns
-                display_df = filtered_df.copy()
-                display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-            
-            # Display the dataframe with enhanced formatting
+            csv = display_df.to_csv(index=False)
+            st.download_button(
+                label="📄 Download as CSV",
+                data=csv,
+                file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
             st.dataframe(
                 display_df,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
-                    "S.No.": st.column_config.NumberColumn(
-                        "S.No.",
-                        help="Serial Number",
-                        format="%d",
-                        width="small"
-                    ),
-                    "Percentage": st.column_config.ProgressColumn(
-                        "Percentage",
-                        help="Test Score Percentage",
-                        format="%.1f%%",
-                        min_value=0,
-                        max_value=100,
-                    ),
-                    "Status": st.column_config.TextColumn(
-                        "Status",
-                        help="Pass/Fail Status",
-                    ),
-                    "Total": st.column_config.NumberColumn(
-                        "Total Questions",
-                        help="Total number of questions in the test",
-                        format="%d"
-                    ),
-                    "Right": st.column_config.NumberColumn(
-                        "Correct Answers",
-                        help="Number of correct answers",
-                        format="%d"
-                    ),
-                    "Wrong": st.column_config.NumberColumn(
-                        "Wrong Answers", 
-                        help="Number of wrong answers",
-                        format="%d"
-                    ),
-                    "Date / Time": st.column_config.TextColumn(
-                        "Date / Time",
-                        help="Test completion date and time",
-                    )
+                    "S.No.": st.column_config.NumberColumn("S.No.", help="Serial Number", format="%d", width="small"),
+                    "Percentage": st.column_config.ProgressColumn("Percentage", help="Test Score Percentage", format="%.1f%%", min_value=0, max_value=100),
+                    "Status": st.column_config.TextColumn("Status", help="Pass/Fail Status"),
+                    "Total": st.column_config.NumberColumn("Total Questions", help="Total number of questions in the test", format="%d"),
+                    "Right": st.column_config.NumberColumn("Correct Answers", help="Number of correct answers", format="%d"),
+                    "Wrong": st.column_config.NumberColumn("Wrong Answers", help="Number of wrong answers", format="%d"),
+                    "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
                 }
             )
         else:
-            st.warning("No results found matching the current filters.")
-        
-        # Logout button after the table
+            st.warning("No results found matching the current filters")
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
             st.session_state.pop("quiz", None)
             st.rerun()
     else:
         st.info("No results available yet in the Result 2 sheet.")
-        # Logout button when no results
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
             st.session_state.pop("quiz", None)
             st.rerun()
 
 # Employee login and quiz (shown when not admin and no quiz is active)
-#if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
-   # if "reset_counter" not in st.session_state:
-       # st.session_state.reset_counter = 0
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Employee Login")
-
     col1, col2 = st.columns(2)
-    
     with col1:
         emp_id = st.text_input(
             "Employee ID", 
@@ -611,7 +513,6 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             help="Enter your employee identification number",
             on_change=lambda: st.session_state.update({"name": fetch_name(employees, st.session_state[f"id_{st.session_state.reset_counter}"])})
         )
-
     def fetch_name(employees_df, emp_id_input):
         if emp_id_input and not employees_df.empty:
             try:
@@ -621,9 +522,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             except Exception:
                 pass
         return ""
-
     fetched_name = fetch_name(employees, emp_id) if "name" not in st.session_state else st.session_state["name"]
-    
     with col2:
         name = st.text_input(
             "Name", 
@@ -631,27 +530,22 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             key=f"name_{st.session_state.reset_counter}",
             help="This will auto-fill if your Employee ID is found"
         )
-
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
     if "Cummulative" not in options:
         options = ["Cummulative"] + options
     selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
-
     total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
-
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("Total Questions", total)
     with c2: st.metric("Passing Criteria (%)", criteria)
     with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
-
     st.markdown("---")
     with st.form("start_form"):
         st.markdown("### Ready to start your test?")
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             submitted = st.form_submit_button("🚀 Start Test", use_container_width=True)
-
     if submitted:
         if not emp_id or not name or not selected_standard:
             st.error("Please enter ID, Name and select a Standard.")
