@@ -67,7 +67,7 @@ def load_employees_and_standards():
                     </div>
                     """,
                     unsafe_allow_html=True
-                ) employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
+                employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
                 employees = pd.DataFrame(columns=["ID", "Name"])
             else:
                 id_col = next((col for col in employees.columns if "id" in col.lower()), "ID")
