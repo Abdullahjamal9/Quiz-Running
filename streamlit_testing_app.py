@@ -507,7 +507,7 @@ if st.session_state.admin_logged_in:
                 if st.button("🗑️ Clear All Filters", key="clear_filters", help="Reset all filters"):
                     clear_button_html = """
                     <div class="clear-button">
-                        <button style="padding: 5px 15px; font-size: 14px;">🗑️ Clear All Filters</button>
+                        <button style="padding: 50px 150px; font-size: 14px;">🗑️ Clear All Filters</button>
                     </div>
                     """
                     st.markdown(clear_button_html, unsafe_allow_html=True)
