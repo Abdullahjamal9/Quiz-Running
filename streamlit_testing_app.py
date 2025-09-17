@@ -176,9 +176,9 @@ def load_all_results():
         headers = all_values[0]
         data_rows = all_values[1:]
 
-# Create DataFrame preserving exact order
-df = pd.DataFrame(data_rows, columns=headers)
-        
+        # Create DataFrame preserving exact order
+        df = pd.DataFrame(data_rows, columns=headers)
+                
         # Map column names to handle variations
         column_mapping = {
             'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
