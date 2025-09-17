@@ -797,188 +797,187 @@ elif "quiz" in st.session_state:
                     container.classList.add(pulse_class);
                 }} else {{
                     container.classList.remove('timer-pulse');
-
-                    }}
-                    remaining--;
                 }}
-
-                if (interval) {{
-                    clearInterval(interval);
-                }}
-                updateTimer();
-                interval = setInterval(updateTimer, 1000);
-            }})();
-            </script>
-            """
-            components.html(timer_html, height=150)
-
-            if st.query_params.get("timeout", ["false"])[0] == "true":
-                if len(qstate["queue"]) > 0:
-                    st.error("Time is up! Auto-submitting your test...")
-                    qstate["wrong"] += len(qstate["queue"])
-                    qstate["queue"] = []
-                    st.session_state.quiz = qstate
-                    
-                    right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                    pct = (right/total_q)*100 if total_q else 0.0
-                    status = "Pass" if pct >= float(criteria) else "Fail"
-                    ok, msg = append_result(
-                        qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-                    )
-                    st.session_state["submitted"] = True
-                    st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-                    st.query_params.clear()
-                    st.rerun()
-
-            if remaining <= 300:
-                st.warning("🚨 URGENT: Less than 5 minutes remaining!")
-            elif remaining <= 900:
-                st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
-            elif remaining <= 1800:
-                st.info("⏰ NOTICE: Less than 30 minutes remaining!")
-
-        elif total_secs > 0 and "submitted" in st.session_state:
-            rem_h = remaining // 3600
-            rem_m = (remaining % 3600) // 60
-            rem_s = remaining % 60
-
-            if remaining <= 300:
-                bg_color = "#DC2626"
-                text_color = "white"
-                icon = "🚨"
-                pulse_class = "timer-pulse"
-            elif remaining <= 900:
-                bg_color = "#DC2626"
-                text_color = "white"
-                icon = "⚠️"
-                pulse_class = ""
-            elif remaining <= 1800:
-                bg_color = "#D97706"
-                text_color = "white"
-                icon = "⏰"
-                pulse_class = ""
-            else:
-                bg_color = "#1E3A8A"
-                text_color = "white"
-                icon = "⏰"
-                pulse_class = ""
-
-            progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
-
-            stopped_timer_html = f"""
-            <style>
-            @keyframes pulse {{
-                0% {{ transform: scale(1); opacity: 1; }}
-                50% {{ transform: scale(1.05); opacity: 0.8; }}
-                100% {{ transform: scale(1); opacity: 1; }}
+                remaining--;
             }}
-            .timer-pulse {{
-                animation: pulse 1s infinite;
+
+            if (interval) {{
+                clearInterval(interval);
             }}
-            .timer-container {{
-                padding: 20px;
-                border-radius: 15px;
-                text-align: center;
-                font-size: 22px;
-                font-weight: bold;
-                margin-bottom: 20px;
-                box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-                border: 3px solid rgba(255, 255, 255, 0.1);
-            }}
-            </style>
-            <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
-                <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
-                    <span id="timer_icon" style="font-size: 28px;">{icon}</span>
-                    <span>Test Submitted - Time Remaining :</span>
-                    <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
-                        {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
-                    </span>
-                </div>
-                <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px; overflow: hidden; margin-top: 15px;">
-                    <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px;"></div>
-                </div>
-            </div>
-            """
-            components.html(stopped_timer_html, height=150)
+            updateTimer();
+            interval = setInterval(updateTimer, 1000);
+        }})();
+        </script>
+        """
+        components.html(timer_html, height=150)
 
-        answered_count = qstate["total"] - len(qstate["queue"])
-
-        st.markdown(
-            f"""
-            <div style="padding: 12px 15px; border-radius: 8px; background: linear-gradient(135deg, #1E3A8A, #3B82F6); color: white; text-align: center; font-size: 17px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; <b>Progress :</b> {answered_count}/{qstate['total']}
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-
-        if len(qstate["queue"]) > 0:
-            current_qid = qstate["queue"][0]
-            row = qstate["rows"].iloc[current_qid]
-            qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
-
-            st.subheader(f"Q{current_qid+1}. {question}")
-            choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
-
-            col1, col2 = st.columns([1,1])
-
-            with col1:
-                if st.button("Next", use_container_width=True):
-                    if choice is None:
-                        st.warning("⚠️ Please select an option before moving on.")
-                    else:
-                        mapping = {"A": A, "B": B, "C": C, "D": D}
-                        correct_text = mapping.get(str(correct).strip(), str(correct).strip())
-                        is_correct = str(choice).strip() == str(correct_text).strip()
-                        qstate["answers"][current_qid] = {
-                            "choice": choice,
-                            "correct": correct_text,
-                            "is_correct": is_correct
-                        }
-                        if is_correct:
-                            qstate["right"] += 1
-                        else:
-                            qstate["wrong"] += 1
-                        qstate["queue"].pop(0)
-                        st.session_state.quiz = qstate
-                        st.rerun()
-
-            with col2:
-                if len(qstate["queue"]) > 1:
-                    if st.button("Skip", use_container_width=True):
-                        qstate["queue"].append(qstate["queue"].pop(0))
-                        st.session_state.quiz = qstate
-                        st.rerun()
-
-        if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
-            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            pct = (right/total_q)*100 if total_q else 0.0
-            status = "Pass" if pct >= float(criteria) else "Fail"
-
-            st.success("All questions attempted. You can now submit your test.")
-
-            submit_clicked = st.button("Submit", use_container_width=True)
-            if submit_clicked:
+        if st.query_params.get("timeout", ["false"])[0] == "true":
+            if len(qstate["queue"]) > 0:
+                st.error("Time is up! Auto-submitting your test...")
+                qstate["wrong"] += len(qstate["queue"])
+                qstate["queue"] = []
+                st.session_state.quiz = qstate
+                
+                right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+                pct = (right/total_q)*100 if total_q else 0.0
+                status = "Pass" if pct >= float(criteria) else "Fail"
                 ok, msg = append_result(
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
                 )
                 st.session_state["submitted"] = True
                 st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+                st.query_params.clear()
                 st.rerun()
 
-        if "submitted" in st.session_state:
-            if "submit_result" in st.session_state:
-                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
-                if not ok:
-                    st.error(f"Failed to save results to Google Sheets: {msg}")
+        if remaining <= 300:
+            st.warning("🚨 URGENT: Less than 5 minutes remaining!")
+        elif remaining <= 900:
+            st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
+        elif remaining <= 1800:
+            st.info("⏰ NOTICE: Less than 30 minutes remaining!")
 
-                color = "#043006" if status == "Pass" else "#DC2626"
-                st.markdown(
-                    f"""
-                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
-                        <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
-                        <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
+    elif total_secs > 0 and "submitted" in st.session_state:
+        rem_h = remaining // 3600
+        rem_m = (remaining % 3600) // 60
+        rem_s = remaining % 60
+
+        if remaining <= 300:
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "🚨"
+            pulse_class = "timer-pulse"
+        elif remaining <= 900:
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "⚠️"
+            pulse_class = ""
+        elif remaining <= 1800:
+            bg_color = "#D97706"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
+        else:
+            bg_color = "#1E3A8A"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
+
+        progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
+
+        stopped_timer_html = f"""
+        <style>
+        @keyframes pulse {{
+            0% {{ transform: scale(1); opacity: 1; }}
+            50% {{ transform: scale(1.05); opacity: 0.8; }}
+            100% {{ transform: scale(1); opacity: 1; }}
+        }}
+        .timer-pulse {{
+            animation: pulse 1s infinite;
+        }}
+        .timer-container {{
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.1);
+        }}
+        </style>
+        <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
+            <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <span id="timer_icon" style="font-size: 28px;">{icon}</span>
+                <span>Test Submitted - Time Remaining :</span>
+                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                    {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
+                </span>
+            </div>
+            <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px; overflow: hidden; margin-top: 15px;">
+                <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px;"></div>
+            </div>
+        </div>
+        """
+        components.html(stopped_timer_html, height=150)
+
+    answered_count = qstate["total"] - len(qstate["queue"])
+
+    st.markdown(
+        f"""
+        <div style="padding: 12px 15px; border-radius: 8px; background: linear-gradient(135deg, #1E3A8A, #3B82F6); color: white; text-align: center; font-size: 17px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; <b>Progress :</b> {answered_count}/{qstate['total']}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    if len(qstate["queue"]) > 0:
+        current_qid = qstate["queue"][0]
+        row = qstate["rows"].iloc[current_qid]
+        qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
+
+        st.subheader(f"Q{current_qid+1}. {question}")
+        choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
+
+        col1, col2 = st.columns([1,1])
+
+        with col1:
+            if st.button("Next", use_container_width=True):
+                if choice is None:
+                    st.warning("⚠️ Please select an option before moving on.")
+                else:
+                    mapping = {"A": A, "B": B, "C": C, "D": D}
+                    correct_text = mapping.get(str(correct).strip(), str(correct).strip())
+                    is_correct = str(choice).strip() == str(correct_text).strip()
+                    qstate["answers"][current_qid] = {
+                        "choice": choice,
+                        "correct": correct_text,
+                        "is_correct": is_correct
+                    }
+                    if is_correct:
+                        qstate["right"] += 1
+                    else:
+                        qstate["wrong"] += 1
+                    qstate["queue"].pop(0)
+                    st.session_state.quiz = qstate
+                    st.rerun()
+
+        with col2:
+            if len(qstate["queue"]) > 1:
+                if st.button("Skip", use_container_width=True):
+                    qstate["queue"].append(qstate["queue"].pop(0))
+                    st.session_state.quiz = qstate
+                    st.rerun()
+
+    if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
+        right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+        pct = (right/total_q)*100 if total_q else 0.0
+        status = "Pass" if pct >= float(criteria) else "Fail"
+
+        st.success("All questions attempted. You can now submit your test.")
+
+        submit_clicked = st.button("Submit", use_container_width=True)
+        if submit_clicked:
+            ok, msg = append_result(
+                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+            )
+            st.session_state["submitted"] = True
+            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+            st.rerun()
+
+    if "submitted" in st.session_state:
+        if "submit_result" in st.session_state:
+            ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+            if not ok:
+                st.error(f"Failed to save results to Google Sheets: {msg}")
+
+            color = "#043006" if status == "Pass" else "#DC2626"
+            st.markdown(
+                f"""
+                <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                    <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
+                    <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
