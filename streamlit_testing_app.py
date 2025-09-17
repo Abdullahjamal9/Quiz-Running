@@ -165,12 +165,12 @@ def load_all_results():
         
         if worksheet is None:
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         
         # Get all values to preserve exact row order from Google Sheets
         all_values = worksheet.get_all_values()
         if len(all_values) < 2:  # No data rows (only header or empty)
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         
         # First row is header, rest are data
         headers = all_values[0]
@@ -196,7 +196,7 @@ def load_all_results():
             'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
             'Status': ['STATUS', 'Status', 'status', 'Result'],
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
-            'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
+            'Timestamp': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time']
         }
         
         # Rename columns to standard names
@@ -207,7 +207,7 @@ def load_all_results():
                     break
         
         # Ensure all required columns exist
-        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
+        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"]
         for col in required_columns:
             if col not in df.columns:
                 df[col] = ""
@@ -237,8 +237,7 @@ def load_all_results():
         # Show more detailed error information
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
-        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
-
+        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
 # =====================
 # Helpers
 # =====================
@@ -333,8 +332,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'PASSING CRITERIA %': f"{criteria_pct:.0f}%",
                 'STATUS': str(status),
                 'STANDARD': str(test_type),
-                'DATE': now,
-                'DATE / TIME': now
+                'DATE': now
             }
             
             new_row = []
@@ -360,7 +358,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                     new_row.append(str(status))
                 elif 'STANDARD' in header_upper:
                     new_row.append(str(test_type))
-                elif 'DATE' in header_upper or 'TIME' in header_upper or 'TIMESTAMP' in header_upper:
+                elif 'DATE' in header_upper or 'TIME' in header_upper:
                     new_row.append(now)
                 else:
                     new_row.append('')  # Empty for unknown columns
@@ -386,22 +384,7 @@ st.title("PTIS Online Testing Module")
 employees, standards = load_employees_and_standards()
 questions = load_questions()
 
-# Initialize session state for admin login
-if "admin_logged_in" not in st.session_state:
-    st.session_state.admin_logged_in = False
-
-# Admin login check
-if not st.session_state.admin_logged_in:
-    with st.sidebar:
-        st.subheader("Admin Login")
-        admin_password = st.text_input("Admin Password", type="password", key="admin_password")
-        if st.button("Login as Admin"):
-            if admin_password == "admin123":  # Replace with your desired admin password
-                st.session_state.admin_logged_in = True
-                st.rerun()
-            else:
-                st.error("Invalid admin password")
-
+# Admin login state
 # Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
@@ -468,8 +451,8 @@ if st.session_state.admin_logged_in:
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
         
-        # Date filter (if enabled and Date / Time column exists)
-        if "Date / Time" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
+        # Date filter (if enabled and timestamp column exists)
+        if "Timestamp" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
             date_col1, date_col2 = st.columns(2)
             with date_col1:
                 start_date = st.date_input("Start Date", key="start_date_filter")
@@ -577,10 +560,6 @@ if st.session_state.admin_logged_in:
                         "Wrong Answers", 
                         help="Number of wrong answers",
                         format="%d"
-                    ),
-                    "Date / Time": st.column_config.TextColumn(
-                        "Date / Time",
-                        help="Test completion date and time",
                     )
                 }
             )
@@ -593,7 +572,6 @@ if st.session_state.admin_logged_in:
         st.session_state.admin_logged_in = False
         st.session_state.pop("quiz", None)
         st.rerun()
-
 # Employee login and quiz
 if not st.session_state.admin_logged_in:
     if "reset_counter" not in st.session_state:
