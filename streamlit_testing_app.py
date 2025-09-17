@@ -10,6 +10,18 @@ import streamlit.components.v1 as components
 import pytz
 
 # =====================
+# Session State Initialization
+# =====================
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
+if "quiz" not in st.session_state:
+    st.session_state.quiz = None
+if "submitted" not in st.session_state:
+    st.session_state.submitted = False
+if "reset_counter" not in st.session_state:
+    st.session_state.reset_counter = 0
+
+# =====================
 # Paths / Files (local Excel for reading only)
 # =====================
 BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
@@ -165,12 +177,12 @@ def load_all_results():
         
         if worksheet is None:
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
         # Get all values to preserve exact row order from Google Sheets
         all_values = worksheet.get_all_values()
         if len(all_values) < 2:  # No data rows (only header or empty)
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
         # First row is header, rest are data
         headers = all_values[0]
@@ -196,7 +208,7 @@ def load_all_results():
             'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
             'Status': ['STATUS', 'Status', 'status', 'Result'],
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
-            'Timestamp': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time']
+            'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
         }
         
         # Rename columns to standard names
@@ -207,7 +219,7 @@ def load_all_results():
                     break
         
         # Ensure all required columns exist
-        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"]
+        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
         for col in required_columns:
             if col not in df.columns:
                 df[col] = ""
@@ -237,7 +249,8 @@ def load_all_results():
         # Show more detailed error information
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
-        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+
 # =====================
 # Helpers
 # =====================
@@ -332,7 +345,9 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'PASSING CRITERIA %': f"{criteria_pct:.0f}%",
                 'STATUS': str(status),
                 'STANDARD': str(test_type),
-                'DATE': now
+                'DATE': now,
+                'DATE / TIME': now,
+                'TIMESTAMP': now
             }
             
             new_row = []
@@ -381,26 +396,26 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 st.set_page_config(page_title="PTIS Online Testing", page_icon="📝", layout="centered")
 st.title("PTIS Online Testing Module")
 
+# Add Admin Login in Sidebar
+with st.sidebar:
+    st.subheader("Admin Login")
+    if not st.session_state.admin_logged_in:
+        admin_password = st.text_input("Admin Password", type="password")
+        if st.button("Admin Login"):
+            if admin_password == "admin123":  # Change this to your desired admin password
+                st.session_state.admin_logged_in = True
+                st.rerun()
+            else:
+                st.error("Invalid password")
+    else:
+        st.success("Admin logged in")
+        if st.button("Admin Logout"):
+            st.session_state.admin_logged_in = False
+            st.rerun()
+
 employees, standards = load_employees_and_standards()
 questions = load_questions()
 
-# Admin login state
-if "admin_logged_in" not in st.session_state:
-    st.session_state.admin_logged_in = False
-
-# Admin login page
-if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
-    st.subheader("Admin Login")
-    admin_username = st.text_input("Username", key="admin_username")
-    admin_password = st.text_input("Password", type="password", key="admin_password")
-    if st.button("Login"):
-        if admin_username == "admin" and admin_password == "AdminPtis-3692":  # Hardcoded for simplicity
-            st.session_state.admin_logged_in = True
-            st.rerun()
-        else:
-            st.error("Invalid username or password")
-
-# Enhanced Admin dashboard with filters
 # Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
@@ -439,35 +454,15 @@ if st.session_state.admin_logged_in:
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
         
-        # Additional filters row
+        # Clear filters button row
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
         
         with filter_col5:
-            # Percentage range filter
-            if "Percentage" in results_df.columns:
-                min_percentage = st.number_input("Min Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=0.0, 
-                                               step=1.0,
-                                               key="min_percentage_filter")
-        
-        with filter_col6:
-            if "Percentage" in results_df.columns:
-                max_percentage = st.number_input("Max Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=100.0, 
-                                               step=1.0,
-                                               key="max_percentage_filter")
-
-        
-        with filter_col8:
             st.write("")
             # Clear filters button
             if st.button("🗑️ Clear All Filters"):
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
-                           "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
+                           "date_filter_enabled"]:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
@@ -487,14 +482,8 @@ if st.session_state.admin_logged_in:
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
         
-        if "Percentage" in filtered_df.columns:
-            filtered_df = filtered_df[
-                (filtered_df["Percentage"] >= min_percentage) & 
-                (filtered_df["Percentage"] <= max_percentage)
-            ]
-        
         # Date filter (if enabled and timestamp column exists)
-        if "Timestamp" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
+        if "Date / Time" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
             date_col1, date_col2 = st.columns(2)
             with date_col1:
                 start_date = st.date_input("Start Date", key="start_date_filter")
@@ -503,7 +492,6 @@ if st.session_state.admin_logged_in:
         
         # NOW Display summary statistics based on FILTERED data
         st.markdown("---")
-        # st.subheader("📊 Summary Statistics")
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -561,10 +549,10 @@ if st.session_state.admin_logged_in:
                         if st.checkbox(col, value=True, key=f"show_{col}"):
                             cols_to_show.append(col)
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
-            
-            # Add serial number to filtered dataframe
-            display_df = filtered_df.copy()
-            display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+                
+                # Re-add serial number to filtered columns
+                display_df = filtered_df.copy()
+                display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
             
             # Display the dataframe with enhanced formatting
             st.dataframe(
@@ -603,6 +591,10 @@ if st.session_state.admin_logged_in:
                         "Wrong Answers", 
                         help="Number of wrong answers",
                         format="%d"
+                    ),
+                    "Date / Time": st.column_config.TextColumn(
+                        "Date / Time",
+                        help="Date and time when test was completed",
                     )
                 }
             )
@@ -610,17 +602,10 @@ if st.session_state.admin_logged_in:
             st.warning("No results found matching the current filters.")
     else:
         st.info("No results available yet in the Result 2 sheet.")
-    
-    if st.button("Logout"):
-        st.session_state.admin_logged_in = False
-        st.session_state.pop("quiz", None)
-        st.rerun()
+
 # Employee login and quiz
 if not st.session_state.admin_logged_in:
-    if "reset_counter" not in st.session_state:
-        st.session_state.reset_counter = 0
-
-    if "quiz" not in st.session_state:
+    if st.session_state.quiz is None:
         st.subheader("Employee Login")
 
         col1, col2 = st.columns(2)
@@ -692,7 +677,7 @@ if not st.session_state.admin_logged_in:
         elapsed = int(time.time() - qstate["start_ts"])
         remaining = max(0, total_secs - elapsed)
 
-        if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
+        if total_secs > 0 and len(qstate["queue"]) > 0 and not st.session_state.submitted:
             if remaining <= 0:
                 st.error("Time is up! Auto-submitting your test...")
                 qstate["wrong"] += len(qstate["queue"])
@@ -705,8 +690,8 @@ if not st.session_state.admin_logged_in:
                 ok, msg = append_result(
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
                 )
-                st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+                st.session_state.submitted = True
+                st.session_state.submit_result = (ok, msg, right, total_q, pct, criteria, status)
                 st.query_params.clear()
                 st.rerun()
 
