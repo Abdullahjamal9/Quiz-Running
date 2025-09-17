@@ -411,26 +411,8 @@ if st.session_state.admin_logged_in:
     
     results_df = load_all_results()
     if not results_df.empty:
-        # Display some summary statistics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Tests", len(results_df))
-        with col2:
-            pass_count = len(results_df[results_df["Status"] == "Pass"]) if "Status" in results_df.columns else 0
-            st.metric("Passed", pass_count)
-        with col3:
-            fail_count = len(results_df[results_df["Status"] == "Fail"]) if "Status" in results_df.columns else 0
-            st.metric("Failed", fail_count)
-        with col4:
-            if "Percentage" in results_df.columns and len(results_df) > 0:
-                avg_score = results_df["Percentage"].mean()
-                st.metric("Avg Score", f"{avg_score:.1f}%")
-            else:
-                st.metric("Avg Score", "N/A")
-        
+        # Add filters section FIRST
         st.markdown("---")
-        
-        # Add filters section
         st.subheader("🔍 Filters")
         
         # Create filter columns
@@ -517,6 +499,26 @@ if st.session_state.admin_logged_in:
                 start_date = st.date_input("Start Date", key="start_date_filter")
             with date_col2:
                 end_date = st.date_input("End Date", key="end_date_filter")
+        
+        # NOW Display summary statistics based on FILTERED data
+        st.markdown("---")
+        st.subheader("📊 Summary Statistics")
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Tests", len(filtered_df))
+        with col2:
+            pass_count = len(filtered_df[filtered_df["Status"] == "Pass"]) if "Status" in filtered_df.columns else 0
+            st.metric("Passed", pass_count)
+        with col3:
+            fail_count = len(filtered_df[filtered_df["Status"] == "Fail"]) if "Status" in filtered_df.columns else 0
+            st.metric("Failed", fail_count)
+        with col4:
+            if "Percentage" in filtered_df.columns and len(filtered_df) > 0:
+                avg_score = filtered_df["Percentage"].mean()
+                st.metric("Avg Score", f"{avg_score:.1f}%")
+            else:
+                st.metric("Avg Score", "N/A")
         
         # Show filtered results count
         if len(filtered_df) != len(results_df):
