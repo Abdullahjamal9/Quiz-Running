@@ -472,11 +472,7 @@ if st.session_state.admin_logged_in:
                                                value=100.0, 
                                                step=1.0,
                                                key="max_percentage_filter")
-        
-        with filter_col7:
-            # Date range filter (if timestamp is available)
-            if "Timestamp" in results_df.columns:
-                date_filter_enabled = st.checkbox("Enable Date Filter", key="date_filter_enabled")
+
         
         with filter_col8:
             # Clear filters button
