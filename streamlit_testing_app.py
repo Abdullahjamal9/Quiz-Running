@@ -10,18 +10,6 @@ import streamlit.components.v1 as components
 import pytz
 
 # =====================
-# Session State Initialization
-# =====================
-if "admin_logged_in" not in st.session_state:
-    st.session_state.admin_logged_in = False
-if "quiz" not in st.session_state:
-    st.session_state.quiz = None
-if "submitted" not in st.session_state:
-    st.session_state.submitted = False
-if "reset_counter" not in st.session_state:
-    st.session_state.reset_counter = 0
-
-# =====================
 # Paths / Files (local Excel for reading only)
 # =====================
 BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
@@ -346,8 +334,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'STATUS': str(status),
                 'STANDARD': str(test_type),
                 'DATE': now,
-                'DATE / TIME': now,
-                'TIMESTAMP': now
+                'DATE / TIME': now
             }
             
             new_row = []
@@ -373,7 +360,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                     new_row.append(str(status))
                 elif 'STANDARD' in header_upper:
                     new_row.append(str(test_type))
-                elif 'DATE' in header_upper or 'TIME' in header_upper:
+                elif 'DATE' in header_upper or 'TIME' in header_upper or 'TIMESTAMP' in header_upper:
                     new_row.append(now)
                 else:
                     new_row.append('')  # Empty for unknown columns
@@ -396,21 +383,24 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 st.set_page_config(page_title="PTIS Online Testing", page_icon="📝", layout="centered")
 st.title("PTIS Online Testing Module")
 
-# Add Admin Login in Sidebar
+employees, standards = load_employees_and_standards()
+questions = load_questions()
+
+# Initialize session state for admin login
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
-# Admin login page
-if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
-    st.subheader("Admin Login")
-    admin_username = st.text_input("Username", key="admin_username")
-    admin_password = st.text_input("Password", type="password", key="admin_password")
-    if st.button("Login"):
-        if admin_username == "admin" and admin_password == "AdminPtis-3692":  # Hardcoded for simplicity
-            st.session_state.admin_logged_in = True
-            st.rerun()
-        else:
-            st.error("Invalid username or password")
+# Admin login check
+if not st.session_state.admin_logged_in:
+    with st.sidebar:
+        st.subheader("Admin Login")
+        admin_password = st.text_input("Admin Password", type="password", key="admin_password")
+        if st.button("Login as Admin"):
+            if admin_password == "admin123":  # Replace with your desired admin password
+                st.session_state.admin_logged_in = True
+                st.rerun()
+            else:
+                st.error("Invalid admin password")
 
 # Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
@@ -478,7 +468,7 @@ if st.session_state.admin_logged_in:
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
         
-        # Date filter (if enabled and timestamp column exists)
+        # Date filter (if enabled and Date / Time column exists)
         if "Date / Time" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
             date_col1, date_col2 = st.columns(2)
             with date_col1:
@@ -590,7 +580,7 @@ if st.session_state.admin_logged_in:
                     ),
                     "Date / Time": st.column_config.TextColumn(
                         "Date / Time",
-                        help="Date and time when test was completed",
+                        help="Test completion date and time",
                     )
                 }
             )
@@ -598,6 +588,7 @@ if st.session_state.admin_logged_in:
             st.warning("No results found matching the current filters.")
     else:
         st.info("No results available yet in the Result 2 sheet.")
+    
     if st.button("Logout"):
         st.session_state.admin_logged_in = False
         st.session_state.pop("quiz", None)
@@ -605,7 +596,10 @@ if st.session_state.admin_logged_in:
 
 # Employee login and quiz
 if not st.session_state.admin_logged_in:
-    if st.session_state.quiz is None:
+    if "reset_counter" not in st.session_state:
+        st.session_state.reset_counter = 0
+
+    if "quiz" not in st.session_state:
         st.subheader("Employee Login")
 
         col1, col2 = st.columns(2)
@@ -677,7 +671,7 @@ if not st.session_state.admin_logged_in:
         elapsed = int(time.time() - qstate["start_ts"])
         remaining = max(0, total_secs - elapsed)
 
-        if total_secs > 0 and len(qstate["queue"]) > 0 and not st.session_state.submitted:
+        if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
             if remaining <= 0:
                 st.error("Time is up! Auto-submitting your test...")
                 qstate["wrong"] += len(qstate["queue"])
@@ -690,8 +684,8 @@ if not st.session_state.admin_logged_in:
                 ok, msg = append_result(
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
                 )
-                st.session_state.submitted = True
-                st.session_state.submit_result = (ok, msg, right, total_q, pct, criteria, status)
+                st.session_state["submitted"] = True
+                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
                 st.query_params.clear()
                 st.rerun()
 
