@@ -385,21 +385,22 @@ questions = load_questions()
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
-# Admin login section
-st.subheader("Admin Login")
-col1, col2 = st.columns(2)
-with col1:
-    admin_username = st.text_input("Username", key="admin_username")
-with col2:
-    admin_password = st.text_input("Password", type="password", key="admin_password")
-if st.button("Login as Admin"):
-    if admin_username == "admin" and admin_password == "admin123":  # Replace with your desired credentials
-        st.session_state.admin_logged_in = True
-        st.rerun()
-    else:
-        st.error("Invalid username or password")
+# Admin login section (only shown if not logged in)
+if not st.session_state.admin_logged_in:
+    st.subheader("Admin Login")
+    col1, col2 = st.columns(2)
+    with col1:
+        admin_username = st.text_input("Username", key="admin_username")
+    with col2:
+        admin_password = st.text_input("Password", type="password", key="admin_password")
+    if st.button("Login as Admin"):
+        if admin_username == "admin" and admin_password == "admin123":  # Replace with your desired credentials
+            st.session_state.admin_logged_in = True
+            st.rerun()
+        else:
+            st.error("Invalid username or password")
 
-# Enhanced Admin dashboard with filters
+# Enhanced Admin dashboard with filters (only shown if logged in)
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     
