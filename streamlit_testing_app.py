@@ -512,7 +512,7 @@ if st.session_state.admin_logged_in:
 
             # Clear filters button aligned with input boxes
             if st.button("🗑️ Clear All Filters", use_container_width=True):
-                filter = st.number_input(step=1.0) 
+                filter = st.number_input("") 
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
                            "min_percentage_filter", "max_percentage_filter"]:
                     if key in st.session_state:
