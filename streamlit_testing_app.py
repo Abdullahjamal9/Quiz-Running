@@ -385,6 +385,7 @@ employees, standards = load_employees_and_standards()
 questions = load_questions()
 
 # Admin login state
+# Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     
@@ -425,7 +426,7 @@ if st.session_state.admin_logged_in:
         # Clear filters button row
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
         
-        with filter_col8:
+        with filter_col5:
             st.write("")
             # Clear filters button
             if st.button("🗑️ Clear All Filters"):
