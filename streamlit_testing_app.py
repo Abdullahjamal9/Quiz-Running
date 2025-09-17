@@ -401,6 +401,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             st.error("Invalid username or password")
 
 # Enhanced Admin dashboard with filters
+# Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     
@@ -502,6 +503,7 @@ if st.session_state.admin_logged_in:
         
         # NOW Display summary statistics based on FILTERED data
         st.markdown("---")
+        st.subheader("📊 Summary Statistics")
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -530,9 +532,13 @@ if st.session_state.admin_logged_in:
             # Add export functionality
             export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
             
+            # Add serial number to filtered dataframe
+            display_df = filtered_df.copy()
+            display_df.insert(0, 'Sr.', range(1, len(display_df) + 1))
+            
             with export_col1:
-                # Download as CSV
-                csv = filtered_df.to_csv(index=False)
+                # Download as CSV (with serial numbers)
+                csv = display_df.to_csv(index=False)
                 st.download_button(
                     label="📄 Download as CSV",
                     data=csv,
@@ -556,12 +562,22 @@ if st.session_state.admin_logged_in:
                             cols_to_show.append(col)
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
             
+            # Add serial number to filtered dataframe
+            display_df = filtered_df.copy()
+            display_df.insert(0, 'Sr.', range(1, len(display_df) + 1))
+            
             # Display the dataframe with enhanced formatting
             st.dataframe(
-                filtered_df,
+                display_df,
                 use_container_width=True,
                 hide_index=True,
                 column_config={
+                    "Sr.": st.column_config.NumberColumn(
+                        "Sr.",
+                        help="Serial Number",
+                        format="%d",
+                        width="small"
+                    ),
                     "Percentage": st.column_config.ProgressColumn(
                         "Percentage",
                         help="Test Score Percentage",
@@ -599,7 +615,6 @@ if st.session_state.admin_logged_in:
         st.session_state.admin_logged_in = False
         st.session_state.pop("quiz", None)
         st.rerun()
-
 # Employee login and quiz
 if not st.session_state.admin_logged_in:
     if "reset_counter" not in st.session_state:
