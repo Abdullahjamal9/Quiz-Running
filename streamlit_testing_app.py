@@ -213,7 +213,7 @@ def load_all_results():
             'Right': ['CORRECT ANSWER', 'Correct Answer', 'Right', 'right', 'Correct'],
             'Wrong': ['WRONG ANSWER', 'Wrong Answer', 'Wrong', 'wrong', 'Incorrect'],
             'Percentage': ['PERCENTAGE', 'Percentage', 'percentage', 'Score', 'score'],
-            'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
+            'Passing Criteria %': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
             'Status': ['STATUS', 'Status', 'status', 'Result'],
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
             'Timestamp': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time']
