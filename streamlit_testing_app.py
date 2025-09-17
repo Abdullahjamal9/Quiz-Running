@@ -509,29 +509,10 @@ if st.session_state.admin_logged_in:
             st.write("")  # Empty column for spacing
         
         with filter_col8:
-            # Use CSS to align button with input fields
-            st.markdown(
-                """
-                <style>
-                div[data-testid="column"]:nth-child(4) button {
-                    margin-top: 2.5rem !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
-            st.markdown(
-                """
-                <style>
-                div[data-testid="column"]:nth-child(4) button {
-                    margin-top: 2.5rem !important;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
+
             # Clear filters button aligned with input boxes
             if st.button("🗑️ Clear All Filters", use_container_width=True):
+                filter = st.number_input() 
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
                            "min_percentage_filter", "max_percentage_filter"]:
                     if key in st.session_state:
