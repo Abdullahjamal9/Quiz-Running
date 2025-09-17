@@ -397,14 +397,14 @@ st.set_page_config(page_title="PTIS Online Testing", page_icon="📝", layout="c
 st.title("PTIS Online Testing Module")
 
 # Add Admin Login in Sidebar
-with st.sidebar:
-    st.subheader("Admin Login")
-    if not st.session_state.admin_logged_in:
-        admin_password = st.text_input("Admin Password", type="password")
-        if st.button("Admin Login"):
-            if admin_password == "admin123":  # Change this to your desired admin password
-                st.session_state.admin_logged_in = True
-                st.rerun()
+# with st.sidebar:
+st.subheader("Admin Login")
+if not st.session_state.admin_logged_in:
+    admin_password = st.text_input("Admin Password", type="password")
+     if st.button("Admin Login"):
+        if admin_password == "AdminPtis-3692":  # Change this to your desired admin password                
+            st.session_state.admin_logged_in = True
+            st.rerun()
             else:
                 st.error("Invalid password")
     else:
