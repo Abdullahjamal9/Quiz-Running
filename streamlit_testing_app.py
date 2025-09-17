@@ -397,7 +397,6 @@ st.set_page_config(page_title="PTIS Online Testing", page_icon="📝", layout="c
 st.title("PTIS Online Testing Module")
 
 # Add Admin Login in Sidebar
-# with st.sidebar:
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 
@@ -412,9 +411,6 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             st.rerun()
         else:
             st.error("Invalid username or password")
-
-employees, standards = load_employees_and_standards()
-questions = load_questions()
 
 # Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
