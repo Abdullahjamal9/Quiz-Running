@@ -214,7 +214,7 @@ def load_all_results():
         
         if "Criteria" in df.columns:
             # Remove % sign and convert to numeric
-            df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "").str.replace(" ", "")
+            df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "%").str.replace(" ", "")
             df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
         
         # Sort by timestamp if available (most recent first)
