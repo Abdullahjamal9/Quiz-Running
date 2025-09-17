@@ -375,7 +375,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 # =====================
 # UI
 # =====================
-st.set_page_config(page_title="PTIS Online Testing", page_icon="📝", layout="centered")
+st.set_page_config(page_title="PTIS Online Testing Module", page_icon="📝", layout="centered")
 st.title("PTIS Online Testing Module")
 
 employees, standards = load_employees_and_standards()
@@ -387,15 +387,24 @@ if "admin_logged_in" not in st.session_state:
 if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
 
+# Admin login section
+if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
+    st.subheader("Admin Login")
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+    if st.button("Login"):
+        # Add your admin authentication logic here
+        if username == "admin" and password == "password":  # Replace with actual authentication
+            st.session_state.admin_logged_in = True
+            st.rerun()
+
 # Admin dashboard (only shown if logged in)
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
-    
-    # Add a refresh button to reload the data
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
-    
+        
     results_df = load_all_results()
     if not results_df.empty:
         # Add filters section FIRST
@@ -586,10 +595,10 @@ if st.session_state.admin_logged_in:
             st.rerun()
 
 # Employee login and quiz (shown when not admin and no quiz is active)
+#if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
+   # if "reset_counter" not in st.session_state:
+       # st.session_state.reset_counter = 0
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
-    if "reset_counter" not in st.session_state:
-        st.session_state.reset_counter = 0
-
     st.subheader("Employee Login")
 
     col1, col2 = st.columns(2)
