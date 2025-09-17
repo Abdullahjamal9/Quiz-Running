@@ -167,23 +167,11 @@ def load_all_results():
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         
-        # Get all values to preserve exact row order from Google Sheets
-        all_values = worksheet.get_all_values()
-        if len(all_values) < 2:  # No data rows (only header or empty)
+        records = worksheet.get_all_records()
+        if not records:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         
-        # First row is header, rest are data
-        headers = all_values[0]
-        data_rows = all_values[1:]
-        
-        # Create DataFrame preserving exact order from Google Sheets
-        df = pd.DataFrame(data_rows, columns=headers)
-        
-        # Add original row index to preserve Google Sheets order
-        df['_original_order'] = range(len(df))
-        
-        # Remove empty rows (where all values are empty strings)
-        df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
+        df = pd.DataFrame(records)
         
         # Map column names to handle variations
         column_mapping = {
@@ -202,7 +190,7 @@ def load_all_results():
         # Rename columns to standard names
         for standard_name, possible_names in column_mapping.items():
             for col in df.columns:
-                if col in possible_names and col != '_original_order':
+                if col in possible_names:
                     df = df.rename(columns={col: standard_name})
                     break
         
@@ -224,11 +212,13 @@ def load_all_results():
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
-        # Ensure original Google Sheets order is preserved (newest entries at bottom)
-        df = df.sort_values('_original_order').drop('_original_order', axis=1)
         
-        # Reset index to ensure clean indexing
-        df = df.reset_index(drop=True)
+        # Sort by timestamp if available (most recent first)
+        if "Timestamp" in df.columns:
+            try:
+                df = df.sort_values("Timestamp", ascending=False)
+            except:
+                pass
         
         return df[required_columns]
         
@@ -238,6 +228,7 @@ def load_all_results():
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+
 # =====================
 # Helpers
 # =====================
@@ -427,71 +418,67 @@ if st.session_state.admin_logged_in:
                 st.metric("Avg Score", f"{avg_score:.1f}%")
             else:
                 st.metric("Avg Score", "N/A")
-            # Replace your entire filters section with this clean version:
+        
+        st.markdown("---")
+        
+        # Add filters section
+        st.subheader("🔍 Filters")
+        
+        # Create filter columns
+        filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+        
+        with filter_col1:
+            # Employee ID filter
+            employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+            selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
+        
+        with filter_col2:
+            # Employee Name filter
+            employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
+            selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
+        
+        with filter_col3:
+            # Status filter
+            statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
+            selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
+        
+        with filter_col4:
+            # Test Type/Standard filter
+            test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
+            selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
+        
+        # Additional filters row
+        filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
+        
+        with filter_col5:
+            # Percentage range filter
+            if "Percentage" in results_df.columns:
+                min_percentage = st.number_input("Min Percentage (%)", 
+                                               min_value=0.0, 
+                                               max_value=100.0, 
+                                               value=0.0, 
+                                               step=1.0,
+                                               key="min_percentage_filter")
+        
+        with filter_col6:
+            if "Percentage" in results_df.columns:
+                max_percentage = st.number_input("Max Percentage (%)", 
+                                               min_value=0.0, 
+                                               max_value=100.0, 
+                                               value=100.0, 
+                                               step=1.0,
+                                               key="max_percentage_filter")
 
-            # Add filters section
-            st.subheader("🔍 Filters")
-            
-            # Create filter columns - First Row
-            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-            
-            with filter_col1:
-                # Employee ID filter
-                employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-                selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
-            
-            with filter_col2:
-                # Employee Name filter
-                employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-                selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
-            
-            with filter_col3:
-                # Status filter
-                statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
-                selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
-            
-            with filter_col4:
-                # Test Type/Standard filter
-                test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
-                selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
-            
-            # Second Row - Percentage filters and Clear button
-            filter_col5, filter_col6, filter_col7, filter_col8 = st.columns([1, 1, 1, 1])
-            
-            with filter_col5:
-                # Percentage range filter
-                if "Percentage" in results_df.columns:
-                    min_percentage = st.number_input("Min Percentage (%)", 
-                                                   min_value=0.0, 
-                                                   max_value=100.0, 
-                                                   value=0.0, 
-                                                   step=1.0,
-                                                   key="min_percentage_filter")
-            
-            with filter_col6:
-                if "Percentage" in results_df.columns:
-                    max_percentage = st.number_input("Max Percentage (%)", 
-                                                   min_value=0.0, 
-                                                   max_value=100.0, 
-                                                   value=100.0, 
-                                                   step=1.0,
-                                                   key="max_percentage_filter")
-            
-            with filter_col7:
-                # Empty space
-                st.write("")
-            
-            with filter_col8:
-                # Add some spacing to align the button with the input fields
-                st.markdown("<br>", unsafe_allow_html=True)
-                if st.button("🗑️ Clear All Filters", use_container_width=True, type="secondary"):
-                    for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
-                               "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    st.rerun()
-
-# Remove all the other button code that was causing the mess
+        
+        with filter_col8:
+            st.write("")
+            # Clear filters button
+            if st.button("🗑️ Clear All Filters"):
+                for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
+                           "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
         
         # Apply filters
         filtered_df = results_df.copy()
