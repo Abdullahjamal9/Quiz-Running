@@ -469,12 +469,7 @@ if st.session_state.admin_logged_in:
                                                step=1.0,
                                                key="max_percentage_filter")
 
-            if st.button("🗑️ Clear All Filters"):
-                for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
-                           "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
+
         with filter_col8:
             st.write("")
             # Clear filters button
