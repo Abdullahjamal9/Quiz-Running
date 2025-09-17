@@ -392,17 +392,40 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             st.error("Invalid username or password")
 
 # Enhanced Admin dashboard with filters
+st.set_page_config(page_title="PTIS Online Testing", page_icon="📝", layout="centered")
+st.title("PTIS Online Testing Module")
+
+employees, standards = load_employees_and_standards()
+questions = load_questions()
+
+# Admin login state
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
+
+# Admin login page
+if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
+    st.subheader("Admin Login")
+    admin_username = st.text_input("Username", key="admin_username")
+    admin_password = st.text_input("Password", type="password", key="admin_password")
+    if st.button("Login"):
+        if admin_username == "admin" and admin_password == "AdminPtis-3692":
+            st.session_state.admin_logged_in = True
+            st.rerun()
+        else:
+            st.error("Invalid username or password")
+
+# Enhanced Admin dashboard with filters
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     
-    # Add a refresh button to reload the data
+    # Add a refresh button
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
     
     results_df = load_all_results()
     if not results_df.empty:
-        # Display some summary statistics
+        # Display summary statistics
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Tests", len(results_df))
@@ -421,107 +444,97 @@ if st.session_state.admin_logged_in:
         
         st.markdown("---")
         
-        # Add filters section
+        # Filters section with custom CSS container
         st.subheader("🔍 Filters")
         
-        # Create filter columns
-        filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-        
-        with filter_col1:
-            # Employee ID filter
-            employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
-        
-        with filter_col2:
-            # Employee Name filter
-            employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
-        
-        with filter_col3:
-            # Status filter
-            statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
-            selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
-        
-        with filter_col4:
-            # Test Type/Standard filter
-            test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
-            selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
-        
-        # Additional filters row
-        filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-        
-        with filter_col5:
-            # Percentage range filter
-            if "Percentage" in results_df.columns:
-                min_percentage = st.number_input("Min Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=0.0, 
-                                               step=1.0,
-                                               key="min_percentage_filter")
-        
-        with filter_col6:
-            if "Percentage" in results_df.columns:
-                max_percentage = st.number_input("Max Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=100.0, 
-                                               step=1.0,
-                                               key="max_percentage_filter")
-
-
-        with filter_col8:
-            st.write("")
-            # Clear filters button
-            if st.button("🗑️ Clear All Filters"):
+        # Create a container for filters with custom styling
+        with st.container():
+            st.markdown(
+                """
+                <style>
+                .filter-container {
+                    position: relative;
+                    padding: 10px;
+                    border: 1px solid #e0e0e0;
+                    border-radius: 5px;
+                    margin-bottom: 20px;
+                }
+                .clear-button {
+                    position: absolute;
+                    bottom: 10px;
+                    right: 10px;
+                    width: auto;
+                    padding: 5px 15px;
+                    font-size: 14px;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+            
+            # Filter columns
+            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+            
+            with filter_col1:
+                employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+                selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
+            
+            with filter_col2:
+                employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
+                selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
+            
+            with filter_col3:
+                statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
+                selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
+            
+            with filter_col4:
+                test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
+                selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
+            
+            # Additional filters row
+            filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
+            
+            with filter_col5:
+                if "Percentage" in results_df.columns:
+                    min_percentage = st.number_input("Min Percentage (%)", min_value=0.0, max_value=100.0, value=0.0, step=1.0, key="min_percentage_filter")
+            
+            with filter_col6:
+                if "Percentage" in results_df.columns:
+                    max_percentage = st.number_input("Max Percentage (%)", min_value=0.0, max_value=100.0, value=100.0, step=1.0, key="max_percentage_filter")
+            
+            with filter_col8:
+                st.write("")  # Placeholder to align the button
+            
+            # Clear All Filters button with custom class
+            if st.button("🗑️ Clear All Filters", key="clear_filters", help="Reset all filters", class_="clear-button"):
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
                            "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
         
-        # Apply filters
+        # Apply filters (rest of the filtering logic remains unchanged)
         filtered_df = results_df.copy()
-        
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
-        
         if selected_emp_name != "All":
             filtered_df = filtered_df[filtered_df["Name"] == selected_emp_name]
-        
         if selected_status != "All":
             filtered_df = filtered_df[filtered_df["Status"] == selected_status]
-        
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
-        
         if "Percentage" in filtered_df.columns:
-            filtered_df = filtered_df[
-                (filtered_df["Percentage"] >= min_percentage) & 
-                (filtered_df["Percentage"] <= max_percentage)
-            ]
+            filtered_df = filtered_df[(filtered_df["Percentage"] >= min_percentage) & (filtered_df["Percentage"] <= max_percentage)]
         
-        # Date filter (if enabled and timestamp column exists)
-        if "Timestamp" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
-            date_col1, date_col2 = st.columns(2)
-            with date_col1:
-                start_date = st.date_input("Start Date", key="start_date_filter")
-            with date_col2:
-                end_date = st.date_input("End Date", key="end_date_filter")
-        
-        # Show filtered results count
         if len(filtered_df) != len(results_df):
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
         
         st.markdown("---")
         
-        # Display the filtered results table
+        # Display the filtered results table (rest remains unchanged)
         if not filtered_df.empty:
-            # Add export functionality
             export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
-            
             with export_col1:
-                # Download as CSV
                 csv = filtered_df.to_csv(index=False)
                 st.download_button(
                     label="📄 Download as CSV",
@@ -529,13 +542,10 @@ if st.session_state.admin_logged_in:
                     file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
                 )
-            
             with export_col2:
-                # Show/Hide columns
                 if st.button("⚙️ Column Settings"):
                     st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
             
-            # Column visibility settings
             if st.session_state.get("show_column_settings", False):
                 st.subheader("Column Visibility")
                 cols_to_show = []
@@ -546,7 +556,6 @@ if st.session_state.admin_logged_in:
                             cols_to_show.append(col)
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
             
-            # Display the dataframe with enhanced formatting
             st.dataframe(
                 filtered_df,
                 use_container_width=True,
@@ -589,7 +598,6 @@ if st.session_state.admin_logged_in:
         st.session_state.admin_logged_in = False
         st.session_state.pop("quiz", None)
         st.rerun()
-
 # Employee login and quiz
 if not st.session_state.admin_logged_in:
     if "reset_counter" not in st.session_state:
