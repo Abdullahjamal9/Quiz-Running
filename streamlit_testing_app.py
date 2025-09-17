@@ -520,6 +520,16 @@ if st.session_state.admin_logged_in:
                 """,
                 unsafe_allow_html=True
             )
+            st.markdown(
+                """
+                <style>
+                div[data-testid="column"]:nth-child(4) button {
+                    margin-top: 2.5rem !important;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
             # Clear filters button aligned with input boxes
             if st.button("🗑️ Clear All Filters", use_container_width=True):
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
