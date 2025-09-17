@@ -37,13 +37,13 @@ def load_employees_and_standards():
             employees_data = sheet.worksheet("Emloyees Data").get_all_records()
             employees = pd.DataFrame(employees_data)
             if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
-            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            pct = (right/total_q)*100 if total_q else 0.0
-            status = "Pass" if pct >= float(criteria) else "Fail"
-
-            st.success("All questions attempted. You can now submit your test.")
-
-            submit_clicked = st.button("Submit", use_container_width=True)
+                right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+                pct = (right/total_q)*100 if total_q else 0.0
+                status = "Pass" if pct >= float(criteria) else "Fail"
+    
+                st.success("All questions attempted. You can now submit your test.")
+    
+                submit_clicked = st.button("Submit", use_container_width=True)
             if submit_clicked:
                 ok, msg = append_result(
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
