@@ -212,7 +212,6 @@ def load_all_results():
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
-        
         # Sort by timestamp if available (most recent first)
         if "Timestamp" in df.columns:
             try:
@@ -472,7 +471,20 @@ if st.session_state.admin_logged_in:
         
         with filter_col8:
             st.write("")
-            # Clear filters button
+            # Clear filters button aligned to the right bottom corner
+            st.markdown(
+                """
+                <style>
+                .stButton > button {
+                    width: 100%;
+                    position: absolute;
+                    bottom: 0;
+                    right: 0;
+                }
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
             if st.button("🗑️ Clear All Filters"):
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
                            "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
@@ -612,7 +624,7 @@ if not st.session_state.admin_logged_in:
         def fetch_name(employees_df, emp_id_input):
             if emp_id_input and not employees_df.empty:
                 try:
-                    fetched = employees_df[employees_df["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
+                    fetched = employees_df[employees_df["ID"].astype(str).strip() == str(emp_id_input).strip()]
                     if not fetched.empty:
                         return str(fetched.iloc[0]["Name"])
                 except Exception:
