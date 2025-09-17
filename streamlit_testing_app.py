@@ -36,39 +36,7 @@ def load_employees_and_standards():
         try:
             employees_data = sheet.worksheet("Emloyees Data").get_all_records()
             employees = pd.DataFrame(employees_data)
-            if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
-                right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                pct = (right/total_q)*100 if total_q else 0.0
-                status = "Pass" if pct >= float(criteria) else "Fail"
-    
-                st.success("All questions attempted. You can now submit your test.")
-    
-                submit_clicked = st.button("Submit", use_container_width=True)
-            if submit_clicked:
-                ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-                )
-                st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
-                st.rerun()
-
-        
-            if "submit_result" in st.session_state:
-                ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
-                if not ok:
-                    st.error(f"Failed to save results to Google Sheets: {msg}")
-
-                color = "#043006" if status == "Pass" else "#DC2626"
-                st.markdown(
-                    f"""
-                    <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
-                        <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
-                        <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-                employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns)
+            if employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
                 employees = pd.DataFrame(columns=["ID", "Name"])
             else:
                 id_col = next((col for col in employees.columns if "id" in col.lower()), "ID")
@@ -244,10 +212,10 @@ def load_all_results():
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
-        # if "Criteria" in df.columns:
-        #     # Remove % sign and convert to numeric
-        #     df["Criteria"] = df["Criteria"].astype(str)
-        #     df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
+        if "Criteria" in df.columns:
+            # Remove % sign and convert to numeric
+            df["Criteria"] = df["Criteria"].astype(str)
+            df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
         
         # Sort by timestamp if available (most recent first)
         if "Timestamp" in df.columns:
@@ -504,20 +472,18 @@ if st.session_state.admin_logged_in:
                                                value=100.0, 
                                                step=1.0,
                                                key="max_percentage_filter")
-        
-        with filter_col7:
-            st.write("")  # Empty column for spacing
+
         
         with filter_col8:
             st.write("")
-
-            # Clear filters button aligned with input boxes
-            if st.button("🗑️ Clear All Filters", use_container_width=True):
+            # Clear filters button
+            if st.button("🗑️ Clear All Filters"):
                 for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
-                           "min_percentage_filter", "max_percentage_filter"]:
+                           "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
+        
         # Apply filters
         filtered_df = results_df.copy()
         
@@ -538,6 +504,14 @@ if st.session_state.admin_logged_in:
                 (filtered_df["Percentage"] >= min_percentage) & 
                 (filtered_df["Percentage"] <= max_percentage)
             ]
+        
+        # Date filter (if enabled and timestamp column exists)
+        if "Timestamp" in filtered_df.columns and st.session_state.get("date_filter_enabled", False):
+            date_col1, date_col2 = st.columns(2)
+            with date_col1:
+                start_date = st.date_input("Start Date", key="start_date_filter")
+            with date_col2:
+                end_date = st.date_input("End Date", key="end_date_filter")
         
         # Show filtered results count
         if len(filtered_df) != len(results_df):
@@ -626,7 +600,7 @@ if not st.session_state.admin_logged_in:
         st.session_state.reset_counter = 0
 
     if "quiz" not in st.session_state:
-        st.subheader("👤 Employee Login")
+        st.subheader("Employee Login")
 
         col1, col2 = st.columns(2)
         
@@ -983,7 +957,6 @@ if not st.session_state.admin_logged_in:
                         qstate["queue"].append(qstate["queue"].pop(0))
                         st.session_state.quiz = qstate
                         st.rerun()
-
 
 
         if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
