@@ -395,7 +395,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     password = st.text_input("Password", type="password")
     if st.button("Login"):
         # Simple authentication (replace with your actual credentials or secure method)
-        if username == "admin" and password == "admin123":  # Change to your desired credentials
+        if username == "admin" and password == "AdminPtis-3692":  # Change to your desired credentials
             st.session_state.admin_logged_in = True
             st.rerun()
 
