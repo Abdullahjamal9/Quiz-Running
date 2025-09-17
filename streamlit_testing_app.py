@@ -398,20 +398,20 @@ st.title("PTIS Online Testing Module")
 
 # Add Admin Login in Sidebar
 # with st.sidebar:
-st.subheader("Admin Login")
-if not st.session_state.admin_logged_in:
-    admin_password = st.text_input("Admin Password", type="password")
-    if st.button("Admin Login"):
-        if admin_password == "AdminPtis-3692":  # Change this to your desired admin password                
+if "admin_logged_in" not in st.session_state:
+    st.session_state.admin_logged_in = False
+
+# Admin login page
+if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
+    st.subheader("Admin Login")
+    admin_username = st.text_input("Username", key="admin_username")
+    admin_password = st.text_input("Password", type="password", key="admin_password")
+    if st.button("Login"):
+        if admin_username == "admin" and admin_password == "AdminPtis-3692":  # Hardcoded for simplicity
             st.session_state.admin_logged_in = True
             st.rerun()
         else:
-            st.error("Invalid password")
-    else:
-        st.success("Admin logged in")
-        if st.button("Admin Logout"):
-            st.session_state.admin_logged_in = False
-            st.rerun()
+            st.error("Invalid username or password")
 
 employees, standards = load_employees_and_standards()
 questions = load_questions()
@@ -602,6 +602,10 @@ if st.session_state.admin_logged_in:
             st.warning("No results found matching the current filters.")
     else:
         st.info("No results available yet in the Result 2 sheet.")
+    if st.button("Logout"):
+        st.session_state.admin_logged_in = False
+        st.session_state.pop("quiz", None)
+        st.rerun()
 
 # Employee login and quiz
 if not st.session_state.admin_logged_in:
