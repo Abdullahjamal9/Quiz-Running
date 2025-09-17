@@ -197,11 +197,11 @@ def load_all_results():
         
         if worksheet is None:
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Passing Criteria", "Status", "Test Type", "Timestamp"])
         
         records = worksheet.get_all_records()
         if not records:
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Passing Criteria", "Status", "Test Type", "Timestamp"])
         
         df = pd.DataFrame(records)
         
@@ -213,7 +213,7 @@ def load_all_results():
             'Right': ['CORRECT ANSWER', 'Correct Answer', 'Right', 'right', 'Correct'],
             'Wrong': ['WRONG ANSWER', 'Wrong Answer', 'Wrong', 'wrong', 'Incorrect'],
             'Percentage': ['PERCENTAGE', 'Percentage', 'percentage', 'Score', 'score'],
-            'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
+            'Passing Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
             'Status': ['STATUS', 'Status', 'status', 'Result'],
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
             'Timestamp': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time']
@@ -227,7 +227,7 @@ def load_all_results():
                     break
         
         # Ensure all required columns exist
-        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"]
+        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Passing Criteria", "Status", "Test Type", "Timestamp"]
         for col in required_columns:
             if col not in df.columns:
                 df[col] = ""
@@ -263,7 +263,7 @@ def load_all_results():
         # Show more detailed error information
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
-        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Passing Criteria", "Status", "Test Type", "Timestamp"])
 
 # =====================
 # Helpers
