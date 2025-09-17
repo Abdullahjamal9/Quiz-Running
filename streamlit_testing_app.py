@@ -29,96 +29,43 @@ GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 # Cached Loaders
 # =====================
 @st.cache_data
-def load_all_results():
+def load_employees_and_standards():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
-        # Try different possible worksheet names
-        worksheet_names = ["Result 2", "Result2", "Result", "Results"]
-        worksheet = None
-        
-        # Try to find the correct worksheet
-        for name in worksheet_names:
-            try:
-                worksheet = sheet.worksheet(name)
-                break
-            except Exception:
-                continue
-        
-        if worksheet is None:
-            # If no worksheet found, try to find any worksheet with "result" in the name
-            try:
-                all_worksheets = sheet.worksheets()
-                for ws in all_worksheets:
-                    if "result" in ws.title.lower():
-                        worksheet = ws
-                        break
-            except:
-                pass
-        
-        if worksheet is None:
-            st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
-        
-        records = worksheet.get_all_records()
-        if not records:
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
-        
-        df = pd.DataFrame(records)
-        
-        # Map column names to handle variations
-        column_mapping = {
-            'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
-            'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
-            'Total': ['TOTAL QUESTION', 'Total Question', 'Total', 'total', 'Total Questions'],
-            'Right': ['CORRECT ANSWER', 'Correct Answer', 'Right', 'right', 'Correct'],
-            'Wrong': ['WRONG ANSWER', 'Wrong Answer', 'Wrong', 'wrong', 'Incorrect'],
-            'Percentage': ['PERCENTAGE', 'Percentage', 'percentage', 'Score', 'score'],
-            'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
-            'Status': ['STATUS', 'Status', 'status', 'Result'],
-            'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
-            'Timestamp': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time']
-        }
-        
-        # Rename columns to standard names
-        for standard_name, possible_names in column_mapping.items():
-            for col in df.columns:
-                if col in possible_names:
-                    df = df.rename(columns={col: standard_name})
-                    break
-        
-        # Ensure all required columns exist
-        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"]
-        for col in required_columns:
-            if col not in df.columns:
-                df[col] = ""
-        
-        # Handle numeric columns more robustly
-        numeric_cols = ["Total", "Right", "Wrong"]
-        for col in numeric_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-        
-        # Handle percentage columns more robustly
-        if "Percentage" in df.columns:
-            # Remove % sign and convert to numeric
-            df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
-            df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
-        
-        
-        # REMOVED THE SORTING - Keep the original Google Sheets order
-        # This maintains the same order as in Google Sheets (newest entries at bottom)
-        # If you want to reverse it to show newest first, uncomment the next line:
-        # df = df.iloc[::-1].reset_index(drop=True)
-        
-        return df[required_columns]
-        
-    except Exception as e:
-        st.error(f"Error loading results: {str(e)}")
-        # Show more detailed error information
-        import traceback
-        st.error(f"Detailed error: {traceback.format_exc()}")
-        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
+        # Load Employees Data
+        try:
+            employees_data = sheet.worksheet("Emloyees Data").get_all_records()
+            employees = pd.DataFrame(employees_data)
+            if employees.empty or not any(col.lower() in ["id", "name"] for col in employees.columns):
+                employees = pd.DataFrame(columns=["ID", "Name"])
+            else:
+                id_col = next((col for col in employees.columns if "id" in col.lower()), "ID")
+                name_col = next((col for col in employees.columns if "name" in col.lower()), "Name")
+                employees = employees[[id_col, name_col]].rename(columns={id_col: "ID", name_col: "Name"})
+        except Exception:
+            employees = pd.DataFrame(columns=["ID", "Name"])
+        # Load Standards
+        try:
+            standards_data = sheet.worksheet("Standard").get_all_records()
+            standards = pd.DataFrame(standards_data)
+            if standards.empty or len(standards.columns) < 2:
+                while len(standards.columns) < 2:
+                    standards[standards.columns[-1] + "_dup" + str(len(standards.columns))] = ""
+                standards.columns = ["Standard", "ShortName"]
+            else:
+                standards.columns = ["Standard", "ShortName"]
+        except Exception:
+            standards = pd.DataFrame(columns=["Standard", "ShortName"])
+        standards["Standard"] = standards["Standard"].astype(str).str.strip()
+        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+        return employees, standards
+    except Exception:
+        employees = pd.DataFrame(columns=["ID", "Name"])
+        standards = pd.DataFrame(columns=["Standard", "ShortName"])
+        standards["Standard"] = standards["Standard"].astype(str).str.strip()
+        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+        return employees, standards
+
 
 @st.cache_data
 def load_questions():
@@ -220,11 +167,17 @@ def load_all_results():
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         
-        records = worksheet.get_all_records()
-        if not records:
+        # Get all values to preserve exact row order
+        all_values = worksheet.get_all_values()
+        if len(all_values) < 2:  # No data rows (only header or empty)
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Timestamp"])
         
-        df = pd.DataFrame(records)
+        # First row is header, rest are data
+        headers = all_values[0]
+        data_rows = all_values[1:]
+
+# Create DataFrame preserving exact order
+df = pd.DataFrame(data_rows, columns=headers)
         
         # Map column names to handle variations
         column_mapping = {
