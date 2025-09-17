@@ -405,8 +405,8 @@ if not st.session_state.admin_logged_in:
         if admin_password == "AdminPtis-3692":  # Change this to your desired admin password                
             st.session_state.admin_logged_in = True
             st.rerun()
-            else:
-                st.error("Invalid password")
+        else:
+            st.error("Invalid password")
     else:
         st.success("Admin logged in")
         if st.button("Admin Logout"):
