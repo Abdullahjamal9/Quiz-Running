@@ -390,8 +390,8 @@ if not st.session_state.admin_logged_in:
     st.subheader("Admin Login")
     admin_username = st.text_input("Username", key="admin_username")
     admin_password = st.text_input("Password", type="password", key="admin_password")
-    if st.button("Login as Admin"):
-        if admin_username == "admin" and admin_password == "admin123":  # Replace with your desired credentials
+    if st.button("Login"):
+        if admin_username == "admin" and admin_password == "AdminPtis-3692":  # Replace with your desired credentials
             st.session_state.admin_logged_in = True
             st.rerun()
         else:
