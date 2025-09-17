@@ -427,66 +427,153 @@ if st.session_state.admin_logged_in:
                 st.metric("Avg Score", f"{avg_score:.1f}%")
             else:
                 st.metric("Avg Score", "N/A")
-        
-        st.markdown("---")
-        
-        # Add filters section
-        st.subheader("🔍 Filters")
-        
-        # Create filter columns
-        filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-        
-        with filter_col1:
-            # Employee ID filter
-            employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
-        
-        with filter_col2:
-            # Employee Name filter
-            employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
-        
-        with filter_col3:
-            # Status filter
-            statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
-            selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
-        
-        with filter_col4:
-            # Test Type/Standard filter
-            test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
-            selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
-        
-        # Additional filters row
-        filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-        
-        with filter_col5:
-            # Percentage range filter
-            if "Percentage" in results_df.columns:
-                min_percentage = st.number_input("Min Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=0.0, 
-                                               step=1.0,
-                                               key="min_percentage_filter")
-        
-        with filter_col6:
-            if "Percentage" in results_df.columns:
-                max_percentage = st.number_input("Max Percentage (%)", 
-                                               min_value=0.0, 
-                                               max_value=100.0, 
-                                               value=100.0, 
-                                               step=1.0,
-                                               key="max_percentage_filter")
-
-        
-        with filter_col8:
-            # Clear filters button
-            if st.button("🗑️ Clear All Filters"):
-                for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
-                           "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
-                    if key in st.session_state:
-                        del st.session_state[key]
-                st.rerun()
+            # Replace the filters section in your code with this:
+            
+            # Add custom CSS for floating button
+            st.markdown("""
+            <style>
+            .filter-container {
+                position: relative;
+                padding-bottom: 60px; /* Space for the floating button */
+            }
+            
+            .floating-clear-btn {
+                position: absolute;
+                bottom: 10px;
+                right: 10px;
+                z-index: 1000;
+            }
+            
+            .floating-clear-btn button {
+                background: linear-gradient(135deg, #ef4444, #dc2626) !important;
+                color: white !important;
+                border: none !important;
+                border-radius: 8px !important;
+                padding: 8px 16px !important;
+                font-weight: 600 !important;
+                box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3) !important;
+                transition: all 0.3s ease !important;
+                min-height: 38px !important;
+            }
+            
+            .floating-clear-btn button:hover {
+                background: linear-gradient(135deg, #dc2626, #b91c1c) !important;
+                transform: translateY(-2px) !important;
+                box-shadow: 0 6px 20px rgba(239, 68, 68, 0.4) !important;
+            }
+            
+            .floating-clear-btn button:active {
+                transform: translateY(0px) !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Add filters section with container
+            st.markdown('<div class="filter-container">', unsafe_allow_html=True)
+            st.subheader("🔍 Filters")
+            
+            # Create filter columns (remove the clear button from here)
+            filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+            
+            with filter_col1:
+                # Employee ID filter
+                employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+                selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
+            
+            with filter_col2:
+                # Employee Name filter
+                employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
+                selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
+            
+            with filter_col3:
+                # Status filter
+                statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
+                selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
+            
+            with filter_col4:
+                # Test Type/Standard filter
+                test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
+                selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
+            
+            # Additional filters row (without clear button)
+            filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
+            
+            with filter_col5:
+                # Percentage range filter
+                if "Percentage" in results_df.columns:
+                    min_percentage = st.number_input("Min Percentage (%)", 
+                                                   min_value=0.0, 
+                                                   max_value=100.0, 
+                                                   value=0.0, 
+                                                   step=1.0,
+                                                   key="min_percentage_filter")
+            
+            with filter_col6:
+                if "Percentage" in results_df.columns:
+                    max_percentage = st.number_input("Max Percentage (%)", 
+                                                   min_value=0.0, 
+                                                   max_value=100.0, 
+                                                   value=100.0, 
+                                                   step=1.0,
+                                                   key="max_percentage_filter")
+            
+            # Create floating clear button using HTML/CSS
+            clear_button_html = """
+            <div class="floating-clear-btn">
+                <button onclick="clearAllFilters()" type="button">🗑️ Clear All Filters</button>
+            </div>
+            <script>
+            function clearAllFilters() {
+                // Create a form to trigger Streamlit rerun with clear action
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.style.display = 'none';
+                
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'clear_filters';
+                input.value = 'true';
+                form.appendChild(input);
+                
+                document.body.appendChild(form);
+                
+                // Trigger the parent window's Streamlit to handle this
+                if (window.parent && window.parent.postMessage) {
+                    window.parent.postMessage({
+                        type: 'streamlit:clearFilters'
+                    }, '*');
+                }
+            }
+            </script>
+            """
+            
+            st.markdown(clear_button_html, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)  # Close the container
+            
+            # Handle the clear action using session state or query params
+            if st.button("Hidden Clear Trigger", key="hidden_clear", type="primary", help="Hidden button"):
+                pass  # This won't be visible but helps with the logic
+            
+            # Alternative approach using Streamlit's native approach with better positioning
+            col_left, col_right = st.columns([6, 1])
+            with col_right:
+                if st.button("🗑️ Clear All", key="clear_filters_btn", use_container_width=True, type="secondary"):
+                    for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
+                               "min_percentage_filter", "max_percentage_filter", "date_filter_enabled"]:
+                        if key in st.session_state:
+                            del st.session_state[key]
+                    st.rerun()
+            
+            # You can also try this simpler approach using columns with different ratios:
+            # st.markdown("---")
+            # spacer1, spacer2, spacer3, clear_col = st.columns([2, 2, 2, 1])
+            # with clear_col:
+            #     if st.button("🗑️ Clear", key="clear_btn_simple", use_container_width=True, type="secondary"):
+            #         for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", 
+            #                    "min_percentage_filter", "max_percentage_filter"]:
+            #             if key in st.session_state:
+            #                 del st.session_state[key]
+            #         st.rerun()
         
         # Apply filters
         filtered_df = results_df.copy()
