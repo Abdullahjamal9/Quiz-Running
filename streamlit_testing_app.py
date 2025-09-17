@@ -502,7 +502,6 @@ if st.session_state.admin_logged_in:
         
         # NOW Display summary statistics based on FILTERED data
         st.markdown("---")
-        st.subheader("📊 Summary Statistics")
         
         col1, col2, col3, col4 = st.columns(4)
         with col1:
