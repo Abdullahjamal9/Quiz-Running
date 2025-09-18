@@ -389,15 +389,31 @@ if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
 
 # Admin login section
-if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
+if not st.session_state.admin_logged_in:
+    # Show admin login at the top, regardless of quiz state
     st.subheader("Admin Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
+    admin_col1, admin_col2 = st.columns(2)
+    
+    with admin_col1:
+        username = st.text_input("Username", key="admin_username")
+    with admin_col2:
+        password = st.text_input("Password", type="password", key="admin_password")
+    
+    if st.button("Admin Login", key="admin_login_btn"):
         # Simple authentication (replace with your actual credentials or secure method)
-        if username == "admin" and password == "admin123":  # Change to your desired credentials
+        if username == "admin" and password == "AdminPtis-3692":  # Change to your desired credentials
             st.session_state.admin_logged_in = True
+            # Clear any existing quiz session when admin logs in
+            if "quiz" in st.session_state:
+                del st.session_state.quiz
+            if "submitted" in st.session_state:
+                del st.session_state.submitted
+            if "submit_result" in st.session_state:
+                del st.session_state.submit_result
+            st.success("Admin login successful!")
             st.rerun()
+        else:
+            st.error("Invalid username or password")
 
 # Admin dashboard (only shown if logged in)
 if st.session_state.admin_logged_in:
