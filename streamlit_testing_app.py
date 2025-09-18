@@ -432,7 +432,7 @@ if st.session_state.admin_logged_in:
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                index=0,  # Always default to "All" (first option)
                 key="emp_id_filter"
             )
         
@@ -442,7 +442,7 @@ if st.session_state.admin_logged_in:
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
-                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                index=0,  # Always default to "All" (first option)
                 key="emp_name_filter"
             )
         
@@ -452,7 +452,7 @@ if st.session_state.admin_logged_in:
             selected_status = st.selectbox(
                 "Filter by Status", 
                 statuses, 
-                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                index=0,  # Always default to "All" (first option)
                 key="status_filter"
             )
         
@@ -462,17 +462,24 @@ if st.session_state.admin_logged_in:
             selected_test_type = st.selectbox(
                 "Filter by Test Type", 
                 test_types, 
-                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                index=0,  # Always default to "All" (first option)
                 key="test_type_filter"
             )
         
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-        
+
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
-                # Set a flag to indicate filters should be cleared
-                st.session_state.clear_filters_flag = True
+                # Delete all filter session state keys to reset widgets to default
+                filter_keys = [
+                    "emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter",
+                    "date_filter_enabled", "start_date_filter", "end_date_filter"
+                ]
+                for key in filter_keys:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                
                 st.rerun()
                 
         filtered_df = results_df.copy()
