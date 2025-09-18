@@ -399,7 +399,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     with admin_col2:
         password = st.text_input("Password", type="password", key="admin_password")
     
-    if st.button("Admin Login", key="admin_login_btn"):
+    if st.button("Login", key="admin_login_btn"):
         # Simple authentication (replace with your actual credentials or secure method)
         if username == "admin" and password == "AdminPtis-3692":  # Change to your desired credentials
             st.session_state.admin_logged_in = True
