@@ -437,9 +437,17 @@ if st.session_state.admin_logged_in:
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
-                for key in ["emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter", "date_filter_enabled"]:
+                # Reset all filter session state keys to "All"
+                st.session_state.emp_id_filter = "All"
+                st.session_state.emp_name_filter = "All" 
+                st.session_state.status_filter = "All"
+                st.session_state.test_type_filter = "All"
+                
+                # Remove any other filter-related keys
+                for key in ["date_filter_enabled", "start_date_filter", "end_date_filter"]:
                     if key in st.session_state:
                         del st.session_state[key]
+                
                 st.rerun()
         
         filtered_df = results_df.copy()
