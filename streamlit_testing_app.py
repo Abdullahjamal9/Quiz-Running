@@ -419,75 +419,62 @@ if st.session_state.admin_logged_in:
     if not results_df.empty:
         st.markdown("---")
         st.subheader("🔍 Filters")
+        clear_filters = st.session_state.get("clear_filters_flag", False)
+        if clear_filters:
+            st.session_state.clear_filters_flag = False  # Reset the flag
+        
+        # Create filter columns
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+        
         with filter_col1:
+            # Employee ID filter
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            selected_emp_id = st.selectbox("Filter by Employee ID", employee_ids, key="emp_id_filter")
+            selected_emp_id = st.selectbox(
+                "Filter by Employee ID", 
+                employee_ids, 
+                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                key="emp_id_filter"
+            )
+        
         with filter_col2:
+            # Employee Name filter
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            selected_emp_name = st.selectbox("Filter by Employee Name", employee_names, key="emp_name_filter")
+            selected_emp_name = st.selectbox(
+                "Filter by Employee Name", 
+                employee_names, 
+                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                key="emp_name_filter"
+            )
+        
         with filter_col3:
+            # Status filter
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
-            selected_status = st.selectbox("Filter by Status", statuses, key="status_filter")
+            selected_status = st.selectbox(
+                "Filter by Status", 
+                statuses, 
+                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                key="status_filter"
+            )
+        
         with filter_col4:
+            # Test Type/Standard filter
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
-            selected_test_type = st.selectbox("Filter by Test Type", test_types, key="test_type_filter")
+            selected_test_type = st.selectbox(
+                "Filter by Test Type", 
+                test_types, 
+                index=0 if clear_filters else None,  # Force index 0 (All) when clearing
+                key="test_type_filter"
+            )
         
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
+        
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
-                # Delete all filter session state keys to reset widgets
-                filter_keys = [
-                    "emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter",
-                    "date_filter_enabled", "start_date_filter", "end_date_filter"
-                ]
-                for key in filter_keys:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                # Set a flag to indicate filters should be cleared
+                st.session_state.clear_filters_flag = True
+                st.rerun()
                 
-                # Add a counter to force widget recreation
-                if "filter_reset_counter" not in st.session_state:
-                    st.session_state.filter_reset_counter = 0
-                
-                # Create filter columns
-                filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-                
-                with filter_col1:
-                    # Employee ID filter with reset counter
-                    employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-                    selected_emp_id = st.selectbox(
-                        "Filter by Employee ID", 
-                        employee_ids, 
-                        key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
-                    )
-                
-                with filter_col2:
-                    # Employee Name filter with reset counter
-                    employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-                    selected_emp_name = st.selectbox(
-                        "Filter by Employee Name", 
-                        employee_names, 
-                        key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
-                    )
-                
-                with filter_col3:
-                    # Status filter with reset counter
-                    statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
-                    selected_status = st.selectbox(
-                        "Filter by Status", 
-                        statuses, 
-                        key=f"status_filter_{st.session_state.filter_reset_counter}"
-                    )
-                
-                with filter_col4:
-                    # Test Type/Standard filter with reset counter
-                    test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
-                    selected_test_type = st.selectbox(
-                        "Filter by Test Type", 
-                        test_types, 
-                        key=f"test_type_filter_{st.session_state.filter_reset_counter}"
-                    )
         filtered_df = results_df.copy()
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
