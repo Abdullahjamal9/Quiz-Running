@@ -419,9 +419,8 @@ if st.session_state.admin_logged_in:
     if not results_df.empty:
         st.markdown("---")
         st.subheader("🔍 Filters")
-        clear_filters = st.session_state.get("clear_filters_flag", False)
-        if clear_filters:
-            st.session_state.clear_filters_flag = False  # Reset the flag
+        if "filter_reset_counter" not in st.session_state:
+            st.session_state.filter_reset_counter = 0
         
         # Create filter columns
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
@@ -432,8 +431,8 @@ if st.session_state.admin_logged_in:
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=0,  # Always default to "All" (first option)
-                key="emp_id_filter"
+                index=0,  # Always default to "All"
+                key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col2:
@@ -442,8 +441,8 @@ if st.session_state.admin_logged_in:
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
-                index=0,  # Always default to "All" (first option)
-                key="emp_name_filter"
+                index=0,  # Always default to "All"
+                key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col3:
@@ -452,8 +451,8 @@ if st.session_state.admin_logged_in:
             selected_status = st.selectbox(
                 "Filter by Status", 
                 statuses, 
-                index=0,  # Always default to "All" (first option)
-                key="status_filter"
+                index=0,  # Always default to "All"
+                key=f"status_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col4:
@@ -462,8 +461,8 @@ if st.session_state.admin_logged_in:
             selected_test_type = st.selectbox(
                 "Filter by Test Type", 
                 test_types, 
-                index=0,  # Always default to "All" (first option)
-                key="test_type_filter"
+                index=0,  # Always default to "All"
+                key=f"test_type_filter_{st.session_state.filter_reset_counter}"
             )
         
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
@@ -471,14 +470,17 @@ if st.session_state.admin_logged_in:
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
-                # Delete all filter session state keys to reset widgets to default
-                filter_keys = [
-                    "emp_id_filter", "emp_name_filter", "status_filter", "test_type_filter",
-                    "date_filter_enabled", "start_date_filter", "end_date_filter"
-                ]
-                for key in filter_keys:
-                    if key in st.session_state:
-                        del st.session_state[key]
+                # Increment the reset counter to create new widget keys
+                st.session_state.filter_reset_counter += 1
+                
+                # Also clean up any old filter keys
+                keys_to_remove = []
+                for key in st.session_state.keys():
+                    if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_')):
+                        keys_to_remove.append(key)
+                
+                for key in keys_to_remove:
+                    del st.session_state[key]
                 
                 st.rerun()
                 
