@@ -808,7 +808,7 @@ elif "quiz" in st.session_state:
         elif remaining <= 900:
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
         elif remaining <= 1800:
-            st.info("⏰ NOTICE: Less than 30 minutes remaining!")
+            st.warning("⏰ NOTICE: Less than 30 minutes remaining!")
 
     elif total_secs > 0 and "submitted" in st.session_state:
         rem_h = remaining // 3600
