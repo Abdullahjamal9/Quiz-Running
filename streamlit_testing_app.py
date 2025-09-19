@@ -8,6 +8,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 import pytz
+import io
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -231,10 +232,57 @@ def load_all_results():
         
     except Exception as e:
         st.error(f"Error loading results: {str(e)}")
-        # Show more detailed error information
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+
+# =====================
+# Helper Functions for Individual Test Downloads
+# =====================
+def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status):
+    """Create a detailed individual test report"""
+    report_data = {
+        'Test Information': [
+            ['Employee ID', emp_id],
+            ['Employee Name', emp_name],
+            ['Test Date & Time', test_date],
+            ['Test Type/Standard', test_type],
+            ['Total Questions', total],
+            ['Correct Answers', right],
+            ['Wrong Answers', wrong],
+            ['Final Score', f"{right - (wrong * 0.25):.2f}/{total}"],
+            ['Percentage', f"{pct:.2f}%"],
+            ['Passing Criteria', f"{criteria}%"],
+            ['Status', status]
+        ]
+    }
+    
+    report_df = pd.DataFrame(report_data['Test Information'], columns=['Field', 'Value'])
+    return report_df
+
+def download_individual_test(emp_id, emp_name, test_data):
+    """Generate and download individual test report"""
+    report_df = create_individual_test_report(
+        emp_id, 
+        emp_name, 
+        test_data['Date / Time'], 
+        test_data['Test Type'], 
+        test_data['Total'], 
+        test_data['Right'], 
+        test_data['Wrong'], 
+        test_data['Percentage'], 
+        test_data['Criteria'], 
+        test_data['Status']
+    )
+    
+    csv_buffer = io.StringIO()
+    report_df.to_csv(csv_buffer, index=False)
+    csv_data = csv_buffer.getvalue()
+    
+    timestamp = test_data['Date / Time'].replace('/', '_').replace(' ', '_').replace(':', '-')
+    filename = f"Test_Report_{emp_id}_{emp_name}_{test_data['Test Type']}_{timestamp}.csv"
+    
+    return csv_data, filename
 
 # =====================
 # Helpers
@@ -265,8 +313,8 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         "wrong": 0,
         "answers": {},
         "start_ts": time.time(),
-        "attempted": set(),  # Track which questions have been attempted
-        "skipped_questions": set(),  # Track which questions have been skipped at least once
+        "attempted": set(),
+        "skipped_questions": set(),
     }
     return True, ""
 
@@ -281,11 +329,9 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
     try:
         sheet = client.open_by_url(GSHEET_URL)
         
-        # Try different possible worksheet names for saving results
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
         
-        # Try to find the correct worksheet
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
@@ -294,7 +340,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 continue
         
         if worksheet is None:
-            # If no worksheet found, try to find any worksheet with "result" in the name
             try:
                 all_worksheets = sheet.worksheets()
                 for ws in all_worksheets:
@@ -310,20 +355,16 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = dt.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
         
-        # Calculate with negative marking
         raw_score = right - (wrong * 0.25)
         final_score = max(0, raw_score)
         pct = (final_score / total) * 100 if total else 0.0
 
-        # Get headers to ensure we're appending in the right format
         try:
             headers = worksheet.row_values(1)
         except:
             headers = []
         
-        # Create row based on existing headers or default format
         if headers:
-            # Map data to existing headers
             data_mapping = {
                 'ID': str(emp_id),
                 'NAME': str(emp_name),
@@ -364,9 +405,8 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 elif 'DATE' in header_upper or 'TIME' in header_upper or 'TIMESTAMP' in header_upper:
                     new_row.append(now)
                 else:
-                    new_row.append('')  # Empty for unknown columns
+                    new_row.append('')
         else:
-            # Default format if no headers found
             new_row = [
                 str(emp_id), str(emp_name), int(total), int(right), int(wrong),
                 f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
@@ -387,7 +427,6 @@ st.title("PTIS Online Testing Module")
 employees, standards = load_employees_and_standards()
 questions = load_questions()
 
-# Initialize session state for admin login and quiz
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 if "reset_counter" not in st.session_state:
@@ -395,21 +434,19 @@ if "reset_counter" not in st.session_state:
 
 # Admin login section
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
-    # Show admin login only when not logged in as admin AND no quiz is active
     st.subheader("Admin Login")
     username = st.text_input("Username", key="admin_username")
     password = st.text_input("Password", type="password", key="admin_password")
     
     if st.button("Login", key="admin_login_btn"):
-        # Simple authentication (replace with your actual credentials or secure method)
-        if username == "admin" and password == "AdminPtis-3692":  # Change to your desired credentials
+        if username == "admin" and password == "AdminPtis-3692":
             st.session_state.admin_logged_in = True
             st.success("Admin login successful!")
             st.rerun()
         else:
             st.error("Invalid username or password")
 
-# Admin dashboard (only shown if logged in)
+# Admin dashboard
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     if st.button("🔄 Refresh Data"):
@@ -423,68 +460,54 @@ if st.session_state.admin_logged_in:
         if "filter_reset_counter" not in st.session_state:
             st.session_state.filter_reset_counter = 0
         
-        # Create filter columns
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
-            # Employee ID filter
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col2:
-            # Employee Name filter
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col3:
-            # Status filter
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox(
                 "Filter by Status", 
                 statuses, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"status_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col4:
-            # Test Type/Standard filter
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox(
                 "Filter by Test Type", 
                 test_types, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"test_type_filter_{st.session_state.filter_reset_counter}"
             )
         
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
-                # Increment the reset counter to create new widget keys
                 st.session_state.filter_reset_counter += 1
-                
-                # Also clean up any old filter keys
-                keys_to_remove = []
-                for key in st.session_state.keys():
-                    if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_')):
-                        keys_to_remove.append(key)
-                
+                keys_to_remove = [key for key in st.session_state.keys() if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_'))]
                 for key in keys_to_remove:
                     del st.session_state[key]
-                
                 st.rerun()
-                
+        
         filtered_df = results_df.copy()
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
@@ -496,6 +519,57 @@ if st.session_state.admin_logged_in:
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
 
         st.markdown("---")
+        st.subheader("📥 Individual Test Download")
+        
+        if selected_emp_id != "All" or selected_emp_name != "All":
+            if selected_emp_id != "All":
+                emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
+                emp_name_display = emp_filtered["Name"].iloc[0] if not emp_filtered.empty else selected_emp_id
+            else:
+                emp_filtered = filtered_df[filtered_df["Name"] == selected_emp_name]
+                emp_name_display = selected_emp_name
+            
+            if not emp_filtered.empty:
+                st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}**")
+                emp_filtered = emp_filtered.sort_values("Date / Time", ascending=False).reset_index(drop=True)
+                
+                for idx, test_row in emp_filtered.iterrows():
+                    with st.expander(f"Test {idx+1}: {test_row['Test Type']} - {test_row['Date / Time']} ({test_row['Status']})", expanded=False):
+                        col1, col2, col3 = st.columns([2, 1, 1])
+                        with col1:
+                            st.metric("Score", f"{test_row['Right']}/{test_row['Total']}")
+                            st.metric("Percentage", f"{test_row['Percentage']:.1f}%")
+                        with col2:
+                            st.metric("Status", test_row['Status'])
+                        with col3:
+                            csv_data, filename = download_individual_test(
+                                test_row['ID'], 
+                                test_row['Name'], 
+                                test_row
+                            )
+                            st.download_button(
+                                label=f"📄 Download Test Report",
+                                data=csv_data,
+                                file_name=filename,
+                                mime="text/csv",
+                                use_container_width=True
+                            )
+                        st.write("**Test Details:**")
+                        st.json({
+                            "Standard": test_row['Test Type'],
+                            "Total Questions": test_row['Total'],
+                            "Correct": test_row['Right'],
+                            "Wrong": test_row['Wrong'],
+                            "Passing Criteria": f"{test_row['Criteria']}%",
+                            "Completed": test_row['Date / Time']
+                        })
+            else:
+                st.warning("No test results found for the selected employee.")
+        else:
+            st.info("👆 **Select an Employee ID or Name** to view and download individual test reports")
+        
+        st.markdown("---")
+        st.subheader("📊 Test Summary")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Tests", len(filtered_df))
@@ -516,6 +590,7 @@ if st.session_state.admin_logged_in:
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
         
         st.markdown("---")
+        st.subheader("📋 All Test Results")
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
@@ -523,16 +598,15 @@ if st.session_state.admin_logged_in:
             with export_col1:
                 csv = display_df.to_csv(index=False)
                 st.download_button(
-                    label="📄 Download as CSV",
+                    label="📄 Download All Results as CSV",
                     data=csv,
-                    file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    file_name=f"all_test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
                 )
             with export_col2:
                 if st.button("⚙️ Column Settings"):
                     st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
             
-            # Column visibility settings
             if st.session_state.get("show_column_settings", False):
                 st.subheader("Column Visibility")
                 cols_to_show = []
@@ -561,6 +635,8 @@ if st.session_state.admin_logged_in:
             )
         else:
             st.warning("No results found matching the current filters")
+        
+        st.markdown("---")
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
             st.session_state.pop("quiz", None)
@@ -572,7 +648,7 @@ if st.session_state.admin_logged_in:
             st.session_state.pop("quiz", None)
             st.rerun()
 
-# Employee login and quiz (shown when not admin and no quiz is active)
+# Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Employee Login")
     col1, col2 = st.columns(2)
@@ -581,8 +657,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             "Employee ID", 
             value="", 
             key=f"id_{st.session_state.reset_counter}",
-            help="Enter your employee identification number",
-            on_change=lambda: st.session_state.update({"name": fetch_name(employees, st.session_state[f"id_{st.session_state.reset_counter}"])})
+            help="Enter your employee identification number"
         )
     def fetch_name(employees_df, emp_id_input):
         if emp_id_input and not employees_df.empty:
@@ -627,7 +702,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             else:
                 st.rerun()
 
-# Quiz interface (shown when quiz is active)
+# Quiz interface
 elif "quiz" in st.session_state:
     qstate = st.session_state.quiz
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
@@ -639,7 +714,6 @@ elif "quiz" in st.session_state:
     if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
         if remaining <= 0:
             st.error("Time is up! Auto-submitting your test...")
-            # Mark remaining questions as wrong with negative marking
             for qid in qstate["queue"]:
                 if qid not in qstate.get("attempted", set()):
                     qstate["wrong"] += 1
@@ -647,9 +721,7 @@ elif "quiz" in st.session_state:
             st.session_state.quiz = qstate
             
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            # Calculate score with negative marking (0.25 marks deducted for wrong answers)
             raw_score = right - (wrong * 0.25)
-            # Ensure score doesn't go below 0
             final_score = max(0, raw_score)
             pct = (final_score/total_q)*100 if total_q else 0.0
             
@@ -796,7 +868,6 @@ elif "quiz" in st.session_state:
         if st.query_params.get("timeout", ["false"])[0] == "true":
             if len(qstate["queue"]) > 0:
                 st.error("Time is up! Auto-submitting your test...")
-                # Mark remaining questions as wrong with negative marking
                 for qid in qstate["queue"]:
                     if qid not in qstate.get("attempted", set()):
                         qstate["wrong"] += 1
@@ -804,7 +875,6 @@ elif "quiz" in st.session_state:
                 st.session_state.quiz = qstate
                 
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                # Calculate score with negative marking
                 raw_score = right - (wrong * 0.25)
                 final_score = max(0, raw_score)
                 pct = (final_score/total_q)*100 if total_q else 0.0
@@ -892,7 +962,6 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
-    # Initialize tracking sets if they don't exist (for backward compatibility)
     if "attempted" not in qstate:
         qstate["attempted"] = set()
     if "skipped_questions" not in qstate:
@@ -909,7 +978,6 @@ elif "quiz" in st.session_state:
         unsafe_allow_html=True
     )
 
-    # Add negative marking info
     st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
 
     if len(qstate["queue"]) > 0:
@@ -917,10 +985,8 @@ elif "quiz" in st.session_state:
         row = qstate["rows"].iloc[current_qid]
         qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
 
-        # Check if this question has been skipped before
         is_previously_skipped = current_qid in qstate["skipped_questions"]
         
-        # Show different styling for skipped questions
         if is_previously_skipped:
             st.markdown("🔄 **This question was skipped earlier**")
             st.subheader(f"Q{current_qid+1}. {question}")
@@ -936,9 +1002,7 @@ elif "quiz" in st.session_state:
                 if choice is None:
                     st.warning("⚠️ Please select an option before moving on.")
                 else:
-                    # Mark this question as attempted
                     qstate["attempted"].add(current_qid)
-                    
                     mapping = {"A": A, "B": B, "C": C, "D": D}
                     correct_text = mapping.get(str(correct).strip(), str(correct).strip())
                     is_correct = str(choice).strip() == str(correct_text).strip()
@@ -956,21 +1020,17 @@ elif "quiz" in st.session_state:
                     st.rerun()
 
         with col2:
-            # Only show skip button if there are more questions AND this question hasn't been skipped before
             if len(qstate["queue"]) > 1 and not is_previously_skipped:
                 if st.button("Skip", use_container_width=True):
-                    # Mark this question as skipped
                     qstate["skipped_questions"].add(current_qid)
-                    # Move the question to the end of the queue
                     qstate["queue"].append(qstate["queue"].pop(0))
                     st.session_state.quiz = qstate
                     st.rerun()
 
     if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-        # Calculate final score with negative marking
         raw_score = right - (wrong * 0.25)
-        final_score = max(0, raw_score)  # Ensure score doesn't go below 0
+        final_score = max(0, raw_score)
         pct = (final_score/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
 
