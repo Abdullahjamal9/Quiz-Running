@@ -731,8 +731,8 @@ if st.session_state.admin_logged_in:
                     table_html = generate_html_table(display_df)
                     st.markdown(table_html, unsafe_allow_html=True)
     
-else:
-    st.warning("No results found matching the current filters")
+# else:
+#     st.warning("No results found matching the current filters")
         else:
             st.warning("No results found matching the current filters")
         if st.button("Logout"):
