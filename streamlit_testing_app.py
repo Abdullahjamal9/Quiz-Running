@@ -590,7 +590,6 @@ if st.session_state.admin_logged_in:
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
         
         st.markdown("---")
-        st.subheader("📋 All Test Results")
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
@@ -598,7 +597,7 @@ if st.session_state.admin_logged_in:
             with export_col1:
                 csv = display_df.to_csv(index=False)
                 st.download_button(
-                    label="📄 Download All Results as CSV",
+                    label="📄 Download CSV",
                     data=csv,
                     file_name=f"all_test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
@@ -1059,11 +1058,11 @@ elif "quiz" in st.session_state:
                 <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
                     <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
                     <p style="font-size:18px;">
-                        <b>Correct Answers:</b> {right}<br>
-                        <b>Wrong Answers:</b> {wrong}<br>
-                        <b>Final Score:</b> {final_score:.2f}/{total_q}<br>
-                        <b>Percentage:</b> {pct:.2f}%<br>
-                        <b>Passing Criteria:</b> {criteria:.0f}%
+                        <b>Correct Answers :</b> {right}<br>
+                        <b>Wrong Answers :</b> {wrong}<br>
+                        <b>Final Score :</b> {final_score:.2f}/{total_q}<br>
+                        <b>Percentage :</b> {pct:.2f}%<br>
+                        <b>Passing Criteria :</b> {criteria:.0f}%
                     </p>
                     <small style="opacity: 0.8;">Negative marking: -0.25 marks per wrong answer</small>
                 </div>
