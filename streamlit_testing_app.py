@@ -13,7 +13,7 @@ import io
 # =====================
 # Paths / Files (local Excel for reading only)
 # =====================
-BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
+BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
@@ -33,7 +33,6 @@ GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 def load_employees_and_standards():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        # Load Employees Data
         try:
             employees_data = sheet.worksheet("Emloyees Data").get_all_records()
             employees = pd.DataFrame(employees_data)
@@ -45,7 +44,6 @@ def load_employees_and_standards():
                 employees = employees[[id_col, name_col]].rename(columns={id_col: "ID", name_col: "Name"})
         except Exception:
             employees = pd.DataFrame(columns=["ID", "Name"])
-        # Load Standards
         try:
             standards_data = sheet.worksheet("Standard").get_all_records()
             standards = pd.DataFrame(standards_data)
@@ -137,12 +135,9 @@ def get_info_for_standard(standards_df, selected_standard):
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
-        # Try different possible worksheet names
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
         
-        # Try to find the correct worksheet
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
@@ -151,7 +146,6 @@ def load_all_results():
                 continue
         
         if worksheet is None:
-            # If no worksheet found, try to find any worksheet with "result" in the name
             try:
                 all_worksheets = sheet.worksheets()
                 for ws in all_worksheets:
@@ -163,27 +157,18 @@ def load_all_results():
         
         if worksheet is None:
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time", "Final Score"])
         
-        # Get all values to preserve exact row order from Google Sheets
         all_values = worksheet.get_all_values()
-        if len(all_values) < 2:  # No data rows (only header or empty)
-            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+        if len(all_values) < 2:
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time", "Final Score"])
         
-        # First row is header, rest are data
         headers = all_values[0]
         data_rows = all_values[1:]
-        
-        # Create DataFrame preserving exact order from Google Sheets
         df = pd.DataFrame(data_rows, columns=headers)
-        
-        # Add original row index to preserve Google Sheets order
         df['_original_order'] = range(len(df))
-        
-        # Remove empty rows (where all values are empty strings)
         df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
         
-        # Map column names to handle variations
         column_mapping = {
             'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
             'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
@@ -194,38 +179,39 @@ def load_all_results():
             'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
             'Status': ['STATUS', 'Status', 'status', 'Result'],
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
-            'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
+            'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time'],
+            'Final Score': ['FINAL SCORE', 'Final Score', 'final_score', 'Score After Negative']
         }
         
-        # Rename columns to standard names
         for standard_name, possible_names in column_mapping.items():
             for col in df.columns:
                 if col in possible_names and col != '_original_order':
                     df = df.rename(columns={col: standard_name})
                     break
         
-        # Ensure all required columns exist
-        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
+        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time", "Final Score"]
         for col in required_columns:
             if col not in df.columns:
-                df[col] = ""
+                df[col] = "" if col != "Final Score" else 0.0
         
-        # Handle numeric columns more robustly
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
         
-        # Handle percentage columns more robustly
         if "Percentage" in df.columns:
-            # Remove % sign and convert to numeric
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
-        # Ensure original Google Sheets order is preserved (newest entries at bottom)
-        df = df.sort_values('_original_order').drop('_original_order', axis=1)
+        if "Criteria" in df.columns:
+            df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "").str.replace(" ", "")
+            df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
         
-        # Reset index to ensure clean indexing
+        # Calculate Final Score if not present
+        if df["Final Score"].eq("").any() or df["Final Score"].isna().any():
+            df["Final Score"] = df.apply(lambda row: max(0, row["Right"] - (row["Wrong"] * 0.25)), axis=1)
+        
+        df = df.sort_values('_original_order').drop('_original_order', axis=1)
         df = df.reset_index(drop=True)
         
         return df[required_columns]
@@ -234,35 +220,53 @@ def load_all_results():
         st.error(f"Error loading results: {str(e)}")
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
-        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time", "Final Score"])
 
 # =====================
 # Helper Functions for Individual Test Downloads
 # =====================
-def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status):
-    """Create a detailed individual test report"""
-    report_data = {
-        'Test Information': [
-            ['Employee ID', emp_id],
-            ['Employee Name', emp_name],
-            ['Test Date & Time', test_date],
-            ['Test Type/Standard', test_type],
-            ['Total Questions', total],
-            ['Correct Answers', right],
-            ['Wrong Answers', wrong],
-            ['Final Score', f"{right - (wrong * 0.25):.2f}/{total}"],
-            ['Percentage', f"{pct:.2f}%"],
-            ['Passing Criteria', f"{criteria}%"],
-            ['Status', status]
-        ]
-    }
+def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status, answers, questions_df):
+    """Create a detailed individual test report including question details"""
+    summary_data = [
+        ['Employee ID', emp_id],
+        ['Employee Name', emp_name],
+        ['Test Date & Time', test_date],
+        ['Test Type/Standard', test_type],
+        ['Total Questions', total],
+        ['Correct Answers', right],
+        ['Wrong Answers', wrong],
+        ['Final Score', f"{right - (wrong * 0.25):.2f}/{total}"],
+        ['Percentage', f"{pct:.2f}%"],
+        ['Passing Criteria', f"{criteria}%"],
+        ['Status', status]
+    ]
     
-    report_df = pd.DataFrame(report_data['Test Information'], columns=['Field', 'Value'])
-    return report_df
+    question_data = []
+    for qid, answer_info in answers.items():
+        row = questions_df.iloc[qid]
+        question_data.append([
+            qid + 1,
+            row['Question'],
+            row['A'],
+            row['B'],
+            row['C'],
+            row['D'],
+            row['Answer'],
+            answer_info['choice'] if answer_info['choice'] else 'Not Answered',
+            'Correct' if answer_info['is_correct'] else 'Incorrect' if answer_info['choice'] else 'Not Answered'
+        ])
+    
+    summary_df = pd.DataFrame(summary_data, columns=['Field', 'Value'])
+    question_df = pd.DataFrame(question_data, columns=[
+        'Question No.', 'Question', 'Option A', 'Option B', 'Option C', 'Option D', 
+        'Correct Answer', 'User Answer', 'Result'
+    ])
+    
+    return summary_df, question_df
 
-def download_individual_test(emp_id, emp_name, test_data):
-    """Generate and download individual test report"""
-    report_df = create_individual_test_report(
+def download_individual_test(emp_id, emp_name, test_data, answers, questions_df):
+    """Generate and download individual test report with question details"""
+    summary_df, question_df = create_individual_test_report(
         emp_id, 
         emp_name, 
         test_data['Date / Time'], 
@@ -272,17 +276,21 @@ def download_individual_test(emp_id, emp_name, test_data):
         test_data['Wrong'], 
         test_data['Percentage'], 
         test_data['Criteria'], 
-        test_data['Status']
+        test_data['Status'],
+        answers,
+        questions_df
     )
     
     csv_buffer = io.StringIO()
-    report_df.to_csv(csv_buffer, index=False)
-    csv_data = csv_buffer.getvalue()
+    csv_buffer.write("Test Summary\n")
+    summary_df.to_csv(csv_buffer, index=False)
+    csv_buffer.write("\nQuestion Details\n")
+    question_df.to_csv(csv_buffer, index=False)
     
     timestamp = test_data['Date / Time'].replace('/', '_').replace(' ', '_').replace(':', '-')
     filename = f"Test_Report_{emp_id}_{emp_name}_{test_data['Test Type']}_{timestamp}.csv"
     
-    return csv_data, filename
+    return csv_buffer.getvalue(), filename
 
 # =====================
 # Helpers
@@ -325,10 +333,9 @@ def format_timer(h, m, s):
     except Exception:
         return 0
 
-def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
+def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type, final_score):
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
         
@@ -376,7 +383,8 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'STATUS': str(status),
                 'STANDARD': str(test_type),
                 'DATE': now,
-                'DATE / TIME': now
+                'DATE / TIME': now,
+                'FINAL SCORE': f"{final_score:.2f}"
             }
             
             new_row = []
@@ -404,12 +412,14 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                     new_row.append(str(test_type))
                 elif 'DATE' in header_upper or 'TIME' in header_upper or 'TIMESTAMP' in header_upper:
                     new_row.append(now)
+                elif 'FINAL SCORE' in header_upper:
+                    new_row.append(f"{final_score:.2f}")
                 else:
                     new_row.append('')
         else:
             new_row = [
                 str(emp_id), str(emp_name), int(total), int(right), int(wrong),
-                f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
+                f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now, f"{final_score:.2f}"
             ]
 
         worksheet.append_row(new_row)
@@ -541,11 +551,17 @@ if st.session_state.admin_logged_in:
                             st.metric("Percentage", f"{test_row['Percentage']:.1f}%")
                         with col2:
                             st.metric("Status", test_row['Status'])
+                            st.metric("Final Score", f"{test_row['Final Score']:.2f}")
                         with col3:
+                            # Note: Answers are not stored in results_df; assume they are available in session state for demo
+                            # In a real scenario, answers would need to be retrieved or stored differently
+                            answers = st.session_state.get('quiz', {}).get('answers', {})
                             csv_data, filename = download_individual_test(
                                 test_row['ID'], 
                                 test_row['Name'], 
-                                test_row
+                                test_row,
+                                answers,
+                                questions
                             )
                             st.download_button(
                                 label=f"📄 Download Test Report",
@@ -560,6 +576,8 @@ if st.session_state.admin_logged_in:
                             "Total Questions": test_row['Total'],
                             "Correct": test_row['Right'],
                             "Wrong": test_row['Wrong'],
+                            "Final Score": f"{test_row['Final Score']:.2f}",
+                            "Percentage": f"{test_row['Percentage']:.1f}%",
                             "Passing Criteria": f"{test_row['Criteria']}%",
                             "Completed": test_row['Date / Time']
                         })
@@ -590,6 +608,7 @@ if st.session_state.admin_logged_in:
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
         
         st.markdown("---")
+        st.subheader("📋 All Test Results")
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
@@ -597,7 +616,7 @@ if st.session_state.admin_logged_in:
             with export_col1:
                 csv = display_df.to_csv(index=False)
                 st.download_button(
-                    label="📄 Download CSV",
+                    label="📄 Download All Results as CSV",
                     data=csv,
                     file_name=f"all_test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
@@ -630,6 +649,7 @@ if st.session_state.admin_logged_in:
                     "Right": st.column_config.NumberColumn("Correct Answers", help="Number of correct answers", format="%d"),
                     "Wrong": st.column_config.NumberColumn("Wrong Answers", help="Number of wrong answers", format="%d"),
                     "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
+                    "Final Score": st.column_config.NumberColumn("Final Score", help="Score after negative marking", format="%.2f")
                 }
             )
         else:
@@ -716,6 +736,18 @@ elif "quiz" in st.session_state:
             for qid in qstate["queue"]:
                 if qid not in qstate.get("attempted", set()):
                     qstate["wrong"] += 1
+                    qstate["answers"][qid] = {
+                        "question": qstate["rows"].iloc[qid]["Question"],
+                        "options": {
+                            "A": qstate["rows"].iloc[qid]["A"],
+                            "B": qstate["rows"].iloc[qid]["B"],
+                            "C": qstate["rows"].iloc[qid]["C"],
+                            "D": qstate["rows"].iloc[qid]["D"]
+                        },
+                        "choice": None,
+                        "correct": qstate["rows"].iloc[qid]["Answer"],
+                        "is_correct": False
+                    }
             qstate["queue"] = []
             st.session_state.quiz = qstate
             
@@ -726,10 +758,10 @@ elif "quiz" in st.session_state:
             
             status = "Pass" if pct >= float(criteria) else "Fail"
             ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], final_score
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score, qstate["answers"])
             st.query_params.clear()
             st.rerun()
 
@@ -870,6 +902,18 @@ elif "quiz" in st.session_state:
                 for qid in qstate["queue"]:
                     if qid not in qstate.get("attempted", set()):
                         qstate["wrong"] += 1
+                        qstate["answers"][qid] = {
+                            "question": qstate["rows"].iloc[qid]["Question"],
+                            "options": {
+                                "A": qstate["rows"].iloc[qid]["A"],
+                                "B": qstate["rows"].iloc[qid]["B"],
+                                "C": qstate["rows"].iloc[qid]["C"],
+                                "D": qstate["rows"].iloc[qid]["D"]
+                            },
+                            "choice": None,
+                            "correct": qstate["rows"].iloc[qid]["Answer"],
+                            "is_correct": False
+                        }
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
                 
@@ -880,10 +924,10 @@ elif "quiz" in st.session_state:
                 
                 status = "Pass" if pct >= float(criteria) else "Fail"
                 ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], final_score
                 )
                 st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score, qstate["answers"])
                 st.query_params.clear()
                 st.rerun()
 
@@ -1006,6 +1050,8 @@ elif "quiz" in st.session_state:
                     correct_text = mapping.get(str(correct).strip(), str(correct).strip())
                     is_correct = str(choice).strip() == str(correct_text).strip()
                     qstate["answers"][current_qid] = {
+                        "question": question,
+                        "options": {"A": A, "B": B, "C": C, "D": D},
                         "choice": choice,
                         "correct": correct_text,
                         "is_correct": is_correct
@@ -1038,16 +1084,16 @@ elif "quiz" in st.session_state:
         submit_clicked = st.button("Submit", use_container_width=True)
         if submit_clicked:
             ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], final_score
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score, qstate["answers"])
             st.rerun()
 
     if "submitted" in st.session_state:
         if "submit_result" in st.session_state:
             result_data = st.session_state["submit_result"]
-            ok, msg, right, wrong, total_q, pct, criteria, status, final_score = result_data
+            ok, msg, right, wrong, total_q, pct, criteria, status, final_score, answers = result_data
             
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
@@ -1058,11 +1104,11 @@ elif "quiz" in st.session_state:
                 <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
                     <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
                     <p style="font-size:18px;">
-                        <b>Correct Answers :</b> {right}<br>
-                        <b>Wrong Answers :</b> {wrong}<br>
-                        <b>Final Score :</b> {final_score:.2f}/{total_q}<br>
-                        <b>Percentage :</b> {pct:.2f}%<br>
-                        <b>Passing Criteria :</b> {criteria:.0f}%
+                        <b>Correct Answers:</b> {right}<br>
+                        <b>Wrong Answers:</b> {wrong}<br>
+                        <b>Final Score:</b> {final_score:.2f}/{total_q}<br>
+                        <b>Percentage:</b> {pct:.2f}%<br>
+                        <b>Passing Criteria:</b> {criteria:.0f}%
                     </p>
                     <small style="opacity: 0.8;">Negative marking: -0.25 marks per wrong answer</small>
                 </div>
