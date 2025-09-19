@@ -159,6 +159,7 @@ def load_all_results():
         
         all_values = worksheet.get_all_values()
         if len(all_values) < 2:
+            st.warning("No data found in the results worksheet")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
         headers = all_values[0]
@@ -206,6 +207,9 @@ def load_all_results():
         
         df = df.sort_values('_original_order').drop('_original_order', axis=1)
         df = df.reset_index(drop=True)
+        
+        if df.empty:
+            st.warning("No valid data found after processing results")
         
         return df[required_columns]
         
@@ -422,7 +426,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 # =====================
 # UI
 # =====================
-st.set_page_config(page_title="PTIS Online Testing Module", page_icon="📝", layout="centered")
+st.set_page_config(page_title="PTIS Online Testing Module", page_icon="📝", layout="wide")
 st.title("PTIS Online Testing Module")
 
 employees, standards = load_employees_and_standards()
@@ -545,73 +549,19 @@ if st.session_state.admin_logged_in:
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-            display_df['Download Report'] = ""
             
-            # Generate HTML table
-            table_html = """
-            <style>
-                .results-table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-family: Arial, sans-serif;
-                    margin-bottom: 20px;
+            # Display table using st.dataframe
+            st.dataframe(
+                display_df[["S.No.", "ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]],
+                use_container_width=True,
+                column_config={
+                    "Percentage": st.column_config.NumberColumn(format="%.1f%%"),
+                    "Criteria": st.column_config.NumberColumn(format="%.0f%%")
                 }
-                .results-table th, .results-table td {
-                    border: 1px solid #ddd;
-                    padding: 8px;
-                    text-align: left;
-                }
-                .results-table th {
-                    background-color: #2563EB;
-                    color: white;
-                }
-                .results-table tr:nth-child(even) {
-                    background-color: #f2f2f2;
-                }
-                .results-table tr:hover {
-                    background-color: #ddd;
-                }
-                .results-table button {
-                    background-color: #2563EB;
-                    color: white;
-                    border: none;
-                    padding: 5px 10px;
-                    border-radius: 5px;
-                    cursor: pointer;
-                }
-                .results-table button:hover {
-                    background-color: #1E40AF;
-                }
-                .progress-bar {
-                    background-color: #f3f3f3;
-                    border-radius: 5px;
-                    overflow: hidden;
-                    height: 20px;
-                    width: 100%;
-                }
-                .progress-fill {
-                    background: linear-gradient(90deg, #10B981, #34D399);
-                    height: 100%;
-                    transition: width 0.3s ease-in-out;
-                }
-            </style>
-            <table class='results-table'>
-                <tr>
-                    <th>S.No.</th>
-                    <th>ID</th>
-                    <th>Name</th>
-                    <th>Total Questions</th>
-                    <th>Correct Answers</th>
-                    <th>Wrong Answers</th>
-                    <th>Percentage</th>
-                    <th>Criteria</th>
-                    <th>Status</th>
-                    <th>Test Type</th>
-                    <th>Date / Time</th>
-                    <th>Download Report</th>
-                </tr>
-            """
+            )
             
+            # Add download buttons for each row
+            st.markdown("### Individual Test Reports")
             for idx, row in display_df.iterrows():
                 answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
                 csv_data, filename = download_individual_test(
@@ -621,35 +571,17 @@ if st.session_state.admin_logged_in:
                     answers,
                     questions
                 )
-                csv_base64 = base64.b64encode(csv_data.encode()).decode()
-                percentage = row['Percentage']
-                table_html += f"""
-                    <tr>
-                        <td>{row['S.No.']}</td>
-                        <td>{row['ID']}</td>
-                        <td>{row['Name']}</td>
-                        <td>{row['Total']}</td>
-                        <td>{row['Right']}</td>
-                        <td>{row['Wrong']}</td>
-                        <td>
-                            <div class='progress-bar'>
-                                <div class='progress-fill' style='width: {percentage}%'></div>
-                            </div>
-                            {percentage:.1f}%
-                        </td>
-                        <td>{row['Criteria']:.0f}%</td>
-                        <td>{row['Status']}</td>
-                        <td>{row['Test Type']}</td>
-                        <td>{row['Date / Time']}</td>
-                        <td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄 Download</button></a></td>
-                    </tr>
-                """
-            
-            table_html += "</table>"
+                st.download_button(
+                    label=f"📄 Download Report (ID: {row['ID']}, {row['Test Type']}, {row['Date / Time']})",
+                    data=csv_data,
+                    file_name=filename,
+                    mime="text/csv",
+                    key=f"download_{idx}"
+                )
             
             export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
             with export_col1:
-                csv = display_df.drop(columns=['Download Report']).to_csv(index=False)
+                csv = display_df[["S.No.", "ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]].to_csv(index=False)
                 st.download_button(
                     label="📄 Download All Results as CSV",
                     data=csv,
@@ -669,101 +601,16 @@ if st.session_state.admin_logged_in:
                     with col_settings[i % 5]:
                         if st.checkbox(col, value=True, key=f"show_{col}"):
                             cols_to_show.append(col)
-                filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
-                display_df = filtered_df.copy()
-                display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-                display_df['Download Report'] = ""
-                
-                # Regenerate HTML table with selected columns
-                table_html = """
-                <style>
-                    .results-table {
-                        width: 100%;
-                        border-collapse: collapse;
-                        font-family: Arial, sans-serif;
-                        margin-bottom: 20px;
-                    }
-                    .results-table th, .results-table td {
-                        border: 1px solid #ddd;
-                        padding: 8px;
-                        text-align: left;
-                    }
-                    .results-table th {
-                        background-color: #2563EB;
-                        color: white;
-                    }
-                    .results-table tr:nth-child(even) {
-                        background-color: #f2f2f2;
-                    }
-                    .results-table tr:hover {
-                        background-color: #ddd;
-                    }
-                    .results-table button {
-                        background-color: #2563EB;
-                        color: white;
-                        border: none;
-                        padding: 5px 10px;
-                        border-radius: 5px;
-                        cursor: pointer;
-                    }
-                    .results-table button:hover {
-                        background-color: #1E40AF;
-                    }
-                    .progress-bar {
-                        background-color: #f3f3f3;
-                        border-radius: 5px;
-                        overflow: hidden;
-                        height: 20px;
-                        width: 100%;
-                    }
-                    .progress-fill {
-                        background: linear-gradient(90deg, #10B981, #34D399);
-                        height: 100%;
-                        transition: width 0.3s ease-in-out;
-                    }
-                </style>
-                <table class='results-table'>
-                    <tr>
-                        <th>S.No.</th>
-                """
-                for col in cols_to_show:
-                    table_html += f"<th>{col}</th>"
-                table_html += "<th>Download Report</th></tr>"
-                
-                for idx, row in display_df.iterrows():
-                    answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
-                    csv_data, filename = download_individual_test(
-                        row['ID'], 
-                        row['Name'], 
-                        row,
-                        answers,
-                        questions
+                if cols_to_show:
+                    show_cols = ["S.No."] + cols_to_show
+                    st.dataframe(
+                        display_df[show_cols],
+                        use_container_width=True,
+                        column_config={
+                            "Percentage": st.column_config.NumberColumn(format="%.1f%%"),
+                            "Criteria": st.column_config.NumberColumn(format="%.0f%%")
+                        }
                     )
-                    csv_base64 = base64.b64encode(csv_data.encode()).decode()
-                    table_html += f"<tr><td>{row['S.No.']}</td>"
-                    for col in cols_to_show:
-                        if col == 'Percentage':
-                            percentage = row['Percentage']
-                            table_html += f"""
-                                <td>
-                                    <div class='progress-bar'>
-                                        <div class='progress-fill' style='width: {percentage}%'></div>
-                                    </div>
-                                    {percentage:.1f}%
-                                </td>
-                            """
-                        else:
-                            table_html += f"<td>{row[col]}</td>"
-                    table_html += f"""<td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄 Download</button></a></td></tr>"""
-                
-                table_html += "</table>"
-            
-            try:
-                st.markdown(table_html, unsafe_allow_html=True)
-            except Exception as e:
-                st.error(f"Error rendering table: {str(e)}")
-                st.write("Debug: Raw HTML output")
-                st.code(table_html)
         
         else:
             st.warning("No results found matching the current filters")
