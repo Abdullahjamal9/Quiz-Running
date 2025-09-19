@@ -507,9 +507,9 @@ if st.session_state.admin_logged_in:
         with col4:
             if "Percentage" in filtered_df.columns and len(filtered_df) > 0:
                 avg_score = filtered_df["Percentage"].mean()
-                st.metric("Avg Score", f"{avg_score:.1f}%")
+                st.metric("Average Score", f"{avg_score:.1f}%")
             else:
-                st.metric("Avg Score", "N/A")
+                st.metric("Average Score", "N/A")
         
         if len(filtered_df) != len(results_df):
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
