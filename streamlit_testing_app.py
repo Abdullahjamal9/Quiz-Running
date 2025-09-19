@@ -59,12 +59,9 @@ def load_employees_and_standards():
         standards["Standard"] = standards["Standard"].astype(str).str.strip()
         standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
         return employees, standards
-    except Exception:
-        employees = pd.DataFrame(columns=["ID", "Name"])
-        standards = pd.DataFrame(columns=["Standard", "ShortName"])
-        standards["Standard"] = standards["Standard"].astype(str).str.strip()
-        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
-        return employees, standards
+    except Exception as e:
+        st.error(f"Error loading employees and standards: {str(e)}")
+        return pd.DataFrame(columns=["ID", "Name"]), pd.DataFrame(columns=["Standard", "ShortName"])
 
 @st.cache_data
 def load_questions():
@@ -644,7 +641,7 @@ if st.session_state.admin_logged_in:
                         <td>{row['Status']}</td>
                         <td>{row['Test Type']}</td>
                         <td>{row['Date / Time']}</td>
-                        <td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄</button></a></td>
+                        <td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄 Download</button></a></td>
                     </tr>
                 """
             
@@ -757,12 +754,17 @@ if st.session_state.admin_logged_in:
                             """
                         else:
                             table_html += f"<td>{row[col]}</td>"
-                    table_html += f"""<td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄</button></a></td></tr>"""
+                    table_html += f"""<td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄 Download</button></a></td></tr>"""
                 
                 table_html += "</table>"
             
-            st.markdown(table_html, unsafe_allow_html=True)
-            
+            try:
+                st.markdown(table_html, unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error rendering table: {str(e)}")
+                st.write("Debug: Raw HTML output")
+                st.code(table_html)
+        
         else:
             st.warning("No results found matching the current filters")
         
