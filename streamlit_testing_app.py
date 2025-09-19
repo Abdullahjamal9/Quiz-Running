@@ -804,10 +804,13 @@ elif "quiz" in st.session_state:
                 st.rerun()
 
         if remaining <= 300:
+            st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
             st.warning("🚨 URGENT: Less than 5 minutes remaining!")
         elif remaining <= 900:
+            st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
         elif remaining <= 1800:
+            st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
             st.info("⏰ NOTICE: Less than 30 minutes remaining!")
 
     elif total_secs > 0 and "submitted" in st.session_state:
