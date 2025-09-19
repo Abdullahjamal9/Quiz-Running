@@ -705,12 +705,6 @@ if st.session_state.admin_logged_in:
             st.session_state.admin_logged_in = False
             st.session_state.pop("quiz", None)
             st.rerun()
-    else:
-        st.info("No results available yet in the Result 2 sheet.")
-        if st.button("Logout"):
-            st.session_state.admin_logged_in = False
-            st.session_state.pop("quiz", None)
-            st.rerun()
 
 # Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
