@@ -8,11 +8,13 @@ import gspread
 from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 import pytz
+import io
+import base64
 
 # =====================
 # Paths / Files (local Excel for reading only)
 # =====================
-BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
+BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
@@ -32,7 +34,6 @@ GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 def load_employees_and_standards():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        # Load Employees Data
         try:
             employees_data = sheet.worksheet("Emloyees Data").get_all_records()
             employees = pd.DataFrame(employees_data)
@@ -44,7 +45,6 @@ def load_employees_and_standards():
                 employees = employees[[id_col, name_col]].rename(columns={id_col: "ID", name_col: "Name"})
         except Exception:
             employees = pd.DataFrame(columns=["ID", "Name"])
-        # Load Standards
         try:
             standards_data = sheet.worksheet("Standard").get_all_records()
             standards = pd.DataFrame(standards_data)
@@ -136,12 +136,9 @@ def get_info_for_standard(standards_df, selected_standard):
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
-        # Try different possible worksheet names
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
         
-        # Try to find the correct worksheet
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
@@ -150,7 +147,6 @@ def load_all_results():
                 continue
         
         if worksheet is None:
-            # If no worksheet found, try to find any worksheet with "result" in the name
             try:
                 all_worksheets = sheet.worksheets()
                 for ws in all_worksheets:
@@ -164,25 +160,16 @@ def load_all_results():
             st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
-        # Get all values to preserve exact row order from Google Sheets
         all_values = worksheet.get_all_values()
-        if len(all_values) < 2:  # No data rows (only header or empty)
+        if len(all_values) < 2:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
-        # First row is header, rest are data
         headers = all_values[0]
         data_rows = all_values[1:]
-        
-        # Create DataFrame preserving exact order from Google Sheets
         df = pd.DataFrame(data_rows, columns=headers)
-        
-        # Add original row index to preserve Google Sheets order
         df['_original_order'] = range(len(df))
-        
-        # Remove empty rows (where all values are empty strings)
         df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
         
-        # Map column names to handle variations
         column_mapping = {
             'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
             'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
@@ -196,45 +183,111 @@ def load_all_results():
             'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
         }
         
-        # Rename columns to standard names
         for standard_name, possible_names in column_mapping.items():
             for col in df.columns:
                 if col in possible_names and col != '_original_order':
                     df = df.rename(columns={col: standard_name})
                     break
         
-        # Ensure all required columns exist
         required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
         for col in required_columns:
             if col not in df.columns:
                 df[col] = ""
         
-        # Handle numeric columns more robustly
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
         
-        # Handle percentage columns more robustly
         if "Percentage" in df.columns:
-            # Remove % sign and convert to numeric
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
-        # Ensure original Google Sheets order is preserved (newest entries at bottom)
-        df = df.sort_values('_original_order').drop('_original_order', axis=1)
+        if "Criteria" in df.columns:
+            df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "").str.replace(" ", "")
+            df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
         
-        # Reset index to ensure clean indexing
+        df = df.sort_values('_original_order').drop('_original_order', axis=1)
         df = df.reset_index(drop=True)
         
         return df[required_columns]
         
     except Exception as e:
         st.error(f"Error loading results: {str(e)}")
-        # Show more detailed error information
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+
+# =====================
+# Helper Functions for Individual Test Downloads
+# =====================
+def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status, answers, questions_df):
+    """Create a detailed individual test report including question details"""
+    summary_data = [
+        ['Employee ID', emp_id],
+        ['Employee Name', emp_name],
+        ['Test Date & Time', test_date],
+        ['Test Type/Standard', test_type],
+        ['Total Questions', total],
+        ['Correct Answers', right],
+        ['Wrong Answers', wrong],
+        ['Percentage', f"{pct:.2f}%"],
+        ['Passing Criteria', f"{criteria}%"],
+        ['Status', status]
+    ]
+    
+    question_data = []
+    for qid, answer_info in answers.items():
+        row = questions_df.iloc[qid] if qid < len(questions_df) else pd.Series({
+            'Question': 'N/A', 'A': 'N/A', 'B': 'N/A', 'C': 'N/A', 'D': 'N/A', 'Answer': 'N/A'
+        })
+        question_data.append([
+            qid + 1,
+            answer_info.get('question', row['Question']),
+            answer_info.get('options', {}).get('A', row['A']),
+            answer_info.get('options', {}).get('B', row['B']),
+            answer_info.get('options', {}).get('C', row['C']),
+            answer_info.get('options', {}).get('D', row['D']),
+            answer_info.get('correct', row['Answer']),
+            answer_info.get('choice', 'Not Answered'),
+            'Correct' if answer_info.get('is_correct', False) else 'Incorrect' if answer_info.get('choice') else 'Not Answered'
+        ])
+    
+    summary_df = pd.DataFrame(summary_data, columns=['Field', 'Value'])
+    question_df = pd.DataFrame(question_data, columns=[
+        'Question No.', 'Question', 'Option A', 'Option B', 'Option C', 'Option D', 
+        'Correct Answer', 'User Answer', 'Result'
+    ])
+    
+    return summary_df, question_df
+
+def download_individual_test(emp_id, emp_name, test_data, answers, questions_df):
+    """Generate and download individual test report with question details"""
+    summary_df, question_df = create_individual_test_report(
+        emp_id, 
+        emp_name, 
+        test_data['Date / Time'], 
+        test_data['Test Type'], 
+        test_data['Total'], 
+        test_data['Right'], 
+        test_data['Wrong'], 
+        test_data['Percentage'], 
+        test_data['Criteria'], 
+        test_data['Status'],
+        answers,
+        questions_df
+    )
+    
+    csv_buffer = io.StringIO()
+    csv_buffer.write("Test Summary\n")
+    summary_df.to_csv(csv_buffer, index=False)
+    csv_buffer.write("\nQuestion Details\n")
+    question_df.to_csv(csv_buffer, index=False)
+    
+    timestamp = test_data['Date / Time'].replace('/', '_').replace(' ', '_').replace(':', '-')
+    filename = f"Test_Report_{emp_id}_{emp_name}_{test_data['Test Type']}_{timestamp}.csv"
+    
+    return csv_buffer.getvalue(), filename
 
 # =====================
 # Helpers
@@ -265,8 +318,8 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         "wrong": 0,
         "answers": {},
         "start_ts": time.time(),
-        "attempted": set(),  # Track which questions have been attempted
-        "skipped_questions": set(),  # Track which questions have been skipped at least once
+        "attempted": set(),
+        "skipped_questions": set(),
     }
     return True, ""
 
@@ -280,12 +333,9 @@ def format_timer(h, m, s):
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
-        # Try different possible worksheet names for saving results
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
         
-        # Try to find the correct worksheet
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
@@ -294,7 +344,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 continue
         
         if worksheet is None:
-            # If no worksheet found, try to find any worksheet with "result" in the name
             try:
                 all_worksheets = sheet.worksheets()
                 for ws in all_worksheets:
@@ -310,20 +359,16 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = dt.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
         
-        # Calculate with negative marking
         raw_score = right - (wrong * 0.25)
         final_score = max(0, raw_score)
         pct = (final_score / total) * 100 if total else 0.0
 
-        # Get headers to ensure we're appending in the right format
         try:
             headers = worksheet.row_values(1)
         except:
             headers = []
         
-        # Create row based on existing headers or default format
         if headers:
-            # Map data to existing headers
             data_mapping = {
                 'ID': str(emp_id),
                 'NAME': str(emp_name),
@@ -364,9 +409,8 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 elif 'DATE' in header_upper or 'TIME' in header_upper or 'TIMESTAMP' in header_upper:
                     new_row.append(now)
                 else:
-                    new_row.append('')  # Empty for unknown columns
+                    new_row.append('')
         else:
-            # Default format if no headers found
             new_row = [
                 str(emp_id), str(emp_name), int(total), int(right), int(wrong),
                 f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
@@ -387,7 +431,6 @@ st.title("PTIS Online Testing Module")
 employees, standards = load_employees_and_standards()
 questions = load_questions()
 
-# Initialize session state for admin login and quiz
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 if "reset_counter" not in st.session_state:
@@ -395,21 +438,19 @@ if "reset_counter" not in st.session_state:
 
 # Admin login section
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
-    # Show admin login only when not logged in as admin AND no quiz is active
     st.subheader("Admin Login")
     username = st.text_input("Username", key="admin_username")
     password = st.text_input("Password", type="password", key="admin_password")
     
     if st.button("Login", key="admin_login_btn"):
-        # Simple authentication (replace with your actual credentials or secure method)
-        if username == "admin" and password == "AdminPtis-3692":  # Change to your desired credentials
+        if username == "admin" and password == "AdminPtis-3692":
             st.session_state.admin_logged_in = True
             st.success("Admin login successful!")
             st.rerun()
         else:
             st.error("Invalid username or password")
 
-# Admin dashboard (only shown if logged in)
+# Admin dashboard
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     if st.button("🔄 Refresh Data"):
@@ -423,68 +464,54 @@ if st.session_state.admin_logged_in:
         if "filter_reset_counter" not in st.session_state:
             st.session_state.filter_reset_counter = 0
         
-        # Create filter columns
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
-            # Employee ID filter
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col2:
-            # Employee Name filter
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col3:
-            # Status filter
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox(
                 "Filter by Status", 
                 statuses, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"status_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col4:
-            # Test Type/Standard filter
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox(
                 "Filter by Test Type", 
                 test_types, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"test_type_filter_{st.session_state.filter_reset_counter}"
             )
         
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
-                # Increment the reset counter to create new widget keys
                 st.session_state.filter_reset_counter += 1
-                
-                # Also clean up any old filter keys
-                keys_to_remove = []
-                for key in st.session_state.keys():
-                    if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_')):
-                        keys_to_remove.append(key)
-                
+                keys_to_remove = [key for key in st.session_state.keys() if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_'))]
                 for key in keys_to_remove:
                     del st.session_state[key]
-                
                 st.rerun()
-                
+        
         filtered_df = results_df.copy()
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
@@ -496,6 +523,7 @@ if st.session_state.admin_logged_in:
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
 
         st.markdown("---")
+        st.subheader("📊 Test Summary")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Tests", len(filtered_df))
@@ -516,51 +544,229 @@ if st.session_state.admin_logged_in:
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
         
         st.markdown("---")
+        st.subheader("📋 All Test Results")
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+            display_df['Download Report'] = ""
+            
+            # Generate HTML table
+            table_html = """
+            <style>
+                .results-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-family: Arial, sans-serif;
+                    margin-bottom: 20px;
+                }
+                .results-table th, .results-table td {
+                    border: 1px solid #ddd;
+                    padding: 8px;
+                    text-align: left;
+                }
+                .results-table th {
+                    background-color: #2563EB;
+                    color: white;
+                }
+                .results-table tr:nth-child(even) {
+                    background-color: #f2f2f2;
+                }
+                .results-table tr:hover {
+                    background-color: #ddd;
+                }
+                .results-table button {
+                    background-color: #2563EB;
+                    color: white;
+                    border: none;
+                    padding: 5px 10px;
+                    border-radius: 5px;
+                    cursor: pointer;
+                }
+                .results-table button:hover {
+                    background-color: #1E40AF;
+                }
+                .progress-bar {
+                    background-color: #f3f3f3;
+                    border-radius: 5px;
+                    overflow: hidden;
+                    height: 20px;
+                    width: 100%;
+                }
+                .progress-fill {
+                    background: linear-gradient(90deg, #10B981, #34D399);
+                    height: 100%;
+                    transition: width 0.3s ease-in-out;
+                }
+            </style>
+            <table class='results-table'>
+                <tr>
+                    <th>S.No.</th>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Total Questions</th>
+                    <th>Correct Answers</th>
+                    <th>Wrong Answers</th>
+                    <th>Percentage</th>
+                    <th>Criteria</th>
+                    <th>Status</th>
+                    <th>Test Type</th>
+                    <th>Date / Time</th>
+                    <th>Download Report</th>
+                </tr>
+            """
+            
+            for idx, row in display_df.iterrows():
+                answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
+                csv_data, filename = download_individual_test(
+                    row['ID'], 
+                    row['Name'], 
+                    row,
+                    answers,
+                    questions
+                )
+                csv_base64 = base64.b64encode(csv_data.encode()).decode()
+                percentage = row['Percentage']
+                table_html += f"""
+                    <tr>
+                        <td>{row['S.No.']}</td>
+                        <td>{row['ID']}</td>
+                        <td>{row['Name']}</td>
+                        <td>{row['Total']}</td>
+                        <td>{row['Right']}</td>
+                        <td>{row['Wrong']}</td>
+                        <td>
+                            <div class='progress-bar'>
+                                <div class='progress-fill' style='width: {percentage}%'></div>
+                            </div>
+                            {percentage:.1f}%
+                        </td>
+                        <td>{row['Criteria']:.0f}%</td>
+                        <td>{row['Status']}</td>
+                        <td>{row['Test Type']}</td>
+                        <td>{row['Date / Time']}</td>
+                        <td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄</button></a></td>
+                    </tr>
+                """
+            
+            table_html += "</table>"
+            
             export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
             with export_col1:
-                csv = display_df.to_csv(index=False)
+                csv = display_df.drop(columns=['Download Report']).to_csv(index=False)
                 st.download_button(
-                    label="📄 Download as CSV",
+                    label="📄 Download All Results as CSV",
                     data=csv,
-                    file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    file_name=f"all_test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
                 )
             with export_col2:
                 if st.button("⚙️ Column Settings"):
                     st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
             
-            # Column visibility settings
             if st.session_state.get("show_column_settings", False):
                 st.subheader("Column Visibility")
                 cols_to_show = []
                 col_settings = st.columns(5)
-                for i, col in enumerate(filtered_df.columns):
+                available_cols = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
+                for i, col in enumerate(available_cols):
                     with col_settings[i % 5]:
                         if st.checkbox(col, value=True, key=f"show_{col}"):
                             cols_to_show.append(col)
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
                 display_df = filtered_df.copy()
                 display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+                display_df['Download Report'] = ""
+                
+                # Regenerate HTML table with selected columns
+                table_html = """
+                <style>
+                    .results-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-family: Arial, sans-serif;
+                        margin-bottom: 20px;
+                    }
+                    .results-table th, .results-table td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                        text-align: left;
+                    }
+                    .results-table th {
+                        background-color: #2563EB;
+                        color: white;
+                    }
+                    .results-table tr:nth-child(even) {
+                        background-color: #f2f2f2;
+                    }
+                    .results-table tr:hover {
+                        background-color: #ddd;
+                    }
+                    .results-table button {
+                        background-color: #2563EB;
+                        color: white;
+                        border: none;
+                        padding: 5px 10px;
+                        border-radius: 5px;
+                        cursor: pointer;
+                    }
+                    .results-table button:hover {
+                        background-color: #1E40AF;
+                    }
+                    .progress-bar {
+                        background-color: #f3f3f3;
+                        border-radius: 5px;
+                        overflow: hidden;
+                        height: 20px;
+                        width: 100%;
+                    }
+                    .progress-fill {
+                        background: linear-gradient(90deg, #10B981, #34D399);
+                        height: 100%;
+                        transition: width 0.3s ease-in-out;
+                    }
+                </style>
+                <table class='results-table'>
+                    <tr>
+                        <th>S.No.</th>
+                """
+                for col in cols_to_show:
+                    table_html += f"<th>{col}</th>"
+                table_html += "<th>Download Report</th></tr>"
+                
+                for idx, row in display_df.iterrows():
+                    answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
+                    csv_data, filename = download_individual_test(
+                        row['ID'], 
+                        row['Name'], 
+                        row,
+                        answers,
+                        questions
+                    )
+                    csv_base64 = base64.b64encode(csv_data.encode()).decode()
+                    table_html += f"<tr><td>{row['S.No.']}</td>"
+                    for col in cols_to_show:
+                        if col == 'Percentage':
+                            percentage = row['Percentage']
+                            table_html += f"""
+                                <td>
+                                    <div class='progress-bar'>
+                                        <div class='progress-fill' style='width: {percentage}%'></div>
+                                    </div>
+                                    {percentage:.1f}%
+                                </td>
+                            """
+                        else:
+                            table_html += f"<td>{row[col]}</td>"
+                    table_html += f"""<td><a href="data:text/csv;base64,{csv_base64}" download="{filename}"><button>📄</button></a></td></tr>"""
+                
+                table_html += "</table>"
             
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "S.No.": st.column_config.NumberColumn("S.No.", help="Serial Number", format="%d", width="small"),
-                    "Percentage": st.column_config.ProgressColumn("Percentage", help="Test Score Percentage", format="%.1f%%", min_value=0, max_value=100),
-                    "Status": st.column_config.TextColumn("Status", help="Pass/Fail Status"),
-                    "Total": st.column_config.NumberColumn("Total Questions", help="Total number of questions in the test", format="%d"),
-                    "Right": st.column_config.NumberColumn("Correct Answers", help="Number of correct answers", format="%d"),
-                    "Wrong": st.column_config.NumberColumn("Wrong Answers", help="Number of wrong answers", format="%d"),
-                    "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
-                }
-            )
+            st.markdown(table_html, unsafe_allow_html=True)
+            
         else:
             st.warning("No results found matching the current filters")
+        
+        st.markdown("---")
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
             st.session_state.pop("quiz", None)
@@ -572,7 +778,7 @@ if st.session_state.admin_logged_in:
             st.session_state.pop("quiz", None)
             st.rerun()
 
-# Employee login and quiz (shown when not admin and no quiz is active)
+# Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Employee Login")
     col1, col2 = st.columns(2)
@@ -581,8 +787,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             "Employee ID", 
             value="", 
             key=f"id_{st.session_state.reset_counter}",
-            help="Enter your employee identification number",
-            on_change=lambda: st.session_state.update({"name": fetch_name(employees, st.session_state[f"id_{st.session_state.reset_counter}"])})
+            help="Enter your employee identification number"
         )
     def fetch_name(employees_df, emp_id_input):
         if emp_id_input and not employees_df.empty:
@@ -627,7 +832,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             else:
                 st.rerun()
 
-# Quiz interface (shown when quiz is active)
+# Quiz interface
 elif "quiz" in st.session_state:
     qstate = st.session_state.quiz
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
@@ -639,17 +844,26 @@ elif "quiz" in st.session_state:
     if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
         if remaining <= 0:
             st.error("Time is up! Auto-submitting your test...")
-            # Mark remaining questions as wrong with negative marking
             for qid in qstate["queue"]:
                 if qid not in qstate.get("attempted", set()):
                     qstate["wrong"] += 1
+                    qstate["answers"][qid] = {
+                        "question": qstate["rows"].iloc[qid]["Question"],
+                        "options": {
+                            "A": qstate["rows"].iloc[qid]["A"],
+                            "B": qstate["rows"].iloc[qid]["B"],
+                            "C": qstate["rows"].iloc[qid]["C"],
+                            "D": qstate["rows"].iloc[qid]["D"]
+                        },
+                        "choice": None,
+                        "correct": qstate["rows"].iloc[qid]["Answer"],
+                        "is_correct": False
+                    }
             qstate["queue"] = []
             st.session_state.quiz = qstate
             
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            # Calculate score with negative marking (0.25 marks deducted for wrong answers)
             raw_score = right - (wrong * 0.25)
-            # Ensure score doesn't go below 0
             final_score = max(0, raw_score)
             pct = (final_score/total_q)*100 if total_q else 0.0
             
@@ -658,7 +872,7 @@ elif "quiz" in st.session_state:
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, qstate["answers"])
             st.query_params.clear()
             st.rerun()
 
@@ -796,15 +1010,25 @@ elif "quiz" in st.session_state:
         if st.query_params.get("timeout", ["false"])[0] == "true":
             if len(qstate["queue"]) > 0:
                 st.error("Time is up! Auto-submitting your test...")
-                # Mark remaining questions as wrong with negative marking
                 for qid in qstate["queue"]:
                     if qid not in qstate.get("attempted", set()):
                         qstate["wrong"] += 1
+                        qstate["answers"][qid] = {
+                            "question": qstate["rows"].iloc[qid]["Question"],
+                            "options": {
+                                "A": qstate["rows"].iloc[qid]["A"],
+                                "B": qstate["rows"].iloc[qid]["B"],
+                                "C": qstate["rows"].iloc[qid]["C"],
+                                "D": qstate["rows"].iloc[qid]["D"]
+                            },
+                            "choice": None,
+                            "correct": qstate["rows"].iloc[qid]["Answer"],
+                            "is_correct": False
+                        }
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
                 
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                # Calculate score with negative marking
                 raw_score = right - (wrong * 0.25)
                 final_score = max(0, raw_score)
                 pct = (final_score/total_q)*100 if total_q else 0.0
@@ -814,7 +1038,7 @@ elif "quiz" in st.session_state:
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
                 )
                 st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, qstate["answers"])
                 st.query_params.clear()
                 st.rerun()
 
@@ -892,7 +1116,6 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
-    # Initialize tracking sets if they don't exist (for backward compatibility)
     if "attempted" not in qstate:
         qstate["attempted"] = set()
     if "skipped_questions" not in qstate:
@@ -909,7 +1132,6 @@ elif "quiz" in st.session_state:
         unsafe_allow_html=True
     )
 
-    # Add negative marking info
     st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
 
     if len(qstate["queue"]) > 0:
@@ -917,10 +1139,8 @@ elif "quiz" in st.session_state:
         row = qstate["rows"].iloc[current_qid]
         qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
 
-        # Check if this question has been skipped before
         is_previously_skipped = current_qid in qstate["skipped_questions"]
         
-        # Show different styling for skipped questions
         if is_previously_skipped:
             st.markdown("🔄 **This question was skipped earlier**")
             st.subheader(f"Q{current_qid+1}. {question}")
@@ -936,13 +1156,13 @@ elif "quiz" in st.session_state:
                 if choice is None:
                     st.warning("⚠️ Please select an option before moving on.")
                 else:
-                    # Mark this question as attempted
                     qstate["attempted"].add(current_qid)
-                    
                     mapping = {"A": A, "B": B, "C": C, "D": D}
                     correct_text = mapping.get(str(correct).strip(), str(correct).strip())
                     is_correct = str(choice).strip() == str(correct_text).strip()
                     qstate["answers"][current_qid] = {
+                        "question": question,
+                        "options": {"A": A, "B": B, "C": C, "D": D},
                         "choice": choice,
                         "correct": correct_text,
                         "is_correct": is_correct
@@ -956,21 +1176,17 @@ elif "quiz" in st.session_state:
                     st.rerun()
 
         with col2:
-            # Only show skip button if there are more questions AND this question hasn't been skipped before
             if len(qstate["queue"]) > 1 and not is_previously_skipped:
                 if st.button("Skip", use_container_width=True):
-                    # Mark this question as skipped
                     qstate["skipped_questions"].add(current_qid)
-                    # Move the question to the end of the queue
                     qstate["queue"].append(qstate["queue"].pop(0))
                     st.session_state.quiz = qstate
                     st.rerun()
 
     if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-        # Calculate final score with negative marking
         raw_score = right - (wrong * 0.25)
-        final_score = max(0, raw_score)  # Ensure score doesn't go below 0
+        final_score = max(0, raw_score)
         pct = (final_score/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
 
@@ -982,13 +1198,13 @@ elif "quiz" in st.session_state:
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, qstate["answers"])
             st.rerun()
 
     if "submitted" in st.session_state:
         if "submit_result" in st.session_state:
             result_data = st.session_state["submit_result"]
-            ok, msg, right, wrong, total_q, pct, criteria, status, final_score = result_data
+            ok, msg, right, wrong, total_q, pct, criteria, status, answers = result_data
             
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
@@ -999,11 +1215,10 @@ elif "quiz" in st.session_state:
                 <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
                     <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
                     <p style="font-size:18px;">
-                        <b>Correct Answers :</b> {right}<br>
-                        <b>Wrong Answers :</b> {wrong}<br>
-                        <b>Final Score :</b> {final_score:.2f}/{total_q}<br>
-                        <b>Percentage :</b> {pct:.2f}%<br>
-                        <b>Passing Criteria :</b> {criteria:.0f}%
+                        <b>Correct Answers:</b> {right}<br>
+                        <b>Wrong Answers:</b> {wrong}<br>
+                        <b>Percentage:</b> {pct:.2f}%<br>
+                        <b>Passing Criteria:</b> {criteria:.0f}%
                     </p>
                     <small style="opacity: 0.8;">Negative marking: -0.25 marks per wrong answer</small>
                 </div>
