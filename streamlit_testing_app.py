@@ -648,16 +648,16 @@ if st.session_state.admin_logged_in:
                 for col in df.columns:
                     if col == 'S.No.':
                         html += f'<th style="width: 8%;">{col}</th>\n'
-                    elif col in ['ID', 'Total', 'Right', 'Wrong']:
-                        html += f'<th style="width: 10%;">{col}</th>\n'
-                    elif col == 'Name':
+                    elif col in ['ID', 'Total Questions', 'Correct Answers', 'Wrong Answers']:
                         html += f'<th style="width: 20%;">{col}</th>\n'
+                    elif col == 'Name':
+                        html += f'<th style="width: 30%;">{col}</th>\n'
                     elif col == 'Percentage':
                         html += f'<th style="width: 12%;">Score</th>\n'
                     elif col == 'Status':
                         html += f'<th style="width: 10%;">{col}</th>\n'
                     elif col == 'Date / Time':
-                        html += f'<th style="width: 15%;">Date</th>\n'
+                        html += f'<th style="width: 40%;">Date</th>\n'
                     else:
                         html += f'<th>{col}</th>\n'
                 html += '</tr>\n</thead>\n'
