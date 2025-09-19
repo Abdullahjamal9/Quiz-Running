@@ -1076,6 +1076,3 @@ elif "quiz" in st.session_state:
                 """,
                 unsafe_allow_html=True
             )
-
-
-If you encounter any issues or need further modifications (e.g., styling adjustments, additional functionality, or debugging), please let me know, and I’ll assist promptly. I’m sorry again for the inconvenience caused by the incomplete code earlier.
