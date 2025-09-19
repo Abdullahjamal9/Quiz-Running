@@ -507,9 +507,9 @@ if st.session_state.admin_logged_in:
         with col4:
             if "Percentage" in filtered_df.columns and len(filtered_df) > 0:
                 avg_score = filtered_df["Percentage"].mean()
-                st.metric("Average Score", f"{avg_score:.1f}%")
+                st.metric("Avg Score", f"{avg_score:.1f}%")
             else:
-                st.metric("Average Score", "N/A")
+                st.metric("Avg Score", "N/A")
         
         if len(filtered_df) != len(results_df):
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
@@ -697,7 +697,7 @@ elif "quiz" in st.session_state:
             text-align: center;
             font-size: 22px;
             font-weight: bold;
-            margin-bottom: 10px;  /* Reduced from 20px */
+            margin-bottom: 20px;
             box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
             border: 3px solid rgba(255, 255, 255, 0.1);
         }}
