@@ -9,6 +9,7 @@ from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 import pytz
 import io
+import base64
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -555,8 +556,22 @@ if st.session_state.admin_logged_in:
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-            # Add Download Report column
+            # Add Download Report column with HTML buttons
             display_df['Download Report'] = ""
+            
+            for idx, row in display_df.iterrows():
+                answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
+                csv_data, filename = download_individual_test(
+                    row['ID'], 
+                    row['Name'], 
+                    row,
+                    answers,
+                    questions
+                )
+                # Encode CSV data as base64 for data URI
+                csv_base64 = base64.b64encode(csv_data.encode()).decode()
+                download_link = f'<a href="data:text/csv;base64,{csv_base64}" download="{filename}" style="text-decoration: none;"><button style="background-color: #2563EB; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">📄</button></a>'
+                display_df.at[idx, 'Download Report'] = download_link
             
             export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
             with export_col1:
@@ -583,26 +598,18 @@ if st.session_state.admin_logged_in:
                 display_df = filtered_df.copy()
                 display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
                 display_df['Download Report'] = ""
-            
-            # Display table with download buttons
-            for idx, row in display_df.iterrows():
-                # Use session state answers for current test, empty dict for past tests
-                answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
-                csv_data, filename = download_individual_test(
-                    row['ID'], 
-                    row['Name'], 
-                    row,
-                    answers,
-                    questions
-                )
-                display_df.at[idx, 'Download Report'] = st.download_button(
-                    label="📄",
-                    data=csv_data,
-                    file_name=filename,
-                    mime="text/csv",
-                    key=f"download_{idx}",
-                    use_container_width=True
-                )
+                for idx, row in display_df.iterrows():
+                    answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
+                    csv_data, filename = download_individual_test(
+                        row['ID'], 
+                        row['Name'], 
+                        row,
+                        answers,
+                        questions
+                    )
+                    csv_base64 = base64.b64encode(csv_data.encode()).decode()
+                    download_link = f'<a href="data:text/csv;base64,{csv_base64}" download="{filename}" style="text-decoration: none;"><button style="background-color: #2563EB; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer;">📄</button></a>'
+                    display_df.at[idx, 'Download Report'] = download_link
             
             st.dataframe(
                 display_df,
@@ -617,7 +624,7 @@ if st.session_state.admin_logged_in:
                     "Wrong": st.column_config.NumberColumn("Wrong Answers", help="Number of wrong answers", format="%d"),
                     "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
                     "Final Score": st.column_config.NumberColumn("Final Score", help="Score after negative marking", format="%.2f"),
-                    "Download Report": st.column_config.Column("Download Report", help="Download individual test report", width="medium")
+                    "Download Report": st.column_config.TextColumn("Download Report", help="Download individual test report", width="medium")
                 }
             )
         else:
