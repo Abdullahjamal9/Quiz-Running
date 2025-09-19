@@ -381,7 +381,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 # =====================
 # UI
 # =====================
-# UI
 st.set_page_config(page_title="PTIS Online Testing Module", page_icon="📝", layout="centered")
 st.title("PTIS Online Testing Module")
 
@@ -966,15 +965,6 @@ elif "quiz" in st.session_state:
                     qstate["queue"].append(qstate["queue"].pop(0))
                     st.session_state.quiz = qstate
                     st.rerun()
-            elif is_previously_skipped:
-                st.markdown(
-                    """
-                    <div style="padding: 10px; border-radius: 5px; background-color: #f0f0f0; text-align: center; color: #666;">
-                        Skip not available<br><small>Previously skipped</small>
-                    </div>
-                    """, 
-                    unsafe_allow_html=True
-                )
 
     if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
@@ -985,17 +975,6 @@ elif "quiz" in st.session_state:
         status = "Pass" if pct >= float(criteria) else "Fail"
 
         st.success("All questions attempted. You can now submit your test.")
-        
-        # Show preview of final score
-        st.markdown(
-            f"""
-            <div style="padding: 15px; border-radius: 8px; background: linear-gradient(135deg, #10B981, #34D399); color: white; text-align: center; margin-bottom: 15px;">
-                <h4>Preview Score</h4>
-                <p><b>Correct:</b> {right} | <b>Wrong:</b> {wrong} | <b>Final Score:</b> {final_score:.2f}/{total_q} | <b>Percentage:</b> {pct:.2f}%</p>
-            </div>
-            """, 
-            unsafe_allow_html=True
-        )
 
         submit_clicked = st.button("Submit", use_container_width=True)
         if submit_clicked:
