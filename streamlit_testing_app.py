@@ -544,20 +544,195 @@ if st.session_state.admin_logged_in:
                 display_df = filtered_df.copy()
                 display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
             
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "S.No.": st.column_config.NumberColumn("S.No.", help="Serial Number", format="%d", width="small"),
-                    "Percentage": st.column_config.ProgressColumn("Percentage", help="Test Score Percentage", format="%.1f%%", min_value=0, max_value=100),
-                    "Status": st.column_config.TextColumn("Status", help="Pass/Fail Status"),
-                    "Total": st.column_config.NumberColumn("Total Questions", help="Total number of questions in the test", format="%d"),
-                    "Right": st.column_config.NumberColumn("Correct Answers", help="Number of correct answers", format="%d"),
-                    "Wrong": st.column_config.NumberColumn("Wrong Answers", help="Number of wrong answers", format="%d"),
-                    "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
+                # Replace your existing st.dataframe() section with this styled version:
+                
+                # Custom CSS for table styling
+                st.markdown("""
+                <style>
+                /* Custom table styling */
+                .custom-table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    border-radius: 8px;
+                    overflow: hidden;
                 }
-            )
+                
+                .custom-table thead {
+                    background: linear-gradient(135deg, #dc3545, #c82333);
+                    color: white;
+                }
+                
+                .custom-table th {
+                    padding: 15px 12px;
+                    text-align: center;
+                    font-weight: 600;
+                    font-size: 14px;
+                    letter-spacing: 0.5px;
+                    border-right: 1px solid rgba(255, 255, 255, 0.2);
+                }
+                
+                .custom-table th:last-child {
+                    border-right: none;
+                }
+                
+                .custom-table tbody tr {
+                    background-color: white;
+                    transition: background-color 0.2s ease;
+                }
+                
+                .custom-table tbody tr:nth-child(even) {
+                    background-color: #f8f9fa;
+                }
+                
+                .custom-table tbody tr:hover {
+                    background-color: #e3f2fd;
+                    transform: scale(1.001);
+                }
+                
+                .custom-table td {
+                    padding: 12px;
+                    text-align: center;
+                    border-bottom: 1px solid #dee2e6;
+                    font-size: 13px;
+                    color: #495057;
+                }
+                
+                .custom-table tbody tr:last-child td {
+                    border-bottom: none;
+                }
+                
+                /* Status styling */
+                .status-pass {
+                    background-color: #d4edda !important;
+                    color: #155724 !important;
+                    font-weight: 600;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                }
+                
+                .status-fail {
+                    background-color: #f8d7da !important;
+                    color: #721c24 !important;
+                    font-weight: 600;
+                    border-radius: 4px;
+                    padding: 4px 8px;
+                }
+                
+                /* Percentage styling */
+                .percentage-cell {
+                    font-weight: 600;
+                }
+                
+                .percentage-high {
+                    color: #28a745;
+                }
+                
+                .percentage-medium {
+                    color: #ffc107;
+                }
+                
+                .percentage-low {
+                    color: #dc3545;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                # Generate HTML table
+                def generate_html_table(df):
+                    html = '<table class="custom-table">\n'
+                    
+                    # Header
+                    html += '<thead>\n<tr>\n'
+                    for col in df.columns:
+                        if col == 'S.No.':
+                            html += f'<th style="width: 8%;">{col}</th>\n'
+                        elif col in ['ID', 'Total', 'Right', 'Wrong']:
+                            html += f'<th style="width: 10%;">{col}</th>\n'
+                        elif col == 'Name':
+                            html += f'<th style="width: 20%;">{col}</th>\n'
+                        elif col == 'Percentage':
+                            html += f'<th style="width: 12%;">Score</th>\n'
+                        elif col == 'Status':
+                            html += f'<th style="width: 10%;">{col}</th>\n'
+                        elif col == 'Date / Time':
+                            html += f'<th style="width: 15%;">Date</th>\n'
+                        else:
+                            html += f'<th>{col}</th>\n'
+                    html += '</tr>\n</thead>\n'
+                    
+                    # Body
+                    html += '<tbody>\n'
+                    for _, row in df.iterrows():
+                        html += '<tr>\n'
+                        for col in df.columns:
+                            value = str(row[col])
+                            
+                            if col == 'Status':
+                                status_class = 'status-pass' if value.lower() == 'pass' else 'status-fail'
+                                html += f'<td><span class="{status_class}">{value}</span></td>\n'
+                            elif col == 'Percentage':
+                                try:
+                                    pct_val = float(value)
+                                    if pct_val >= 80:
+                                        pct_class = 'percentage-high'
+                                    elif pct_val >= 60:
+                                        pct_class = 'percentage-medium'
+                                    else:
+                                        pct_class = 'percentage-low'
+                                    html += f'<td class="percentage-cell {pct_class}">{pct_val:.1f}%</td>\n'
+                                except:
+                                    html += f'<td class="percentage-cell">{value}</td>\n'
+                            elif col == 'Date / Time':
+                                # Format date nicely
+                                formatted_date = value.replace(' ', '<br><small>') + '</small>' if ' ' in value else value
+                                html += f'<td style="font-size: 12px;">{formatted_date}</td>\n'
+                            else:
+                                html += f'<td>{value}</td>\n'
+                        html += '</tr>\n'
+                    html += '</tbody>\n</table>'
+                    return html
+                
+                # Replace the st.dataframe section with this:
+                if not filtered_df.empty:
+                    display_df = filtered_df.copy()
+                    display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+                    
+                    export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
+                    with export_col1:
+                        csv = display_df.to_csv(index=False)
+                        st.download_button(
+                            label="📄 Download as CSV",
+                            data=csv,
+                            file_name=f"test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                            mime="text/csv"
+                        )
+                    with export_col2:
+                        if st.button("⚙️ Column Settings"):
+                            st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
+                    
+                    # Column visibility settings
+                    if st.session_state.get("show_column_settings", False):
+                        st.subheader("Column Visibility")
+                        cols_to_show = []
+                        col_settings = st.columns(5)
+                        for i, col in enumerate(filtered_df.columns):
+                            with col_settings[i % 5]:
+                                if st.checkbox(col, value=True, key=f"show_{col}_{st.session_state.filter_reset_counter}"):
+                                    cols_to_show.append(col)
+                        if cols_to_show:
+                            filtered_df = filtered_df[cols_to_show]
+                            display_df = filtered_df.copy()
+                            display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+                    
+                    # Display the custom styled table
+                    st.markdown("### Test Results")
+                    table_html = generate_html_table(display_df)
+                    st.markdown(table_html, unsafe_allow_html=True)
+    
+else:
+    st.warning("No results found matching the current filters")
         else:
             st.warning("No results found matching the current filters")
         if st.button("Logout"):
