@@ -207,7 +207,6 @@ def load_all_results():
             df["Criteria"] = df["Criteria"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Criteria"] = pd.to_numeric(df["Criteria"], errors='coerce').fillna(0).astype(float)
         
-        # Calculate Final Score if not present
         if df["Final Score"].eq("").any() or df["Final Score"].isna().any():
             df["Final Score"] = df.apply(lambda row: max(0, row["Right"] - (row["Wrong"] * 0.25)), axis=1)
         
@@ -243,17 +242,19 @@ def create_individual_test_report(emp_id, emp_name, test_date, test_type, total,
     
     question_data = []
     for qid, answer_info in answers.items():
-        row = questions_df.iloc[qid]
+        row = questions_df.iloc[qid] if qid < len(questions_df) else pd.Series({
+            'Question': 'N/A', 'A': 'N/A', 'B': 'N/A', 'C': 'N/A', 'D': 'N/A', 'Answer': 'N/A'
+        })
         question_data.append([
             qid + 1,
-            row['Question'],
-            row['A'],
-            row['B'],
-            row['C'],
-            row['D'],
-            row['Answer'],
-            answer_info['choice'] if answer_info['choice'] else 'Not Answered',
-            'Correct' if answer_info['is_correct'] else 'Incorrect' if answer_info['choice'] else 'Not Answered'
+            answer_info.get('question', row['Question']),
+            answer_info.get('options', {}).get('A', row['A']),
+            answer_info.get('options', {}).get('B', row['B']),
+            answer_info.get('options', {}).get('C', row['C']),
+            answer_info.get('options', {}).get('D', row['D']),
+            answer_info.get('correct', row['Answer']),
+            answer_info.get('choice', 'Not Answered'),
+            'Correct' if answer_info.get('is_correct', False) else 'Incorrect' if answer_info.get('choice') else 'Not Answered'
         ])
     
     summary_df = pd.DataFrame(summary_data, columns=['Field', 'Value'])
@@ -529,64 +530,6 @@ if st.session_state.admin_logged_in:
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
 
         st.markdown("---")
-        st.subheader("📥 Individual Test Download")
-        
-        if selected_emp_id != "All" or selected_emp_name != "All":
-            if selected_emp_id != "All":
-                emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
-                emp_name_display = emp_filtered["Name"].iloc[0] if not emp_filtered.empty else selected_emp_id
-            else:
-                emp_filtered = filtered_df[filtered_df["Name"] == selected_emp_name]
-                emp_name_display = selected_emp_name
-            
-            if not emp_filtered.empty:
-                st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}**")
-                emp_filtered = emp_filtered.sort_values("Date / Time", ascending=False).reset_index(drop=True)
-                
-                for idx, test_row in emp_filtered.iterrows():
-                    with st.expander(f"Test {idx+1}: {test_row['Test Type']} - {test_row['Date / Time']} ({test_row['Status']})", expanded=False):
-                        col1, col2, col3 = st.columns([2, 1, 1])
-                        with col1:
-                            st.metric("Score", f"{test_row['Right']}/{test_row['Total']}")
-                            st.metric("Percentage", f"{test_row['Percentage']:.1f}%")
-                        with col2:
-                            st.metric("Status", test_row['Status'])
-                            st.metric("Final Score", f"{test_row['Final Score']:.2f}")
-                        with col3:
-                            # Note: Answers are not stored in results_df; assume they are available in session state for demo
-                            # In a real scenario, answers would need to be retrieved or stored differently
-                            answers = st.session_state.get('quiz', {}).get('answers', {})
-                            csv_data, filename = download_individual_test(
-                                test_row['ID'], 
-                                test_row['Name'], 
-                                test_row,
-                                answers,
-                                questions
-                            )
-                            st.download_button(
-                                label=f"📄 Download Test Report",
-                                data=csv_data,
-                                file_name=filename,
-                                mime="text/csv",
-                                use_container_width=True
-                            )
-                        st.write("**Test Details:**")
-                        st.json({
-                            "Standard": test_row['Test Type'],
-                            "Total Questions": test_row['Total'],
-                            "Correct": test_row['Right'],
-                            "Wrong": test_row['Wrong'],
-                            "Final Score": f"{test_row['Final Score']:.2f}",
-                            "Percentage": f"{test_row['Percentage']:.1f}%",
-                            "Passing Criteria": f"{test_row['Criteria']}%",
-                            "Completed": test_row['Date / Time']
-                        })
-            else:
-                st.warning("No test results found for the selected employee.")
-        else:
-            st.info("👆 **Select an Employee ID or Name** to view and download individual test reports")
-        
-        st.markdown("---")
         st.subheader("📊 Test Summary")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -612,9 +555,12 @@ if st.session_state.admin_logged_in:
         if not filtered_df.empty:
             display_df = filtered_df.copy()
             display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+            # Add Download Report column
+            display_df['Download Report'] = ""
+            
             export_col1, export_col2, export_col3 = st.columns([1, 1, 2])
             with export_col1:
-                csv = display_df.to_csv(index=False)
+                csv = display_df.drop(columns=['Download Report']).to_csv(index=False)
                 st.download_button(
                     label="📄 Download All Results as CSV",
                     data=csv,
@@ -636,6 +582,27 @@ if st.session_state.admin_logged_in:
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
                 display_df = filtered_df.copy()
                 display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+                display_df['Download Report'] = ""
+            
+            # Display table with download buttons
+            for idx, row in display_df.iterrows():
+                # Use session state answers for current test, empty dict for past tests
+                answers = st.session_state.get('quiz', {}).get('answers', {}) if row['Date / Time'] == st.session_state.get('submit_result', [None, None, None, None, None, None, None, None, None])[0] else {}
+                csv_data, filename = download_individual_test(
+                    row['ID'], 
+                    row['Name'], 
+                    row,
+                    answers,
+                    questions
+                )
+                display_df.at[idx, 'Download Report'] = st.download_button(
+                    label="📄",
+                    data=csv_data,
+                    file_name=filename,
+                    mime="text/csv",
+                    key=f"download_{idx}",
+                    use_container_width=True
+                )
             
             st.dataframe(
                 display_df,
@@ -649,7 +616,8 @@ if st.session_state.admin_logged_in:
                     "Right": st.column_config.NumberColumn("Correct Answers", help="Number of correct answers", format="%d"),
                     "Wrong": st.column_config.NumberColumn("Wrong Answers", help="Number of wrong answers", format="%d"),
                     "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
-                    "Final Score": st.column_config.NumberColumn("Final Score", help="Score after negative marking", format="%.2f")
+                    "Final Score": st.column_config.NumberColumn("Final Score", help="Score after negative marking", format="%.2f"),
+                    "Download Report": st.column_config.Column("Download Report", help="Download individual test report", width="medium")
                 }
             )
         else:
@@ -761,7 +729,7 @@ elif "quiz" in st.session_state:
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], final_score
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score, qstate["answers"])
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, qstate["answers"])
             st.query_params.clear()
             st.rerun()
 
@@ -927,7 +895,7 @@ elif "quiz" in st.session_state:
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], final_score
                 )
                 st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score, qstate["answers"])
+                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, qstate["answers"])
                 st.query_params.clear()
                 st.rerun()
 
@@ -1087,13 +1055,13 @@ elif "quiz" in st.session_state:
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], final_score
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score, qstate["answers"])
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, qstate["answers"])
             st.rerun()
 
     if "submitted" in st.session_state:
         if "submit_result" in st.session_state:
             result_data = st.session_state["submit_result"]
-            ok, msg, right, wrong, total_q, pct, criteria, status, final_score, answers = result_data
+            ok, msg, right, wrong, total_q, pct, criteria, status, answers = result_data
             
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
