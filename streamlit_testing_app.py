@@ -543,7 +543,7 @@ if st.session_state.admin_logged_in:
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
                 display_df = filtered_df.copy()
                 display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-            
+                            
                 # Replace your existing st.dataframe() section with this styled version:
                 
                 # Custom CSS for table styling
@@ -730,11 +730,10 @@ if st.session_state.admin_logged_in:
                     st.markdown("### Test Results")
                     table_html = generate_html_table(display_df)
                     st.markdown(table_html, unsafe_allow_html=True)
-    
-# else:
-#     st.warning("No results found matching the current filters")
-        else:
-            st.warning("No results found matching the current filters")
+                    
+                else:
+                    st.warning("No results found matching the current filters")
+
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
             st.session_state.pop("quiz", None)
