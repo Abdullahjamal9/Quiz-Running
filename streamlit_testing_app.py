@@ -265,6 +265,8 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         "wrong": 0,
         "answers": {},
         "start_ts": time.time(),
+        "attempted": set(),  # Track which questions have been attempted
+        "skipped_questions": set(),  # Track which questions have been skipped at least once
     }
     return True, ""
 
@@ -307,7 +309,11 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
 
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = dt.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
-        pct = (right/total)*100 if total else 0.0
+        
+        # Calculate with negative marking
+        raw_score = right - (wrong * 0.25)
+        final_score = max(0, raw_score)
+        pct = (final_score / total) * 100 if total else 0.0
 
         # Get headers to ensure we're appending in the right format
         try:
@@ -392,12 +398,8 @@ if "reset_counter" not in st.session_state:
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     # Show admin login only when not logged in as admin AND no quiz is active
     st.subheader("Admin Login")
-    admin_col1, admin_col2 = st.columns(2)
-    
-    with admin_col1:
-        username = st.text_input("Username", key="admin_username")
-    with admin_col2:
-        password = st.text_input("Password", type="password", key="admin_password")
+    username = st.text_input("Username", key="admin_username")
+    password = st.text_input("Password", type="password", key="admin_password")
     
     if st.button("Login", key="admin_login_btn"):
         # Simple authentication (replace with your actual credentials or secure method)
@@ -631,7 +633,6 @@ elif "quiz" in st.session_state:
     qstate = st.session_state.quiz
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
     total_secs = format_timer(h, m, s)
-    # Rest of the quiz interface code...
 
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
@@ -639,18 +640,26 @@ elif "quiz" in st.session_state:
     if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
         if remaining <= 0:
             st.error("Time is up! Auto-submitting your test...")
-            qstate["wrong"] += len(qstate["queue"])
+            # Mark remaining questions as wrong with negative marking
+            for qid in qstate["queue"]:
+                if qid not in qstate.get("attempted", set()):
+                    qstate["wrong"] += 1
             qstate["queue"] = []
             st.session_state.quiz = qstate
             
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            pct = (right/total_q)*100 if total_q else 0.0
+            # Calculate score with negative marking (0.25 marks deducted for wrong answers)
+            raw_score = right - (wrong * 0.25)
+            # Ensure score doesn't go below 0
+            final_score = max(0, raw_score)
+            pct = (final_score/total_q)*100 if total_q else 0.0
+            
             status = "Pass" if pct >= float(criteria) else "Fail"
             ok, msg = append_result(
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
             st.query_params.clear()
             st.rerun()
 
@@ -788,18 +797,25 @@ elif "quiz" in st.session_state:
         if st.query_params.get("timeout", ["false"])[0] == "true":
             if len(qstate["queue"]) > 0:
                 st.error("Time is up! Auto-submitting your test...")
-                qstate["wrong"] += len(qstate["queue"])
+                # Mark remaining questions as wrong with negative marking
+                for qid in qstate["queue"]:
+                    if qid not in qstate.get("attempted", set()):
+                        qstate["wrong"] += 1
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
                 
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                pct = (right/total_q)*100 if total_q else 0.0
+                # Calculate score with negative marking
+                raw_score = right - (wrong * 0.25)
+                final_score = max(0, raw_score)
+                pct = (final_score/total_q)*100 if total_q else 0.0
+                
                 status = "Pass" if pct >= float(criteria) else "Fail"
                 ok, msg = append_result(
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
                 )
                 st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
                 st.query_params.clear()
                 st.rerun()
 
@@ -877,6 +893,12 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
+    # Initialize tracking sets if they don't exist (for backward compatibility)
+    if "attempted" not in qstate:
+        qstate["attempted"] = set()
+    if "skipped_questions" not in qstate:
+        qstate["skipped_questions"] = set()
+
     answered_count = qstate["total"] - len(qstate["queue"])
 
     st.markdown(
@@ -888,12 +910,24 @@ elif "quiz" in st.session_state:
         unsafe_allow_html=True
     )
 
+    # Add negative marking info
+    st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
+
     if len(qstate["queue"]) > 0:
         current_qid = qstate["queue"][0]
         row = qstate["rows"].iloc[current_qid]
         qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
 
-        st.subheader(f"Q{current_qid+1}. {question}")
+        # Check if this question has been skipped before
+        is_previously_skipped = current_qid in qstate["skipped_questions"]
+        
+        # Show different styling for skipped questions
+        if is_previously_skipped:
+            st.markdown("🔄 **This question was skipped earlier**")
+            st.subheader(f"Q{current_qid+1}. {question}")
+        else:
+            st.subheader(f"Q{current_qid+1}. {question}")
+            
         choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
 
         col1, col2 = st.columns([1,1])
@@ -903,6 +937,9 @@ elif "quiz" in st.session_state:
                 if choice is None:
                     st.warning("⚠️ Please select an option before moving on.")
                 else:
+                    # Mark this question as attempted
+                    qstate["attempted"].add(current_qid)
+                    
                     mapping = {"A": A, "B": B, "C": C, "D": D}
                     correct_text = mapping.get(str(correct).strip(), str(correct).strip())
                     is_correct = str(choice).strip() == str(correct_text).strip()
@@ -920,18 +957,45 @@ elif "quiz" in st.session_state:
                     st.rerun()
 
         with col2:
-            if len(qstate["queue"]) > 1:
+            # Only show skip button if there are more questions AND this question hasn't been skipped before
+            if len(qstate["queue"]) > 1 and not is_previously_skipped:
                 if st.button("Skip", use_container_width=True):
+                    # Mark this question as skipped
+                    qstate["skipped_questions"].add(current_qid)
+                    # Move the question to the end of the queue
                     qstate["queue"].append(qstate["queue"].pop(0))
                     st.session_state.quiz = qstate
                     st.rerun()
+            elif is_previously_skipped:
+                st.markdown(
+                    """
+                    <div style="padding: 10px; border-radius: 5px; background-color: #f0f0f0; text-align: center; color: #666;">
+                        Skip not available<br><small>Previously skipped</small>
+                    </div>
+                    """, 
+                    unsafe_allow_html=True
+                )
 
     if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-        pct = (right/total_q)*100 if total_q else 0.0
+        # Calculate final score with negative marking
+        raw_score = right - (wrong * 0.25)
+        final_score = max(0, raw_score)  # Ensure score doesn't go below 0
+        pct = (final_score/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
 
         st.success("All questions attempted. You can now submit your test.")
+        
+        # Show preview of final score
+        st.markdown(
+            f"""
+            <div style="padding: 15px; border-radius: 8px; background: linear-gradient(135deg, #10B981, #34D399); color: white; text-align: center; margin-bottom: 15px;">
+                <h4>Preview Score</h4>
+                <p><b>Correct:</b> {right} | <b>Wrong:</b> {wrong} | <b>Final Score:</b> {final_score:.2f}/{total_q} | <b>Percentage:</b> {pct:.2f}%</p>
+            </div>
+            """, 
+            unsafe_allow_html=True
+        )
 
         submit_clicked = st.button("Submit", use_container_width=True)
         if submit_clicked:
@@ -939,12 +1003,14 @@ elif "quiz" in st.session_state:
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
             )
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, total_q, pct, criteria, status)
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
             st.rerun()
 
     if "submitted" in st.session_state:
         if "submit_result" in st.session_state:
-            ok, msg, right, total_q, pct, criteria, status = st.session_state["submit_result"]
+            result_data = st.session_state["submit_result"]
+            ok, msg, right, wrong, total_q, pct, criteria, status, final_score = result_data
+            
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
 
@@ -953,7 +1019,14 @@ elif "quiz" in st.session_state:
                 f"""
                 <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
                     <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
-                    <p style="font-size:18px;"><b>Score :</b> {right}/{total_q}<br><b>Percentage :</b> {pct:.2f}%<br><b>Passing Criteria :</b> {criteria:.0f}%</p>
+                    <p style="font-size:18px;">
+                        <b>Correct Answers:</b> {right}<br>
+                        <b>Wrong Answers:</b> {wrong}<br>
+                        <b>Final Score:</b> {final_score:.2f}/{total_q}<br>
+                        <b>Percentage:</b> {pct:.2f}%<br>
+                        <b>Passing Criteria:</b> {criteria:.0f}%
+                    </p>
+                    <small style="opacity: 0.8;">Negative marking: -0.25 marks per wrong answer</small>
                 </div>
                 """,
                 unsafe_allow_html=True
