@@ -530,6 +530,8 @@ if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
 if "reset_counter" not in st.session_state:
     st.session_state.reset_counter = 0
+if "filter_reset_counter" not in st.session_state:
+    st.session_state.filter_reset_counter = 0
 
 # Admin login section
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
@@ -556,9 +558,8 @@ if st.session_state.admin_logged_in:
     if not results_df.empty:
         st.markdown("---")
         st.subheader("🔍 Filters")
-        if "filter_reset_counter" not in st.session_state:
-            st.session_state.filter_reset_counter = 0
         
+        # Create mappings for ID and Name
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
@@ -566,48 +567,40 @@ if st.session_state.admin_logged_in:
         
         with filter_col1:
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+            # Determine initial index for Employee ID
             selected_name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
-            if selected_name_key in st.session_state:
+            selected_id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
+            
+            # If Name was selected, update ID
+            if selected_name_key in st.session_state and st.session_state[selected_name_key] != "All":
                 selected_name = st.session_state[selected_name_key]
-                if selected_name != "All" and selected_name in name_id_mapping:
-                    corresponding_id = name_id_mapping[selected_name]
-                    if corresponding_id in employee_ids:
-                        id_index = employee_ids.index(corresponding_id)
-                    else:
-                        id_index = 0
-                else:
-                    id_index = 0
+                corresponding_id = name_id_mapping.get(selected_name, "All")
+                id_index = employee_ids.index(corresponding_id) if corresponding_id in employee_ids else 0
             else:
-                id_index = 0
+                id_index = employee_ids.index(st.session_state.get(selected_id_key, "All")) if selected_id_key in st.session_state and st.session_state[selected_id_key] in employee_ids else 0
             
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
                 index=id_index,
-                key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
+                key=selected_id_key
             )
         
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            selected_id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
-            if selected_id_key in st.session_state:
+            # If ID was selected, update Name
+            if selected_id_key in st.session_state and st.session_state[selected_id_key] != "All":
                 selected_id = st.session_state[selected_id_key]
-                if selected_id != "All" and selected_id in id_name_mapping:
-                    corresponding_name = id_name_mapping[selected_id]
-                    if corresponding_name in employee_names:
-                        name_index = employee_names.index(corresponding_name)
-                    else:
-                        name_index = 0
-                else:
-                    name_index = 0
+                corresponding_name = id_name_mapping.get(selected_id, "All")
+                name_index = employee_names.index(corresponding_name) if corresponding_name in employee_names else 0
             else:
-                name_index = 0
+                name_index = employee_names.index(st.session_state.get(selected_name_key, "All")) if selected_name_key in st.session_state and st.session_state[selected_name_key] in employee_names else 0
             
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
                 index=name_index,
-                key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
+                key=selected_name_key
             )
         
         with filter_col3:
@@ -640,6 +633,7 @@ if st.session_state.admin_logged_in:
         
         filtered_df = results_df.copy()
         
+        # Apply filters based on selected ID or Name
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
         elif selected_emp_name != "All":
@@ -777,7 +771,7 @@ if st.session_state.admin_logged_in:
                 }
             )
         
-        # Moved Certificate Generation to Admin Dashboard
+        # Certificate Generation
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
         if st.button("Generate Certificates for All Passed Employees"):
@@ -1186,7 +1180,7 @@ elif "quiz" in st.session_state:
                     is_correct = str(choice).strip() == str(correct_text).strip()
                     qstate["answers"][current_qid] = {
                         "choice": choice,
-                        "correct": correct_text,
+                        "correct": coreect_text,
                         "is_correct": is_correct
                     }
                     if is_correct:
