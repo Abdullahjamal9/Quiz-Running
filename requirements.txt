@@ -7,3 +7,4 @@ google-auth
 pytz
 python-docx
 requests
+PYPDF2
