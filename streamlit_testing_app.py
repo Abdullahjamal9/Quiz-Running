@@ -269,11 +269,17 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         # Get form fields
         fields = reader.get_form_text_fields()
         if not fields:
-            st.error(f"No form fields found in {template_type} template. Please add form fields to the PDF.")
+            st.error(f"No form fields found in {template_type}_template.pdf. Please add form fields to the PDF.")
             return None, None
 
+        # Extract date part (e.g., "04-09-2025" from "04-09-2025 10:00:00 AM")
         date_str = test_date.split()[0] if " " in test_date else test_date
-        test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        try:
+            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        except ValueError:
+            st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
+            return None, None
+
         validity_date = (test_date_obj + datetime.timedelta(days=5*365)).strftime("%d-%B-%Y")
         cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
@@ -768,7 +774,7 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
         
-        # Simple certificate filter - only employee name
+        # Certificate filter - only employee name
         passed_results = results_df[results_df["Status"] == "Pass"]
         cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
         
@@ -780,8 +786,8 @@ if st.session_state.admin_logged_in:
         )
         
         if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "API RP 7G-2", "API SPEC 5CT & 5A5", "Cummulative"}
-            passed_results = filtered_df[filtered_df["Status"] == "Pass"]
+            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
+            passed_results = results_df[results_df["Status"] == "Pass"]
             grouped = passed_results.groupby('Name')
             
             qualifying_rows = []
@@ -798,7 +804,7 @@ if st.session_state.admin_logged_in:
                 qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
             
             if qualifying_df.empty:
-                st.warning("No employees who have passed all 4 standards (DS-1, API RP 7G-2, API SPEC 5CT & 5A5, Cummulative).")
+                st.warning("No employees found who have passed all 4 standards (DS-1, Cummulative, API SPEC 5CT & 5A5, API RP 7G-2).")
             else:
                 certificate_files = []
                 for _, row in qualifying_df.iterrows():
@@ -818,7 +824,6 @@ if st.session_state.admin_logged_in:
                             zipf.write(cert_path, cert_filename)
 
                     zip_buffer.seek(0)
-
                     filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
                     
                     st.download_button(
@@ -1156,10 +1161,10 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
-    if "attempted" not in qstate:
-        qstate["attempted"] = set()
-    if "skipped_questions" not in qstate:
-        qstate["skipped_questions"] = set()
+    if "attempted" not in st.session_state.quiz:
+        st.session_state.quiz["attempted"] = set()
+    if "skipped_questions" not in st.session_state.quiz:
+        st.session_state.quiz["skipped_questions"] = set()
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
@@ -1264,35 +1269,3 @@ elif "quiz" in st.session_state:
                 """,
                 unsafe_allow_html=True
             )
-
-            # Add download button for individual certificate if the employee passed the Cummulative test
-            if status == "Pass" and qstate["standard"] == "Cummulative":
-                st.markdown("---")
-                st.subheader("📜 Download Your Certificate")
-                certificate_files = []
-                for template_type in ['PT', 'UT', 'MT', 'VT']:
-                    certificate_path, certificate_filename = generate_certificate(
-                        qstate["emp_id"], 
-                        qstate["emp_name"], 
-                        datetime.datetime.now(pkt_tz).strftime("%d-%m-%Y"), 
-                        status, 
-                        template_type
-                    )
-                    if certificate_path:
-                        certificate_files.append((certificate_path, certificate_filename))
-                
-                if certificate_files:
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                        for cert_path, cert_filename in certificate_files:
-                            zipf.write(cert_path, cert_filename)
-                    
-                    zip_buffer.seek(0)
-                    st.download_button(
-                        label=f"Download Your Certificates (ZIP)",
-                        data=zip_buffer,
-                        file_name=f"certificates_{qstate['emp_id']}_{qstate['emp_name']}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                        mime="application/zip"
-                    )
-                else:
-                    st.error("Failed to generate certificates. Contact the administrator.")
