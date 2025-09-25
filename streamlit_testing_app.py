@@ -224,7 +224,7 @@ def get_info_for_standard(standards, selected_standard):
             criteria = int(row.iloc[0].get("Passing Criteria", 70))
             h = int(row.iloc[0].get("Hours", 1))
             m = int(row.iloc[0].get("Minutes", 0))
-            s int(row.iloc[0].get("Seconds", 0))
+            s = int(row.iloc[0].get("Seconds", 0))
             return total, criteria, h, m, s
         else:
             st.warning(f"No info found for standard: {selected_standard}. Using defaults.")
