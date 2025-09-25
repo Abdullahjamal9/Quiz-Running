@@ -533,6 +533,7 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("🔍 Filters")
         
+        # Create mappings for ID-Name relationship
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
@@ -540,55 +541,36 @@ if st.session_state.admin_logged_in:
         
         with filter_col1:
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            selected_id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
-            
-            # Store previous selections to detect changes
-            prev_selected_id = st.session_state.get(selected_id_key, "All")
-            prev_selected_name = st.session_state.get(f"emp_name_filter_{st.session_state.filter_reset_counter}", "All")
-            
-            # Determine initial index for Employee ID
-            if prev_selected_name != "All" and prev_selected_id == "All":
-                corresponding_id = name_id_mapping.get(prev_selected_name, "All")
-                id_index = employee_ids.index(corresponding_id) if corresponding_id in employee_ids else 0
-            else:
-                id_index = employee_ids.index(prev_selected_id) if prev_selected_id in employee_ids else 0
-            
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=id_index,
-                key=selected_id_key
+                index=0,
+                key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            selected_name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
             
-            # Determine initial index for Employee Name
-            if prev_selected_id != "All" and prev_selected_name == "All":
-                corresponding_name = id_name_mapping.get(prev_selected_id, "All")
+            # Auto-sync name based on selected ID
+            if selected_emp_id != "All" and selected_emp_id in id_name_mapping:
+                corresponding_name = id_name_mapping[selected_emp_id]
                 name_index = employee_names.index(corresponding_name) if corresponding_name in employee_names else 0
             else:
-                name_index = employee_names.index(prev_selected_name) if prev_selected_name in employee_names else 0
-            
+                name_index = 0
+                
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
                 index=name_index,
-                key=selected_name_key
+                key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
             )
-        
-        # Synchronize filters
-        if selected_emp_id != prev_selected_id and selected_emp_id != "All":
-            corresponding_name = id_name_mapping.get(selected_emp_id, "All")
-            if corresponding_name in employee_names and st.session_state[selected_name_key] != corresponding_name:
-                st.session_state[selected_name_key] = corresponding_name
-                st.rerun()
-        elif selected_emp_name != prev_selected_name and selected_emp_name != "All":
-            corresponding_id = name_id_mapping.get(selected_emp_name, "All")
-            if corresponding_id in employee_ids and st.session_state[selected_id_key] != corresponding_id:
-                st.session_state[selected_id_key] = corresponding_id
-                st.rerun()
+            
+            # Auto-sync ID based on selected name (if name was manually changed)
+            if selected_emp_name != "All" and selected_emp_name in name_id_mapping:
+                corresponding_id = name_id_mapping[selected_emp_name]
+                if selected_emp_id == "All" and corresponding_id != "All":
+                    st.session_state[f"emp_id_filter_{st.session_state.filter_reset_counter}"] = corresponding_id
+                    st.rerun()
         
         with filter_col3:
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
@@ -758,26 +740,60 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
         
-        # Certificate-specific Name filter
-        employee_names = ["All"] + sorted(results_df[results_df["Status"] == "Pass"]["Name"].unique().tolist())
-        selected_cert_name = st.selectbox(
-            "Filter Certificates by Employee Name",
-            employee_names,
-            index=0,
-            key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
-        )
+        # Separate certificate filters with ID-Name synchronization
+        passed_results = results_df[results_df["Status"] == "Pass"]
+        cert_id_name_mapping = dict(zip(passed_results["ID"].astype(str), passed_results["Name"]))
+        cert_name_id_mapping = dict(zip(passed_results["Name"], passed_results["ID"].astype(str)))
         
-        if st.button("Generate Certificates for All Passed Employees"):
-            if selected_cert_name == "All":
-                passed_employees = filtered_df[filtered_df["Status"] == "Pass"]
+        cert_col1, cert_col2 = st.columns(2)
+        
+        with cert_col1:
+            cert_employee_ids = ["All"] + sorted(passed_results["ID"].astype(str).unique().tolist())
+            selected_cert_id = st.selectbox(
+                "Certificate Filter - Employee ID",
+                cert_employee_ids,
+                index=0,
+                key=f"cert_id_filter_{st.session_state.filter_reset_counter}"
+            )
+        
+        with cert_col2:
+            cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
+            
+            # Auto-sync certificate name based on selected certificate ID
+            if selected_cert_id != "All" and selected_cert_id in cert_id_name_mapping:
+                cert_corresponding_name = cert_id_name_mapping[selected_cert_id]
+                cert_name_index = cert_employee_names.index(cert_corresponding_name) if cert_corresponding_name in cert_employee_names else 0
             else:
-                passed_employees = filtered_df[(filtered_df["Status"] == "Pass") & (filtered_df["Name"] == selected_cert_name)]
+                cert_name_index = 0
+                
+            selected_cert_name = st.selectbox(
+                "Certificate Filter - Employee Name",
+                cert_employee_names,
+                index=cert_name_index,
+                key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
+            )
+            
+            # Auto-sync certificate ID based on selected certificate name
+            if selected_cert_name != "All" and selected_cert_name in cert_name_id_mapping:
+                cert_corresponding_id = cert_name_id_mapping[selected_cert_name]
+                if selected_cert_id == "All" and cert_corresponding_id != "All":
+                    st.session_state[f"cert_id_filter_{st.session_state.filter_reset_counter}"] = cert_corresponding_id
+                    st.rerun()
+        
+        if st.button("Generate Certificates for Selected Employee(s)"):
+            # Filter based on certificate-specific filters
+            cert_filtered_df = passed_results.copy()
+            
+            if selected_cert_id != "All":
+                cert_filtered_df = cert_filtered_df[cert_filtered_df["ID"].astype(str) == selected_cert_id]
+            elif selected_cert_name != "All":
+                cert_filtered_df = cert_filtered_df[cert_filtered_df["Name"] == selected_cert_name]
 
-            if passed_employees.empty:
-                st.warning("No passed employees found for the selected filter.")
+            if cert_filtered_df.empty:
+                st.warning("No passed employees found for the selected certificate filter.")
             else:
                 certificate_files = []
-                for _, row in passed_employees.iterrows():
+                for _, row in cert_filtered_df.iterrows():
                     emp_id = row['ID']
                     emp_name = row['Name']
                     test_date = row['Date / Time']
@@ -795,7 +811,13 @@ if st.session_state.admin_logged_in:
 
                     zip_buffer.seek(0)
 
-                    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_passed"
+                    if selected_cert_name != "All":
+                        filename_suffix = selected_cert_name
+                    elif selected_cert_id != "All":
+                        filename_suffix = f"ID_{selected_cert_id}"
+                    else:
+                        filename_suffix = "all_passed"
+                    
                     st.download_button(
                         label=f"Download Certificates (ZIP) for {filename_suffix}",
                         data=zip_buffer,
