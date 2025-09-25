@@ -11,6 +11,8 @@ import pytz
 import io
 import requests
 import zipfile
+import traceback
+from docx import Document
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -160,6 +162,53 @@ def load_all_results():
         st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
 
+@st.cache_data
+def load_questions():
+    try:
+        sheet = client.open_by_url(GSHEET_URL)
+        questions_data = sheet.worksheet("Questions").get_all_records()
+        questions = pd.DataFrame(questions_data)
+        if questions.empty:
+            st.error("Questions worksheet is empty.")
+            return pd.DataFrame(columns=["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"])
+        
+        required_columns = ["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"]
+        for col in required_columns:
+            if col not in questions.columns:
+                questions[col] = ""
+        
+        questions["Standard"] = questions["Standard"].astype(str).str.strip()
+        questions["Question"] = questions["Question"].astype(str).str.strip()
+        questions["A"] = questions["A"].astype(str).str.strip()
+        questions["B"] = questions["B"].astype(str).str.strip()
+        questions["C"] = questions["C"].astype(str).str.strip()
+        questions["D"] = questions["D"].astype(str).str.strip()
+        questions["Answer"] = questions["Answer"].astype(str).str.strip()
+        
+        return questions[required_columns]
+    
+    except Exception as e:
+        st.error(f"Error loading questions: {str(e)}")
+        return pd.DataFrame(columns=["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"])
+
+def get_info_for_standard(standards, selected_standard):
+    try:
+        if selected_standard == "Cummulative":
+            return 50, 70, 1, 0, 0
+        row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
+        if not row.empty:
+            total = int(row.iloc[0].get("TotalQuestions", 50))
+            criteria = int(row.iloc[0].get("PassingCriteria", 70))
+            timer = row.iloc[0].get("Timer", "01:00:00")
+            h, m, s = map(int, timer.split(":"))
+            return total, criteria, h, m, s
+        else:
+            st.warning(f"No info found for standard: {selected_standard}. Using defaults.")
+            return 50, 70, 1, 0, 0
+    except Exception as e:
+        st.error(f"Error getting standard info: {str(e)}")
+        return 50, 70, 1, 0, 0
+
 # =====================
 # Certificate Generation
 # =====================
@@ -185,8 +234,8 @@ def generate_certificate(emp_id, emp_name, test_date, status):
     doc = Document(template_path)
     
     # Convert test date to proper format
-    test_date_obj = datetime.strptime(test_date, "%d-%m-%Y")
-    validity_date_obj = test_date_obj + timedelta(days=5*365)  # Assuming 5 years validity
+    test_date_obj = dt.datetime.strptime(test_date, "%d-%m-%Y")
+    validity_date_obj = test_date_obj + dt.timedelta(days=5*365)  # Assuming 5 years validity
     validity_date = validity_date_obj.strftime("%d-%m-%Y")
     
     # Generate certificate number (pattern: EmpID/PTIS/DDMMYYYY)
@@ -255,7 +304,7 @@ if st.button("Generate Certificates for All Passed Employees"):
         st.warning("No employees passed the test.")
 
 # =====================
-# Helper Functions for Individual Test Downloads
+# Individual Test Downloads
 # =====================
 def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status):
     """Create a detailed individual test report"""
