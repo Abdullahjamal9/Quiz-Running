@@ -9,6 +9,8 @@ from google.oauth2.service_account import Credentials
 import streamlit.components.v1 as components
 import pytz
 import io
+import requests
+import zipfile
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -68,72 +70,6 @@ def load_employees_and_standards():
         return employees, standards
 
 @st.cache_data
-def load_questions():
-    expected = ["Qno","Question","A","B","C","D","Answer","Standard"]
-    rename_map = {
-        "NO.": "Qno",
-        "Opt A": "A",
-        "Opt B": "B",
-        "Opt C": "C",
-        "Opt D": "D"
-    }
-    all_q = []
-
-    single_file = os.path.join(DB_FOLDER, "Questions.xlsx")
-    if os.path.exists(single_file):
-        try:
-            q = pd.read_excel(single_file)
-            q = q.rename(columns=rename_map)
-            all_q.append(q)
-        except Exception:
-            pass
-
-    if os.path.isdir(QUESTIONS_FOLDER):
-        for fname in os.listdir(QUESTIONS_FOLDER):
-            if fname.lower().endswith((".xlsx", ".xls")):
-                try:
-                    q = pd.read_excel(os.path.join(QUESTIONS_FOLDER, fname))
-                    q = q.rename(columns=rename_map)
-                    all_q.append(q)
-                except Exception:
-                    pass
-
-    if all_q:
-        q = pd.concat(all_q, ignore_index=True)
-    else:
-        q = pd.DataFrame(columns=expected)
-
-    for col in expected:
-        if col not in q.columns:
-            q[col] = np.nan
-
-    q["Standard"] = q["Standard"].astype(str).str.strip()
-    return q[expected]
-
-@st.cache_data
-def get_info_for_standard(standards_df, selected_standard):
-    if standards_df.empty or selected_standard == "":
-        return 0, 0, "00", "00", "00"
-    try:
-        short_name = standards_df.loc[
-            standards_df["Standard"].str.upper() == str(selected_standard).strip().upper(),
-            "ShortName"
-        ].values[0]
-    except Exception:
-        short_name = selected_standard
-    sheet_name = str(short_name).strip() if str(short_name).strip() else selected_standard
-    try:
-        vals = pd.read_excel(INFO_FILE, sheet_name=sheet_name, header=None)[1].values
-        total = int(vals[0])
-        criteria = float(vals[1])
-        h = f"{int(vals[2]):02d}"
-        m = f"{int(vals[3]):02d}"
-        s = f"{int(vals[4]):02d}"
-        return total, criteria, h, m, s
-    except Exception:
-        return 0, 0, "00", "00", "00"
-
-@st.cache_data
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
@@ -151,18 +87,7 @@ def load_all_results():
                 continue
         
         if worksheet is None:
-            # If no worksheet found, try to find any worksheet with "result" in the name
-            try:
-                all_worksheets = sheet.worksheets()
-                for ws in all_worksheets:
-                    if "result" in ws.title.lower():
-                        worksheet = ws
-                        break
-            except:
-                pass
-        
-        if worksheet is None:
-            st.error("Could not find any results worksheet. Please ensure there's a worksheet named 'Result 2'")
+            st.error("Could not find any results worksheet.")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
         # Get all values to preserve exact row order from Google Sheets
@@ -218,7 +143,6 @@ def load_all_results():
         
         # Handle percentage columns more robustly
         if "Percentage" in df.columns:
-            # Remove % sign and convert to numeric
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
@@ -235,6 +159,100 @@ def load_all_results():
         import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+
+# =====================
+# Certificate Generation
+# =====================
+def download_template_from_github():
+    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt"  # Replace with actual GitHub URL
+    response = requests.get(github_url)
+
+    if response.status_code == 200:
+        # Save the template to a temporary location
+        with open("/tmp/dpt_template.docx", "wb") as file:
+            file.write(response.content)
+        return "/tmp/dpt_template.docx"
+    else:
+        st.error("Failed to download the certificate template from GitHub.")
+        return None
+
+def generate_certificate(emp_id, emp_name, test_date, status):
+    template_path = download_template_from_github()
+    if not template_path:
+        return None, None
+
+    # Load the certificate template
+    doc = Document(template_path)
+    
+    # Convert test date to proper format
+    test_date_obj = datetime.strptime(test_date, "%d-%m-%Y")
+    validity_date_obj = test_date_obj + timedelta(days=5*365)  # Assuming 5 years validity
+    validity_date = validity_date_obj.strftime("%d-%m-%Y")
+    
+    # Generate certificate number (pattern: EmpID/PTIS/DDMMYYYY)
+    cert_number = f"{emp_id}/PTIS/{test_date.replace('-', '')}"
+
+    # Replace placeholders with dynamic values
+    for para in doc.paragraphs:
+        if 'Usman Waheed' in para.text:
+            para.text = para.text.replace('Usman Waheed', emp_name)
+        if '25-September-2025' in para.text:
+            para.text = para.text.replace('25-September-2025', test_date)
+        if '25/PTIS/DPT/00410' in para.text:
+            para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+        if 'Date of Certification' in para.text:
+            para.text = para.text.replace('25-September-2025', test_date)
+        if 'Validity: 24-September-2030' in para.text:
+            para.text = para.text.replace('24-September-2030', validity_date)
+
+    # Modify the status (pass/fail) in the certificate
+    if status == "Pass":
+        for para in doc.paragraphs:
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Fail', 'Status: Pass')
+    else:
+        for para in doc.paragraphs:
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Pass', 'Status: Fail')
+
+    # Save the document with dynamic content
+    certificate_filename = f"Certificate_{emp_id}_{emp_name}_{test_date}.docx"
+    doc.save(f"/tmp/{certificate_filename}")
+
+    return f"/tmp/{certificate_filename}", certificate_filename
+
+# Admin Section - Generate Certificates for Passed Employees
+if st.button("Generate Certificates for All Passed Employees"):
+    results_df = load_all_results()
+    passed_employees = results_df[results_df["Status"] == "Pass"]
+
+    certificate_files = []
+    for _, row in passed_employees.iterrows():
+        emp_id = row['ID']
+        emp_name = row['Name']
+        test_date = row['Date / Time']
+        status = row['Status']
+
+        certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
+        if certificate_path:
+            certificate_files.append(certificate_path)
+
+    if certificate_files:
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+            for cert_file in certificate_files:
+                zipf.write(cert_file, os.path.basename(cert_file))
+
+        zip_buffer.seek(0)
+
+        st.download_button(
+            label="Download All Certificates",
+            data=zip_buffer,
+            file_name="certificates.zip",
+            mime="application/zip"
+        )
+    else:
+        st.warning("No employees passed the test.")
 
 # =====================
 # Helper Functions for Individual Test Downloads
