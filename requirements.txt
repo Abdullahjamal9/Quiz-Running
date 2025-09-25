@@ -3,7 +3,7 @@ pandas
 numpy
 openpyxl
 gspread
-oauth2client
 google-auth
 pytz
-Document
+python-docx
+requests
