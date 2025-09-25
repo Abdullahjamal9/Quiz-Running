@@ -15,16 +15,15 @@ import traceback
 from docx import Document
 
 # =====================
-# Paths / Files (local Excel for reading only)
+# Paths / Files
 # =====================
 BASE_DIR = os.path.dirname(__file__)  # absolute path (safe for Streamlit Cloud)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
-TEMPLATE_PATH = os.path.join(DB_FOLDER, "dpt_template.docx")  # Local template path
+TEMPLATE_PATH = os.path.join(DB_FOLDER, "dpt.docx")  # Local template path
 
 # =====================
-# Google Sheets Setup (for saving and reading results)
+# Google Sheets Setup
 # =====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
@@ -48,28 +47,34 @@ def load_employees_and_standards():
                 id_col = next((col for col in employees.columns if "id" in col.lower()), "ID")
                 name_col = next((col for col in employees.columns if "name" in col.lower()), "Name")
                 employees = employees[[id_col, name_col]].rename(columns={id_col: "ID", name_col: "Name"})
-        except Exception:
+        except Exception as e:
+            st.warning(f"Error loading employees: {str(e)}")
             employees = pd.DataFrame(columns=["ID", "Name"])
-        # Load Standards
+        
+        # Load Standards from Info sheet
         try:
-            standards_data = sheet.worksheet("Standard").get_all_records()
+            standards_data = sheet.worksheet("Info").get_all_records()
             standards = pd.DataFrame(standards_data)
-            if standards.empty or len(standards.columns) < 2:
-                while len(standards.columns) < 2:
-                    standards[standards.columns[-1] + "_dup" + str(len(standards.columns))] = ""
-                standards.columns = ["Standard", "ShortName"]
+            if standards.empty:
+                st.warning("Info sheet is empty. Using default standards.")
+                standards = pd.DataFrame(columns=["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"])
             else:
-                standards.columns = ["Standard", "ShortName"]
-        except Exception:
-            standards = pd.DataFrame(columns=["Standard", "ShortName"])
-        standards["Standard"] = standards["Standard"].astype(str).str.strip()
-        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+                # Ensure required columns
+                required_cols = ["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"]
+                for col in required_cols:
+                    if col not in standards.columns:
+                        standards[col] = ""
+                standards = standards[required_cols]
+                standards["Standard"] = standards["Standard"].astype(str).str.strip()
+        except Exception as e:
+            st.error(f"Error loading Info sheet: {str(e)}")
+            standards = pd.DataFrame(columns=["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"])
+        
         return employees, standards
-    except Exception:
+    except Exception as e:
+        st.error(f"Error in load_employees_and_standards: {str(e)}")
         employees = pd.DataFrame(columns=["ID", "Name"])
-        standards = pd.DataFrame(columns=["Standard", "ShortName"])
-        standards["Standard"] = standards["Standard"].astype(str).str.strip()
-        standards["ShortName"] = standards["ShortName"].astype(str).str.strip()
+        standards = pd.DataFrame(columns=["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"])
         return employees, standards
 
 @st.cache_data
@@ -84,6 +89,7 @@ def load_all_results():
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
+                st.info(f"Loaded results from worksheet: '{name}'")
                 break
             except Exception:
                 continue
@@ -107,7 +113,7 @@ def load_all_results():
         # Add original row index to preserve Google Sheets order
         df['_original_order'] = range(len(df))
         
-        # Remove empty rows (where all values are empty strings)
+        # Remove empty rows
         df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
         
         # Map column names to handle variations
@@ -137,21 +143,21 @@ def load_all_results():
             if col not in df.columns:
                 df[col] = ""
         
-        # Handle numeric columns more robustly
+        # Handle numeric columns
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
         
-        # Handle percentage columns more robustly
+        # Handle percentage column
         if "Percentage" in df.columns:
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
-        # Ensure original Google Sheets order is preserved (newest entries at bottom)
+        # Preserve Google Sheets order
         df = df.sort_values('_original_order').drop('_original_order', axis=1)
         
-        # Reset index to ensure clean indexing
+        # Reset index
         df = df.reset_index(drop=True)
         
         return df[required_columns]
@@ -234,10 +240,11 @@ def get_info_for_standard(standards, selected_standard):
             return 50, 70, 1, 0, 0
         row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
         if not row.empty:
-            total = int(row.iloc[0].get("TotalQuestions", 50))
-            criteria = int(row.iloc[0].get("PassingCriteria", 70))
-            timer = row.iloc[0].get("Timer", "01:00:00")
-            h, m, s = map(int, timer.split(":"))
+            total = int(row.iloc[0].get("Total Questions", 50))
+            criteria = int(row.iloc[0].get("Passing Criteria", 70))
+            h = int(row.iloc[0].get("Hours", 1))
+            m = int(row.iloc[0].get("Minutes", 0))
+            s = int(row.iloc[0].get("Seconds", 0))
             return total, criteria, h, m, s
         else:
             st.warning(f"No info found for standard: {selected_standard}. Using defaults.")
@@ -247,7 +254,7 @@ def get_info_for_standard(standards, selected_standard):
         return 50, 70, 1, 0, 0
 
 # =====================
-# Certificate Generation (Fixed: Local fallback + GitHub)
+# Certificate Generation
 # =====================
 def get_template_path():
     """Try local template first, then GitHub download."""
@@ -256,18 +263,18 @@ def get_template_path():
         return TEMPLATE_PATH
     
     # Fallback to GitHub (update URL with your actual repo)
-    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt_template.docx"  # UPDATE THIS!
+    github_url = "https://raw.githubusercontent.com/Abdullahjamal9/Quiz-Running/main/db/dpt.docx"  # UPDATE THIS!
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            with open("/tmp/dpt_template.docx", "wb") as file:
+            with open("/tmp/dpt.docx", "wb") as file:
                 file.write(response.content)
             st.info("Downloaded certificate template from GitHub.")
-            return "/tmp/dpt_template.docx"
+            return "/tmp/dpt.docx"
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download template from GitHub: {str(e)}. Please add 'db/dpt_template.docx' to your repo.")
+        st.error(f"Failed to download template from GitHub: {str(e)}. Please add 'db/dpt.docx' to your repo.")
         return None
 
 def generate_certificate(emp_id, emp_name, test_date, status):
@@ -280,7 +287,7 @@ def generate_certificate(emp_id, emp_name, test_date, status):
         doc = Document(template_path)
         
         # Parse date robustly
-        date_str = test_date.split()[0] if " " in test_date else test_date  # Use only date part
+        date_str = test_date.split()[0] if " " in test_date else test_date
         test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
         validity_date = validity_date_obj.strftime("%d-%m-%Y")
@@ -306,7 +313,7 @@ def generate_certificate(emp_id, emp_name, test_date, status):
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
 
-        # Save
+        # Save with safe filename
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         doc.save(f"/tmp/{certificate_filename}")
@@ -396,7 +403,8 @@ def download_individual_test(emp_id, emp_name, test_data):
     csv_data = csv_buffer.getvalue()
     
     timestamp = test_data['Date / Time'].replace('/', '_').replace(' ', '_').replace(':', '-')
-    filename = f"Test_Report_{emp_id}_{emp_name}_{test_data['Test Type']}_{timestamp}.csv"
+    safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    filename = f"Test_Report_{emp_id}_{safe_name}_{test_data['Test Type']}_{timestamp}.csv"
     
     return csv_data, filename
 
@@ -413,7 +421,7 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         ]
     cand = cand.dropna(subset=["Question", "A", "B", "C", "D", "Answer"])
     if total <= 0 or cand.empty:
-        return False, "Questions not defined for this standard."
+        return False, f"Questions not defined for standard: {standard}."
     if len(cand) < total:
         total = len(cand)
     sampled = cand.sample(n=min(total, len(cand)), random_state=int(time.time())).reset_index(drop=True)
@@ -453,6 +461,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
+                st.info(f"Saving results to worksheet: '{name}'")
                 break
             except Exception:
                 continue
@@ -463,6 +472,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 for ws in all_worksheets:
                     if "result" in ws.title.lower():
                         worksheet = ws
+                        st.info(f"Saving results to worksheet: '{ws.title}'")
                         break
             except:
                 pass
@@ -494,7 +504,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'STATUS': str(status),
                 'STANDARD': str(test_type),
                 'DATE': now,
-                'DATE / Time': now
+                'DATE / TIME': now
             }
             
             new_row = []
@@ -539,7 +549,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         return False, str(e)
 
 # =====================
-# UI (Rest of the code remains the same as previous version)
+# UI
 # =====================
 st.set_page_config(page_title="PTIS Online Testing Module", page_icon="📝", layout="centered")
 st.title("PTIS Online Testing Module")
@@ -566,7 +576,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
         else:
             st.error("Invalid username or password")
 
-# Admin dashboard (unchanged from previous)
+# Admin dashboard
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     if st.button("🔄 Refresh Data"):
@@ -866,7 +876,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             else:
                 st.rerun()
 
-# Quiz interface (unchanged from previous version - timer, questions, submission)
+# Quiz interface
 elif "quiz" in st.session_state:
     qstate = st.session_state.quiz
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
@@ -955,7 +965,7 @@ elif "quiz" in st.session_state:
                 </span>
             </div>
             <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px; overflow: hidden; margin-top: 15px;">
-                <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px;
+                <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px; transition: width 0.5s ease-in-out;"></div>
             </div>
         </div>
         <script>
@@ -1217,10 +1227,10 @@ elif "quiz" in st.session_state:
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
 
-            color = "#043006" if status == "Pass" else "#DC2626"
+            color = "#10B981" if status == "Pass" else "#DC2626"
             st.markdown(
                 f"""
-                <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #3B82F6, #2563EB, #1E3A8A); color:white; text-align:center; margin-top:20px;">
+                <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #1E3A8A, #2563EB); color:white; text-align:center; margin-top:20px;">
                     <h3 style="color:{color}; font-weight:700;">Final Result : <span style="font-weight:700;">{status}</span></h3>
                     <p style="font-size:18px;">
                         <b>Correct Answers :</b> {right}<br>
