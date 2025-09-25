@@ -13,6 +13,8 @@ import requests
 import zipfile
 import traceback
 from docx import Document
+from docx.shared import Pt
+from docx.oxml.ns import qn
 
 # =====================
 # Paths / Files
@@ -20,7 +22,7 @@ from docx import Document
 BASE_DIR = os.path.dirname(__file__)  # absolute path (safe for Streamlit Cloud)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-TEMPLATE_PATH = os.path.join(DB_FOLDER, "dpt.docx")  # Local template path
+TEMPLATE_PATH = os.path.join(DB_FOLDER, "dpt_template.docx")  # Local template path
 
 # =====================
 # Google Sheets Setup
@@ -89,7 +91,6 @@ def load_all_results():
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
-                st.info(f"Loaded results from worksheet: '{name}'")
                 break
             except Exception:
                 continue
@@ -182,7 +183,6 @@ def load_questions():
                 worksheet = sheet.worksheet(name)
                 questions_data = worksheet.get_all_records()
                 worksheet_used = name
-                st.info(f"Loaded questions from worksheet: '{name}'")
                 break
             except Exception as ws_error:
                 st.warning(f"Worksheet '{name}' not found or inaccessible: {str(ws_error)}")
@@ -208,7 +208,6 @@ def load_questions():
         questions["D"] = questions["D"].astype(str).str.strip()
         questions["Answer"] = questions["Answer"].astype(str).str.strip()
         
-        st.success(f"Loaded {len(questions)} questions successfully.")
         return questions[required_columns]
     
     except Exception as e:
@@ -263,18 +262,18 @@ def get_template_path():
         return TEMPLATE_PATH
     
     # Fallback to GitHub (update URL with your actual repo)
-    github_url = "https://raw.githubusercontent.com/Abdullahjamal9/Quiz-Running/main/db/dpt.docx"  # UPDATE THIS!
+    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt_template.docx"  # UPDATE THIS!
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            with open("/tmp/dpt.docx", "wb") as file:
+            with open("/tmp/dpt_template.docx", "wb") as file:
                 file.write(response.content)
             st.info("Downloaded certificate template from GitHub.")
-            return "/tmp/dpt.docx"
+            return "/tmp/dpt_template.docx"
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download template from GitHub: {str(e)}. Please add 'db/dpt.docx' to your repo.")
+        st.error(f"Failed to download template from GitHub: {str(e)}. Please add 'db/dpt_template.docx' to your repo.")
         return None
 
 def generate_certificate(emp_id, emp_name, test_date, status):
@@ -294,10 +293,16 @@ def generate_certificate(emp_id, emp_name, test_date, status):
         
         cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
 
-        # Replace placeholders
+        # Replace placeholders and update font for employee name
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
+                # Clear existing runs and add new run with custom font
+                para.clear()
+                run = para.add_run(emp_name)
+                run.font.name = 'Monotype Corsiva'
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')  # Ensure font applies
+                run.font.size = Pt(26)
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
             if '25/PTIS/DPT/00410' in para.text:
@@ -324,42 +329,6 @@ def generate_certificate(emp_id, emp_name, test_date, status):
     except Exception as e:
         st.error(f"Error generating certificate: {str(e)}")
         return None, None
-
-# Admin Section - Generate Certificates for Passed Employees
-if st.button("Generate Certificates for All Passed Employees"):
-    results_df = load_all_results()
-    passed_employees = results_df[results_df["Status"] == "Pass"]
-
-    if passed_employees.empty:
-        st.warning("No passed employees found.")
-    else:
-        certificate_files = []
-        for _, row in passed_employees.iterrows():
-            emp_id = row['ID']
-            emp_name = row['Name']
-            test_date = row['Date / Time']
-            status = row['Status']
-
-            certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
-            if certificate_path:
-                certificate_files.append((certificate_path, certificate_filename))
-
-        if certificate_files:
-            zip_buffer = io.BytesIO()
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                for cert_path, cert_filename in certificate_files:
-                    zipf.write(cert_path, cert_filename)
-
-            zip_buffer.seek(0)
-
-            st.download_button(
-                label="Download All Certificates (ZIP)",
-                data=zip_buffer,
-                file_name=f"certificates_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                mime="application/zip"
-            )
-        else:
-            st.error("Failed to generate any certificates. Check template and permissions.")
 
 # =====================
 # Individual Test Downloads
@@ -807,8 +776,43 @@ if st.session_state.admin_logged_in:
                     "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
                 }
             )
-        else:
-            st.warning("No results found matching the current filters")
+        
+        # Moved Certificate Generation to Admin Dashboard
+        st.markdown("---")
+        st.subheader("📜 Generate Certificates")
+        if st.button("Generate Certificates for All Passed Employees"):
+            passed_employees = filtered_df[filtered_df["Status"] == "Pass"]
+
+            if passed_employees.empty:
+                st.warning("No passed employees found in the filtered results.")
+            else:
+                certificate_files = []
+                for _, row in passed_employees.iterrows():
+                    emp_id = row['ID']
+                    emp_name = row['Name']
+                    test_date = row['Date / Time']
+                    status = row['Status']
+
+                    certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
+                    if certificate_path:
+                        certificate_files.append((certificate_path, certificate_filename))
+
+                if certificate_files:
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                        for cert_path, cert_filename in certificate_files:
+                            zipf.write(cert_path, cert_filename)
+
+                    zip_buffer.seek(0)
+
+                    st.download_button(
+                        label="Download All Certificates (ZIP)",
+                        data=zip_buffer,
+                        file_name=f"certificates_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                        mime="application/zip"
+                    )
+                else:
+                    st.error("Failed to generate any certificates. Check template and permissions.")
         
         st.markdown("---")
         if st.button("Logout"):
