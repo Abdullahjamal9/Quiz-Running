@@ -19,10 +19,10 @@ from docx.oxml.ns import qn
 # =====================
 # Paths / Files
 # =====================
-BASE_DIR = os.path.dirname(__file__)  # absolute path (safe for Streamlit Cloud)
+BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-TEMPLATE_PATH = os.path.join(DB_FOLDER, "dpt_template.docx")  # Local template path
+TEMPLATE_PATH = os.path.join(BASE_DIR, "db", "dpt_template.docx")
 
 # =====================
 # Google Sheets Setup
@@ -61,7 +61,6 @@ def load_employees_and_standards():
                 st.warning("Info sheet is empty. Using default standards.")
                 standards = pd.DataFrame(columns=["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"])
             else:
-                # Ensure required columns
                 required_cols = ["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"]
                 for col in required_cols:
                     if col not in standards.columns:
@@ -84,7 +83,6 @@ def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
         
-        # Try different possible worksheet names
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
         
@@ -99,25 +97,17 @@ def load_all_results():
             st.error("Could not find any results worksheet.")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
-        # Get all values to preserve exact row order from Google Sheets
         all_values = worksheet.get_all_values()
-        if len(all_values) < 2:  # No data rows (only header or empty)
+        if len(all_values) < 2:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
-        # First row is header, rest are data
         headers = all_values[0]
         data_rows = all_values[1:]
         
-        # Create DataFrame preserving exact order from Google Sheets
         df = pd.DataFrame(data_rows, columns=headers)
-        
-        # Add original row index to preserve Google Sheets order
         df['_original_order'] = range(len(df))
-        
-        # Remove empty rows
         df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
         
-        # Map column names to handle variations
         column_mapping = {
             'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
             'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
@@ -131,34 +121,27 @@ def load_all_results():
             'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
         }
         
-        # Rename columns to standard names
         for standard_name, possible_names in column_mapping.items():
             for col in df.columns:
                 if col in possible_names and col != '_original_order':
                     df = df.rename(columns={col: standard_name})
                     break
         
-        # Ensure all required columns exist
         required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
         for col in required_columns:
             if col not in df.columns:
                 df[col] = ""
         
-        # Handle numeric columns
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
         
-        # Handle percentage column
         if "Percentage" in df.columns:
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
         
-        # Preserve Google Sheets order
         df = df.sort_values('_original_order').drop('_original_order', axis=1)
-        
-        # Reset index
         df = df.reset_index(drop=True)
         
         return df[required_columns]
@@ -173,7 +156,6 @@ def load_questions():
     try:
         sheet = client.open_by_url(GSHEET_URL)
         
-        # Try multiple possible worksheet names for questions
         question_worksheet_names = ["Questions", "Question Bank", "Quiz Questions", "QuestionData"]
         questions_data = None
         worksheet_used = None
@@ -213,7 +195,6 @@ def load_questions():
     except Exception as e:
         st.error(f"Error loading questions from Google Sheet: {str(e)}")
         st.info("Generating sample questions for testing...")
-        # Fallback: Generate sample questions
         sample_questions = pd.DataFrame({
             "Qno": [1, 2, 3, 4, 5],
             "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cummulative"],
@@ -224,7 +205,7 @@ def load_questions():
                 "Boiling point of water?",
                 "Who wrote Romeo and Juliet?"
             ],
-            "A": ["3", "Berlin", "A language", "50°C", "Dickens"],
+            "A": ["3 нашої ери", "Berlin", "A language", "50°C", "Dickens"],
             "B": ["4", "Paris", "A snake", "100°C", "Shakespeare"],
             "C": ["5", "London", "A fruit", "0°C", "Twain"],
             "D": ["6", "Madrid", "A bird", "212°F", "Hemingway"],
@@ -243,7 +224,7 @@ def get_info_for_standard(standards, selected_standard):
             criteria = int(row.iloc[0].get("Passing Criteria", 70))
             h = int(row.iloc[0].get("Hours", 1))
             m = int(row.iloc[0].get("Minutes", 0))
-            s = int(row.iloc[0].get("Seconds", 0))
+            s int(row.iloc[0].get("Seconds", 0))
             return total, criteria, h, m, s
         else:
             st.warning(f"No info found for standard: {selected_standard}. Using defaults.")
@@ -256,13 +237,11 @@ def get_info_for_standard(standards, selected_standard):
 # Certificate Generation
 # =====================
 def get_template_path():
-    """Try local template first, then GitHub download."""
     if os.path.exists(TEMPLATE_PATH):
         st.info("Using local certificate template.")
         return TEMPLATE_PATH
     
-    # Fallback to GitHub (update URL with your actual repo)
-    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt_template.docx"  # UPDATE THIS!
+    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt_template.docx"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
@@ -285,7 +264,6 @@ def generate_certificate(emp_id, emp_name, test_date, status):
     try:
         doc = Document(template_path)
         
-        # Parse date robustly
         date_str = test_date.split()[0] if " " in test_date else test_date
         test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
@@ -293,15 +271,13 @@ def generate_certificate(emp_id, emp_name, test_date, status):
         
         cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
 
-        # Replace placeholders and update font for employee name
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
-                # Clear existing runs and add new run with custom font
                 para.clear()
                 run = para.add_run(emp_name)
                 run.font.name = 'Monotype Corsiva'
-                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')  # Ensure font applies
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
                 run.font.size = Pt(26)
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
@@ -312,13 +288,11 @@ def generate_certificate(emp_id, emp_name, test_date, status):
             if 'Validity: 24-September-2030' in para.text:
                 para.text = para.text.replace('24-September-2030', validity_date_obj.strftime("%d-%B-%Y"))
 
-        # Update status
         status_text = 'Status: Pass' if status == "Pass" else 'Status: Fail'
         for para in doc.paragraphs:
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
 
-        # Save with safe filename
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         doc.save(f"/tmp/{certificate_filename}")
@@ -540,7 +514,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     password = st.text_input("Password", type="password", key="admin_password")
     
     if st.button("Login", key="admin_login_btn"):
-        if username == "admin" and password == "AdminPtis-3692":
+        if username == "admin" and password == "AdminPt Fleur-de-lis-3692":
             st.session_state.admin_logged_in = True
             st.success("Admin login successful!")
             st.rerun()
@@ -559,7 +533,6 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("🔍 Filters")
         
-        # Create mappings for ID and Name
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
@@ -567,17 +540,18 @@ if st.session_state.admin_logged_in:
         
         with filter_col1:
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            # Determine initial index for Employee ID
-            selected_name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
             selected_id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
             
-            # If Name was selected, update ID
-            if selected_name_key in st.session_state and st.session_state[selected_name_key] != "All":
-                selected_name = st.session_state[selected_name_key]
-                corresponding_id = name_id_mapping.get(selected_name, "All")
+            # Store previous selections to detect changes
+            prev_selected_id = st.session_state.get(selected_id_key, "All")
+            prev_selected_name = st.session_state.get(f"emp_name_filter_{st.session_state.filter_reset_counter}", "All")
+            
+            # Determine initial index for Employee ID
+            if prev_selected_name != "All" and prev_selected_id == "All":
+                corresponding_id = name_id_mapping.get(prev_selected_name, "All")
                 id_index = employee_ids.index(corresponding_id) if corresponding_id in employee_ids else 0
             else:
-                id_index = employee_ids.index(st.session_state.get(selected_id_key, "All")) if selected_id_key in st.session_state and st.session_state[selected_id_key] in employee_ids else 0
+                id_index = employee_ids.index(prev_selected_id) if prev_selected_id in employee_ids else 0
             
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
@@ -588,13 +562,14 @@ if st.session_state.admin_logged_in:
         
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            # If ID was selected, update Name
-            if selected_id_key in st.session_state and st.session_state[selected_id_key] != "All":
-                selected_id = st.session_state[selected_id_key]
-                corresponding_name = id_name_mapping.get(selected_id, "All")
+            selected_name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
+            
+            # Determine initial index for Employee Name
+            if prev_selected_id != "All" and prev_selected_name == "All":
+                corresponding_name = id_name_mapping.get(prev_selected_id, "All")
                 name_index = employee_names.index(corresponding_name) if corresponding_name in employee_names else 0
             else:
-                name_index = employee_names.index(st.session_state.get(selected_name_key, "All")) if selected_name_key in st.session_state and st.session_state[selected_name_key] in employee_names else 0
+                name_index = employee_names.index(prev_selected_name) if prev_selected_name in employee_names else 0
             
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
@@ -602,6 +577,18 @@ if st.session_state.admin_logged_in:
                 index=name_index,
                 key=selected_name_key
             )
+        
+        # Synchronize filters
+        if selected_emp_id != prev_selected_id and selected_emp_id != "All":
+            corresponding_name = id_name_mapping.get(selected_emp_id, "All")
+            if corresponding_name in employee_names and st.session_state[selected_name_key] != corresponding_name:
+                st.session_state[selected_name_key] = corresponding_name
+                st.rerun()
+        elif selected_emp_name != prev_selected_name and selected_emp_name != "All":
+            corresponding_id = name_id_mapping.get(selected_emp_name, "All")
+            if corresponding_id in employee_ids and st.session_state[selected_id_key] != corresponding_id:
+                st.session_state[selected_id_key] = corresponding_id
+                st.rerun()
         
         with filter_col3:
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
@@ -633,7 +620,6 @@ if st.session_state.admin_logged_in:
         
         filtered_df = results_df.copy()
         
-        # Apply filters based on selected ID or Name
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
         elif selected_emp_name != "All":
@@ -645,12 +631,9 @@ if st.session_state.admin_logged_in:
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
 
         if selected_emp_id != "All" or selected_emp_name != "All":
-            if selected_emp_id != "All":
-                display_name = id_name_mapping.get(selected_emp_id, "Unknown")
-                st.info(f"🔗 **Employee Selected**: ID: {selected_emp_id} | Name: {display_name}")
-            else:
-                display_id = name_id_mapping.get(selected_emp_name, "Unknown")
-                st.info(f"🔗 **Employee Selected**: Name: {selected_emp_name} | ID: {display_id}")
+            display_name = selected_emp_name if selected_emp_name != "All" else id_name_mapping.get(selected_emp_id, "Unknown")
+            display_id = selected_emp_id if selected_emp_id != "All" else name_id_mapping.get(selected_emp_name, "Unknown")
+            st.info(f"🔗 **Selected Employee**: ID: {display_id} | Name: {display_name}")
 
         st.markdown("---")
         st.subheader("📥 Individual Test Download")
@@ -774,11 +757,24 @@ if st.session_state.admin_logged_in:
         # Certificate Generation
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
+        
+        # Certificate-specific Name filter
+        employee_names = ["All"] + sorted(results_df[results_df["Status"] == "Pass"]["Name"].unique().tolist())
+        selected_cert_name = st.selectbox(
+            "Filter Certificates by Employee Name",
+            employee_names,
+            index=0,
+            key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
+        )
+        
         if st.button("Generate Certificates for All Passed Employees"):
-            passed_employees = filtered_df[filtered_df["Status"] == "Pass"]
+            if selected_cert_name == "All":
+                passed_employees = filtered_df[filtered_df["Status"] == "Pass"]
+            else:
+                passed_employees = filtered_df[(filtered_df["Status"] == "Pass") & (filtered_df["Name"] == selected_cert_name)]
 
             if passed_employees.empty:
-                st.warning("No passed employees found in the filtered results.")
+                st.warning("No passed employees found for the selected filter.")
             else:
                 certificate_files = []
                 for _, row in passed_employees.iterrows():
@@ -799,10 +795,11 @@ if st.session_state.admin_logged_in:
 
                     zip_buffer.seek(0)
 
+                    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_passed"
                     st.download_button(
-                        label="Download All Certificates (ZIP)",
+                        label=f"Download Certificates (ZIP) for {filename_suffix}",
                         data=zip_buffer,
-                        file_name=f"certificates_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                        file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
                         mime="application/zip"
                     )
                 else:
@@ -1180,7 +1177,7 @@ elif "quiz" in st.session_state:
                     is_correct = str(choice).strip() == str(correct_text).strip()
                     qstate["answers"][current_qid] = {
                         "choice": choice,
-                        "correct": coreect_text,
+                        "correct": correct_text,
                         "is_correct": is_correct
                     }
                     if is_correct:
