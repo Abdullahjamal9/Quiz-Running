@@ -699,7 +699,7 @@ if st.session_state.admin_logged_in:
             else:
                 st.warning("No test results found for the selected employee.")
         else:
-            st.info("👆 **Select an Employee ID or Name** to view and download individual test reports")
+            st.info("👆 *Select an Employee ID or Name* to view and download individual test reports")
         
         st.markdown("---")
         st.subheader("📊 Test Summary")
@@ -732,11 +732,11 @@ if st.session_state.admin_logged_in:
                 st.download_button(
                     label="📄 Download CSV",
                     data=csv,
-                    file_name=f"all_test_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    file_name=f"all_test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
                 )
             with export_col2:
-                if st.button("⚙️ Column Settings"):
+                if st.button("⚙ Column Settings"):
                     st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
             
             if st.session_state.get("show_column_settings", False):
@@ -765,57 +765,8 @@ if st.session_state.admin_logged_in:
                     "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
                 }
             )
-        
-        # Certificate Generation
-        st.markdown("---")
-        st.subheader("📜 Generate Certificates")
-        
-        # Certificate-specific Name filter
-        employee_names = ["All"] + sorted(results_df[results_df["Status"] == "Pass"]["Name"].unique().tolist())
-        selected_cert_name = st.selectbox(
-            "Filter Certificates by Employee Name",
-            employee_names,
-            index=0,
-            key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
-        )
-        
-        if st.button("Generate Certificates for All Passed Employees"):
-            if selected_cert_name == "All":
-                passed_employees = filtered_df[filtered_df["Status"] == "Pass"]
-            else:
-                passed_employees = filtered_df[(filtered_df["Status"] == "Pass") & (filtered_df["Name"] == selected_cert_name)]
-
-            if passed_employees.empty:
-                st.warning("No passed employees found for the selected filter.")
-            else:
-                certificate_files = []
-                for _, row in passed_employees.iterrows():
-                    emp_id = row['ID']
-                    emp_name = row['Name']
-                    test_date = row['Date / Time']
-                    status = row['Status']
-
-                    certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
-                    if certificate_path:
-                        certificate_files.append((certificate_path, certificate_filename))
-
-                if certificate_files:
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                        for cert_path, cert_filename in certificate_files:
-                            zipf.write(cert_path, cert_filename)
-
-                    zip_buffer.seek(0)
-
-                    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_passed"
-                    st.download_button(
-                        label=f"Download Certificates (ZIP) for {filename_suffix}",
-                        data=zip_buffer,
-                        file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                        mime="application/zip"
-                    )
-                else:
-                    st.error("Failed to generate any certificates. Check template and permissions.")
+        else:
+            st.warning("No results found matching the current filters")
         
         st.markdown("---")
         if st.button("Logout"):
