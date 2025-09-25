@@ -12,7 +12,7 @@ import io
 import requests
 import zipfile
 import traceback
-from docx import Document  # Correct import from python-docx
+from docx import Document
 
 # =====================
 # Paths / Files (local Excel for reading only)
@@ -21,6 +21,7 @@ BASE_DIR = os.path.dirname(__file__)  # absolute path (safe for Streamlit Cloud)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
+TEMPLATE_PATH = os.path.join(DB_FOLDER, "dpt_template.docx")  # Local template path
 
 # =====================
 # Google Sheets Setup (for saving and reading results)
@@ -164,11 +165,29 @@ def load_all_results():
 def load_questions():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        questions_data = sheet.worksheet("Questions").get_all_records()
+        
+        # Try multiple possible worksheet names for questions
+        question_worksheet_names = ["Questions", "Question Bank", "Quiz Questions", "QuestionData"]
+        questions_data = None
+        worksheet_used = None
+        
+        for name in question_worksheet_names:
+            try:
+                worksheet = sheet.worksheet(name)
+                questions_data = worksheet.get_all_records()
+                worksheet_used = name
+                st.info(f"Loaded questions from worksheet: '{name}'")
+                break
+            except Exception as ws_error:
+                st.warning(f"Worksheet '{name}' not found or inaccessible: {str(ws_error)}")
+                continue
+        
+        if questions_data is None or not questions_data:
+            raise Exception("No valid questions worksheet found.")
+        
         questions = pd.DataFrame(questions_data)
         if questions.empty:
-            st.error("Questions worksheet is empty.")
-            return pd.DataFrame(columns=["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"])
+            raise Exception("Questions worksheet is empty.")
         
         required_columns = ["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"]
         for col in required_columns:
@@ -183,11 +202,31 @@ def load_questions():
         questions["D"] = questions["D"].astype(str).str.strip()
         questions["Answer"] = questions["Answer"].astype(str).str.strip()
         
+        st.success(f"Loaded {len(questions)} questions successfully.")
         return questions[required_columns]
     
     except Exception as e:
-        st.error(f"Error loading questions: {str(e)}")
-        return pd.DataFrame(columns=["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"])
+        st.error(f"Error loading questions from Google Sheet: {str(e)}")
+        st.info("Generating sample questions for testing...")
+        # Fallback: Generate sample questions
+        sample_questions = pd.DataFrame({
+            "Qno": [1, 2, 3, 4, 5],
+            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cummulative"],
+            "Question": [
+                "What is 2 + 2?",
+                "Capital of France?",
+                "What is Python?",
+                "Boiling point of water?",
+                "Who wrote Romeo and Juliet?"
+            ],
+            "A": ["3", "Berlin", "A language", "50°C", "Dickens"],
+            "B": ["4", "Paris", "A snake", "100°C", "Shakespeare"],
+            "C": ["5", "London", "A fruit", "0°C", "Twain"],
+            "D": ["6", "Madrid", "A bird", "212°F", "Hemingway"],
+            "Answer": ["B", "B", "A", "B", "B"]
+        })
+        st.warning("Using sample questions. Add a 'Questions' worksheet to your Google Sheet for real data.")
+        return sample_questions
 
 def get_info_for_standard(standards, selected_standard):
     try:
@@ -208,94 +247,112 @@ def get_info_for_standard(standards, selected_standard):
         return 50, 70, 1, 0, 0
 
 # =====================
-# Certificate Generation
+# Certificate Generation (Fixed: Local fallback + GitHub)
 # =====================
-def download_template_from_github():
-    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt"  # Replace with actual GitHub URL
-    response = requests.get(github_url)
-
-    if response.status_code == 200:
-        with open("/tmp/dpt_template.docx", "wb") as file:
-            file.write(response.content)
-        return "/tmp/dpt_template.docx"
-    else:
-        st.error("Failed to download the certificate template from GitHub.")
+def get_template_path():
+    """Try local template first, then GitHub download."""
+    if os.path.exists(TEMPLATE_PATH):
+        st.info("Using local certificate template.")
+        return TEMPLATE_PATH
+    
+    # Fallback to GitHub (update URL with your actual repo)
+    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt_template.docx"  # UPDATE THIS!
+    try:
+        response = requests.get(github_url, timeout=10)
+        if response.status_code == 200:
+            with open("/tmp/dpt_template.docx", "wb") as file:
+                file.write(response.content)
+            st.info("Downloaded certificate template from GitHub.")
+            return "/tmp/dpt_template.docx"
+        else:
+            raise Exception(f"HTTP {response.status_code}")
+    except Exception as e:
+        st.error(f"Failed to download template from GitHub: {str(e)}. Please add 'db/dpt_template.docx' to your repo.")
         return None
 
 def generate_certificate(emp_id, emp_name, test_date, status):
-    template_path = download_template_from_github()
+    template_path = get_template_path()
     if not template_path:
+        st.error("No certificate template available. Cannot generate certificate.")
         return None, None
 
-    doc = Document(template_path)
-    
     try:
-        test_date_obj = datetime.datetime.strptime(test_date, "%d-%m-%Y %I:%M:%S %p")
-    except ValueError:
-        test_date_obj = datetime.datetime.strptime(test_date.split()[0], "%d-%m-%Y")
-    validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
-    validity_date = validity_date_obj.strftime("%d-%m-%Y")
+        doc = Document(template_path)
+        
+        # Parse date robustly
+        date_str = test_date.split()[0] if " " in test_date else test_date  # Use only date part
+        test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
+        validity_date = validity_date_obj.strftime("%d-%m-%Y")
+        
+        cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
+
+        # Replace placeholders
+        for para in doc.paragraphs:
+            if 'Usman Waheed' in para.text:
+                para.text = para.text.replace('Usman Waheed', emp_name)
+            if '25-September-2025' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+            if '25/PTIS/DPT/00410' in para.text:
+                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+            if 'Date of Certification' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+            if 'Validity: 24-September-2030' in para.text:
+                para.text = para.text.replace('24-September-2030', validity_date_obj.strftime("%d-%B-%Y"))
+
+        # Update status
+        status_text = 'Status: Pass' if status == "Pass" else 'Status: Fail'
+        for para in doc.paragraphs:
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
+
+        # Save
+        safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        certificate_filename = f"Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        doc.save(f"/tmp/{certificate_filename}")
+
+        st.success(f"Generated certificate: {certificate_filename}")
+        return f"/tmp/{certificate_filename}", certificate_filename
     
-    cert_number = f"{emp_id}/PTIS/{test_date.split()[0].replace('-', '')}"
-
-    for para in doc.paragraphs:
-        if 'Usman Waheed' in para.text:
-            para.text = para.text.replace('Usman Waheed', emp_name)
-        if '25-September-2025' in para.text:
-            para.text = para.text.replace('25-September-2025', test_date.split()[0])
-        if '25/PTIS/DPT/00410' in para.text:
-            para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-        if 'Date of Certification' in para.text:
-            para.text = para.text.replace('25-September-2025', test_date.split()[0])
-        if 'Validity: 24-September-2030' in para.text:
-            para.text = para.text.replace('24-September-2030', validity_date)
-
-    if status == "Pass":
-        for para in doc.paragraphs:
-            if 'Status' in para.text:
-                para.text = para.text.replace('Status: Fail', 'Status: Pass')
-    else:
-        for para in doc.paragraphs:
-            if 'Status' in para.text:
-                para.text = para.text.replace('Status: Pass', 'Status: Fail')
-
-    certificate_filename = f"Certificate_{emp_id}_{emp_name}_{test_date.split()[0]}.docx"
-    doc.save(f"/tmp/{certificate_filename}")
-
-    return f"/tmp/{certificate_filename}", certificate_filename
+    except Exception as e:
+        st.error(f"Error generating certificate: {str(e)}")
+        return None, None
 
 # Admin Section - Generate Certificates for Passed Employees
 if st.button("Generate Certificates for All Passed Employees"):
     results_df = load_all_results()
     passed_employees = results_df[results_df["Status"] == "Pass"]
 
-    certificate_files = []
-    for _, row in passed_employees.iterrows():
-        emp_id = row['ID']
-        emp_name = row['Name']
-        test_date = row['Date / Time']
-        status = row['Status']
-
-        certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
-        if certificate_path:
-            certificate_files.append(certificate_path)
-
-    if certificate_files:
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-            for cert_file in certificate_files:
-                zipf.write(cert_file, os.path.basename(cert_file))
-
-        zip_buffer.seek(0)
-
-        st.download_button(
-            label="Download All Certificates",
-            data=zip_buffer,
-            file_name="certificates.zip",
-            mime="application/zip"
-        )
+    if passed_employees.empty:
+        st.warning("No passed employees found.")
     else:
-        st.warning("No employees passed the test.")
+        certificate_files = []
+        for _, row in passed_employees.iterrows():
+            emp_id = row['ID']
+            emp_name = row['Name']
+            test_date = row['Date / Time']
+            status = row['Status']
+
+            certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
+            if certificate_path:
+                certificate_files.append((certificate_path, certificate_filename))
+
+        if certificate_files:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for cert_path, cert_filename in certificate_files:
+                    zipf.write(cert_path, cert_filename)
+
+            zip_buffer.seek(0)
+
+            st.download_button(
+                label="Download All Certificates (ZIP)",
+                data=zip_buffer,
+                file_name=f"certificates_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                mime="application/zip"
+            )
+        else:
+            st.error("Failed to generate any certificates. Check template and permissions.")
 
 # =====================
 # Individual Test Downloads
@@ -359,7 +416,7 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         return False, "Questions not defined for this standard."
     if len(cand) < total:
         total = len(cand)
-    sampled = cand.sample(total, random_state=int(time.time())).reset_index(drop=True)
+    sampled = cand.sample(n=min(total, len(cand)), random_state=int(time.time())).reset_index(drop=True)
 
     st.session_state.quiz = {
         "emp_id": str(emp_id),
@@ -437,7 +494,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'STATUS': str(status),
                 'STANDARD': str(test_type),
                 'DATE': now,
-                'DATE / TIME': now
+                'DATE / Time': now
             }
             
             new_row = []
@@ -474,13 +531,15 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
             ]
 
         worksheet.append_row(new_row)
+        st.success("Results saved to Google Sheet.")
         return True, ""
         
     except Exception as e:
+        st.error(f"Error saving results: {str(e)}")
         return False, str(e)
 
 # =====================
-# UI
+# UI (Rest of the code remains the same as previous version)
 # =====================
 st.set_page_config(page_title="PTIS Online Testing Module", page_icon="📝", layout="centered")
 st.title("PTIS Online Testing Module")
@@ -507,7 +566,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
         else:
             st.error("Invalid username or password")
 
-# Admin dashboard
+# Admin dashboard (unchanged from previous)
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     if st.button("🔄 Refresh Data"):
@@ -807,7 +866,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             else:
                 st.rerun()
 
-# Quiz interface
+# Quiz interface (unchanged from previous version - timer, questions, submission)
 elif "quiz" in st.session_state:
     qstate = st.session_state.quiz
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
@@ -896,7 +955,7 @@ elif "quiz" in st.session_state:
                 </span>
             </div>
             <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px; overflow: hidden; margin-top: 15px;">
-                <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px; transition: width 0.5s ease-in-out;"></div>
+                <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px;
             </div>
         </div>
         <script>
