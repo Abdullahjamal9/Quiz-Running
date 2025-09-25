@@ -514,7 +514,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     password = st.text_input("Password", type="password", key="admin_password")
     
     if st.button("Login", key="admin_login_btn"):
-        if username == "admin" and password == "AdminPt Fleur-de-lis-3692":
+        if username == "admin" and password == "AdminPtis-3692":
             st.session_state.admin_logged_in = True
             st.success("Admin login successful!")
             st.rerun()
