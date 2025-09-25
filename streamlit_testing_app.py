@@ -749,22 +749,34 @@ if st.session_state.admin_logged_in:
         
         with cert_col1:
             cert_employee_ids = ["All"] + sorted(passed_results["ID"].astype(str).unique().tolist())
+            
+            # Get the previous selections to detect changes
+            prev_cert_id = st.session_state.get(f"cert_id_filter_{st.session_state.filter_reset_counter}", "All")
+            prev_cert_name = st.session_state.get(f"cert_name_filter_{st.session_state.filter_reset_counter}", "All")
+            
+            # Determine initial index for Certificate ID
+            if prev_cert_name != "All" and prev_cert_id == "All":
+                corresponding_id = cert_name_id_mapping.get(prev_cert_name, "All")
+                cert_id_index = cert_employee_ids.index(corresponding_id) if corresponding_id in cert_employee_ids else 0
+            else:
+                cert_id_index = cert_employee_ids.index(prev_cert_id) if prev_cert_id in cert_employee_ids else 0
+            
             selected_cert_id = st.selectbox(
                 "Certificate Filter - Employee ID",
                 cert_employee_ids,
-                index=0,
+                index=cert_id_index,
                 key=f"cert_id_filter_{st.session_state.filter_reset_counter}"
             )
         
         with cert_col2:
             cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
             
-            # Auto-sync certificate name based on selected certificate ID
-            if selected_cert_id != "All" and selected_cert_id in cert_id_name_mapping:
-                cert_corresponding_name = cert_id_name_mapping[selected_cert_id]
-                cert_name_index = cert_employee_names.index(cert_corresponding_name) if cert_corresponding_name in cert_employee_names else 0
+            # Determine initial index for Certificate Name
+            if prev_cert_id != "All" and prev_cert_name == "All":
+                corresponding_name = cert_id_name_mapping.get(prev_cert_id, "All")
+                cert_name_index = cert_employee_names.index(corresponding_name) if corresponding_name in cert_employee_names else 0
             else:
-                cert_name_index = 0
+                cert_name_index = cert_employee_names.index(prev_cert_name) if prev_cert_name in cert_employee_names else 0
                 
             selected_cert_name = st.selectbox(
                 "Certificate Filter - Employee Name",
@@ -772,13 +784,18 @@ if st.session_state.admin_logged_in:
                 index=cert_name_index,
                 key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
             )
-            
-            # Auto-sync certificate ID based on selected certificate name
-            if selected_cert_name != "All" and selected_cert_name in cert_name_id_mapping:
-                cert_corresponding_id = cert_name_id_mapping[selected_cert_name]
-                if selected_cert_id == "All" and cert_corresponding_id != "All":
-                    st.session_state[f"cert_id_filter_{st.session_state.filter_reset_counter}"] = cert_corresponding_id
-                    st.rerun()
+        
+        # Synchronize certificate filters (trigger rerun when one changes)
+        if selected_cert_id != prev_cert_id and selected_cert_id != "All":
+            corresponding_name = cert_id_name_mapping.get(selected_cert_id, "All")
+            if corresponding_name in cert_employee_names and st.session_state[f"cert_name_filter_{st.session_state.filter_reset_counter}"] != corresponding_name:
+                st.session_state[f"cert_name_filter_{st.session_state.filter_reset_counter}"] = corresponding_name
+                st.rerun()
+        elif selected_cert_name != prev_cert_name and selected_cert_name != "All":
+            corresponding_id = cert_name_id_mapping.get(selected_cert_name, "All")
+            if corresponding_id in cert_employee_ids and st.session_state[f"cert_id_filter_{st.session_state.filter_reset_counter}"] != corresponding_id:
+                st.session_state[f"cert_id_filter_{st.session_state.filter_reset_counter}"] = corresponding_id
+                st.rerun()
         
         if st.button("Generate Certificates for Selected Employee(s)"):
             # Filter based on certificate-specific filters
