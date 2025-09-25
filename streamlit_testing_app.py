@@ -236,29 +236,29 @@ def get_info_for_standard(standards, selected_standard):
 # =====================
 # Certificate Generation
 # =====================
-def get_template_path():
-    if os.path.exists(TEMPLATE_PATH):
-        st.info("Using local certificate template.")
-        return TEMPLATE_PATH
+def get_template_path(template_type):
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
+    if os.path.exists(template_path):
+        return template_path
     
-    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt_template.docx"
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.docx"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            with open("/tmp/dpt_template.docx", "wb") as file:
+            temp_path = f"/tmp/{template_type}_template.docx"
+            with open(temp_path, "wb") as file:
                 file.write(response.content)
-            st.info("Downloaded certificate template from GitHub.")
-            return "/tmp/dpt_template.docx"
+            return temp_path
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download template from GitHub: {str(e)}. Please add 'db/dpt_template.docx' to your repo.")
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
         return None
 
-def generate_certificate(emp_id, emp_name, test_date, status):
-    template_path = get_template_path()
+def generate_certificate(emp_id, emp_name, test_date, status, template_type):
+    template_path = get_template_path(template_type)
     if not template_path:
-        st.error("No certificate template available. Cannot generate certificate.")
+        st.error(f"No {template_type} template available. Cannot generate certificate.")
         return None, None
 
     try:
@@ -294,14 +294,14 @@ def generate_certificate(emp_id, emp_name, test_date, status):
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
 
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         doc.save(f"/tmp/{certificate_filename}")
 
         st.success(f"Generated certificate: {certificate_filename}")
         return f"/tmp/{certificate_filename}", certificate_filename
     
     except Exception as e:
-        st.error(f"Error generating certificate: {str(e)}")
+        st.error(f"Error generating {template_type} certificate: {str(e)}")
         return None, None
 
 # =====================
@@ -779,26 +779,38 @@ if st.session_state.admin_logged_in:
             key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
         )
         
-        if st.button("Generate Certificates for Selected Employee(s)"):
-            # Filter based on certificate name filter
-            cert_filtered_df = passed_results.copy()
+        if st.button("Generate Certificates for Qualifying Employees"):
+            required_standards = {"DS-1", "API RP 7G-2", "API SPEC 5CT & 5A5", "Cummulative"}
+            passed_results = filtered_df[filtered_df["Status"] == "Pass"]
+            grouped = passed_results.groupby('Name')
+            
+            qualifying_rows = []
+            for name, group in grouped:
+                passed_standards = set(group['Test Type'].str.strip())
+                if required_standards.issubset(passed_standards):
+                    # Get the Cummulative row for date
+                    cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
+                    if not cumm_row.empty:
+                        qualifying_rows.append(cumm_row.iloc[0])
+            
+            qualifying_df = pd.DataFrame(qualifying_rows)
             
             if selected_cert_name != "All":
-                cert_filtered_df = cert_filtered_df[cert_filtered_df["Name"] == selected_cert_name]
-
-            if cert_filtered_df.empty:
-                st.warning("No passed employees found for the selected certificate filter.")
+                qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
+            
+            if qualifying_df.empty:
+                st.warning("No employees who have passed all 4 standards (DS-1, API RP 7G-2, API SPEC 5CT & 5A5, Cummulative).")
             else:
                 certificate_files = []
-                for _, row in cert_filtered_df.iterrows():
+                for _, row in qualifying_df.iterrows():
                     emp_id = row['ID']
                     emp_name = row['Name']
                     test_date = row['Date / Time']
                     status = row['Status']
-
-                    certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
-                    if certificate_path:
-                        certificate_files.append((certificate_path, certificate_filename))
+                    for template_type in ['PT', 'UT', 'MT', 'VT']:
+                        certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status, template_type)
+                        if certificate_path:
+                            certificate_files.append((certificate_path, certificate_filename))
 
                 if certificate_files:
                     zip_buffer = io.BytesIO()
@@ -808,7 +820,7 @@ if st.session_state.admin_logged_in:
 
                     zip_buffer.seek(0)
 
-                    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_passed"
+                    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
                     
                     st.download_button(
                         label=f"Download Certificates (ZIP) for {filename_suffix}",
@@ -817,7 +829,7 @@ if st.session_state.admin_logged_in:
                         mime="application/zip"
                     )
                 else:
-                    st.error("Failed to generate any certificates. Check template and permissions.")
+                    st.error("Failed to generate any certificates. Check templates and permissions.")
         
         st.markdown("---")
         if st.button("Logout"):
