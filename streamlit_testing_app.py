@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import datetime as dt
+import datetime
 import time
 import os
 import gspread
@@ -12,12 +12,12 @@ import io
 import requests
 import zipfile
 import traceback
-from docx import Document
+from docx import Document  # Correct import from python-docx
 
 # =====================
 # Paths / Files (local Excel for reading only)
 # =====================
-BASE_DIR = os.path.dirname(__file__)   # absolute path (safe for Streamlit Cloud)
+BASE_DIR = os.path.dirname(__file__)  # absolute path (safe for Streamlit Cloud)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 INFO_FILE = os.path.join(DB_FOLDER, "info.xlsx")
@@ -80,7 +80,6 @@ def load_all_results():
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
         
-        # Try to find the correct worksheet
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
@@ -158,7 +157,6 @@ def load_all_results():
         
     except Exception as e:
         st.error(f"Error loading results: {str(e)}")
-        import traceback
         st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
 
@@ -217,7 +215,6 @@ def download_template_from_github():
     response = requests.get(github_url)
 
     if response.status_code == 200:
-        # Save the template to a temporary location
         with open("/tmp/dpt_template.docx", "wb") as file:
             file.write(response.content)
         return "/tmp/dpt_template.docx"
@@ -230,31 +227,29 @@ def generate_certificate(emp_id, emp_name, test_date, status):
     if not template_path:
         return None, None
 
-    # Load the certificate template
     doc = Document(template_path)
     
-    # Convert test date to proper format
-    test_date_obj = dt.datetime.strptime(test_date, "%d-%m-%Y")
-    validity_date_obj = test_date_obj + dt.timedelta(days=5*365)  # Assuming 5 years validity
+    try:
+        test_date_obj = datetime.datetime.strptime(test_date, "%d-%m-%Y %I:%M:%S %p")
+    except ValueError:
+        test_date_obj = datetime.datetime.strptime(test_date.split()[0], "%d-%m-%Y")
+    validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
     validity_date = validity_date_obj.strftime("%d-%m-%Y")
     
-    # Generate certificate number (pattern: EmpID/PTIS/DDMMYYYY)
-    cert_number = f"{emp_id}/PTIS/{test_date.replace('-', '')}"
+    cert_number = f"{emp_id}/PTIS/{test_date.split()[0].replace('-', '')}"
 
-    # Replace placeholders with dynamic values
     for para in doc.paragraphs:
         if 'Usman Waheed' in para.text:
             para.text = para.text.replace('Usman Waheed', emp_name)
         if '25-September-2025' in para.text:
-            para.text = para.text.replace('25-September-2025', test_date)
+            para.text = para.text.replace('25-September-2025', test_date.split()[0])
         if '25/PTIS/DPT/00410' in para.text:
             para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
         if 'Date of Certification' in para.text:
-            para.text = para.text.replace('25-September-2025', test_date)
+            para.text = para.text.replace('25-September-2025', test_date.split()[0])
         if 'Validity: 24-September-2030' in para.text:
             para.text = para.text.replace('24-September-2030', validity_date)
 
-    # Modify the status (pass/fail) in the certificate
     if status == "Pass":
         for para in doc.paragraphs:
             if 'Status' in para.text:
@@ -264,8 +259,7 @@ def generate_certificate(emp_id, emp_name, test_date, status):
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Pass', 'Status: Fail')
 
-    # Save the document with dynamic content
-    certificate_filename = f"Certificate_{emp_id}_{emp_name}_{test_date}.docx"
+    certificate_filename = f"Certificate_{emp_id}_{emp_name}_{test_date.split()[0]}.docx"
     doc.save(f"/tmp/{certificate_filename}")
 
     return f"/tmp/{certificate_filename}", certificate_filename
@@ -307,7 +301,6 @@ if st.button("Generate Certificates for All Passed Employees"):
 # Individual Test Downloads
 # =====================
 def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status):
-    """Create a detailed individual test report"""
     report_data = {
         'Test Information': [
             ['Employee ID', emp_id],
@@ -328,7 +321,6 @@ def create_individual_test_report(emp_id, emp_name, test_date, test_type, total,
     return report_df
 
 def download_individual_test(emp_id, emp_name, test_data):
-    """Generate and download individual test report"""
     report_df = create_individual_test_report(
         emp_id, 
         emp_name, 
@@ -362,7 +354,7 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
             questions_df["Standard"].astype(str).str.strip().str.upper()
             == str(standard).strip().upper()
         ]
-    cand = cand.dropna(subset=["Question","A","B","C","D","Answer"])
+    cand = cand.dropna(subset=["Question", "A", "B", "C", "D", "Answer"])
     if total <= 0 or cand.empty:
         return False, "Questions not defined for this standard."
     if len(cand) < total:
@@ -387,8 +379,10 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
 
 def format_timer(h, m, s):
     try:
-        hh = int(h); mm = int(m); ss = int(s)
-        return hh*3600 + mm*60 + ss
+        hh = int(h)
+        mm = int(m)
+        ss = int(s)
+        return hh * 3600 + mm * 60 + ss
     except Exception:
         return 0
 
@@ -420,7 +414,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
             return False, "Could not find results worksheet to save data"
 
         pkt_tz = pytz.timezone('Asia/Karachi')
-        now = dt.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
+        now = datetime.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
         
         raw_score = right - (wrong * 0.25)
         final_score = max(0, raw_score)
@@ -514,7 +508,6 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             st.error("Invalid username or password")
 
 # Admin dashboard
-# Updated filter section with synchronized ID/Name selection
 if st.session_state.admin_logged_in:
     st.subheader("Admin Dashboard - Employee Results")
     if st.button("🔄 Refresh Data"):
@@ -528,17 +521,13 @@ if st.session_state.admin_logged_in:
         if "filter_reset_counter" not in st.session_state:
             st.session_state.filter_reset_counter = 0
         
-        # Create ID-Name mapping for synchronization
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
-            # Employee ID filter
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            
-            # Check if name was changed and sync ID
             selected_name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
             if selected_name_key in st.session_state:
                 selected_name = st.session_state[selected_name_key]
@@ -561,10 +550,7 @@ if st.session_state.admin_logged_in:
             )
         
         with filter_col2:
-            # Employee Name filter
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            
-            # Check if ID was changed and sync name
             selected_id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
             if selected_id_key in st.session_state:
                 selected_id = st.session_state[selected_id_key]
@@ -587,7 +573,6 @@ if st.session_state.admin_logged_in:
             )
         
         with filter_col3:
-            # Status filter
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox(
                 "Filter by Status", 
@@ -597,7 +582,6 @@ if st.session_state.admin_logged_in:
             )
         
         with filter_col4:
-            # Test Type/Standard filter
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox(
                 "Filter by Test Type", 
@@ -616,10 +600,8 @@ if st.session_state.admin_logged_in:
                     del st.session_state[key]
                 st.rerun()
         
-        # Apply filters - use whichever filter is not "All"
         filtered_df = results_df.copy()
         
-        # If either ID or Name is selected (not "All"), filter by that employee
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
         elif selected_emp_name != "All":
@@ -630,7 +612,6 @@ if st.session_state.admin_logged_in:
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
 
-        # Display sync status
         if selected_emp_id != "All" or selected_emp_name != "All":
             if selected_emp_id != "All":
                 display_name = id_name_mapping.get(selected_emp_id, "Unknown")
@@ -642,7 +623,6 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("📥 Individual Test Download")
         
-        # Use the synchronized selection for individual test download
         if selected_emp_id != "All" or selected_emp_name != "All":
             if selected_emp_id != "All":
                 emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
@@ -725,7 +705,7 @@ if st.session_state.admin_logged_in:
                 st.download_button(
                     label="📄 Download CSV",
                     data=csv,
-                    file_name=f"all_test_results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    file_name=f"all_test_results_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                     mime="text/csv"
                 )
             with export_col2:
@@ -810,7 +790,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     c1, c2, c3 = st.columns(3)
     with c1: st.metric("Total Questions", total)
     with c2: st.metric("Passing Criteria (%)", criteria)
-    with c3: st.metric("Timer (HH:MM:SS)", f"{h}:{m}:{s}")
+    with c3: st.metric("Timer (HH:MM:SS)", f"{h:02d}:{m:02d}:{s:02d}")
     st.markdown("---")
     with st.form("start_form"):
         st.markdown("### Ready to start your test?")
