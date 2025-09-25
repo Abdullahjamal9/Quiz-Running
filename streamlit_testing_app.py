@@ -12,7 +12,9 @@ import io
 import requests
 import zipfile
 import traceback
-from PyPDF2 import PdfReader, PdfWriter
+from docx import Document
+from docx.shared import Pt
+from docx.oxml.ns import qn
 
 # =====================
 # Paths / Files
@@ -20,6 +22,7 @@ from PyPDF2 import PdfReader, PdfWriter
 BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
+TEMPLATE_PATH = os.path.join(BASE_DIR, "db", "dpt_template.docx")
 
 # =====================
 # Google Sheets Setup
@@ -202,7 +205,7 @@ def load_questions():
                 "Boiling point of water?",
                 "Who wrote Romeo and Juliet?"
             ],
-            "A": ["3", "Berlin", "A language", "50°C", "Dickens"],
+            "A": ["3 нашої ери", "Berlin", "A language", "50°C", "Dickens"],
             "B": ["4", "Paris", "A snake", "100°C", "Shakespeare"],
             "C": ["5", "London", "A fruit", "0°C", "Twain"],
             "D": ["6", "Madrid", "A bird", "212°F", "Hemingway"],
@@ -233,81 +236,72 @@ def get_info_for_standard(standards, selected_standard):
 # =====================
 # Certificate Generation
 # =====================
-def get_template_path(template_type):
-    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")
-    if os.path.exists(template_path):
-        return template_path
+def get_template_path():
+    if os.path.exists(TEMPLATE_PATH):
+        st.info("Using local certificate template.")
+        return TEMPLATE_PATH
     
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"
+    github_url = "https://raw.githubusercontent.com/your_username/your_repo_name/main/db/dpt_template.docx"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            temp_path = f"/tmp/{template_type}_template.pdf"
-            with open(temp_path, "wb") as file:
+            with open("/tmp/dpt_template.docx", "wb") as file:
                 file.write(response.content)
-            return temp_path
+            st.info("Downloaded certificate template from GitHub.")
+            return "/tmp/dpt_template.docx"
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")
+        st.error(f"Failed to download template from GitHub: {str(e)}. Please add 'db/dpt_template.docx' to your repo.")
         return None
 
-def generate_certificate(emp_id, emp_name, test_date, status, template_type):
-    template_path = get_template_path(template_type)
+def generate_certificate(emp_id, emp_name, test_date, status):
+    template_path = get_template_path()
     if not template_path:
-        st.error(f"No {template_type} template available. Cannot generate certificate.")
+        st.error("No certificate template available. Cannot generate certificate.")
         return None, None
 
     try:
-        reader = PdfReader(template_path)
-        writer = PdfWriter()
-
-        # Copy all pages from the template
-        for page in reader.pages:
-            writer.add_page(page)
-
-        # Get form fields
-        fields = reader.get_form_text_fields()
-        if not fields:
-            st.error(f"No form fields found in {template_type}_template.pdf. Please add form fields to the PDF.")
-            return None, None
-
-        # Extract date part (e.g., "04-09-2025" from "04-09-2025 10:00:00 AM")
+        doc = Document(template_path)
+        
         date_str = test_date.split()[0] if " " in test_date else test_date
-        try:
-            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
-        except ValueError:
-            st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
-            return None, None
-
-        validity_date = (test_date_obj + datetime.timedelta(days=5*365)).strftime("%d-%B-%Y")
+        test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
+        validity_date = validity_date_obj.strftime("%d-%m-%Y")
+        
         cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
-        status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Update form fields
-        writer.update_page_form_field_values(
-            writer.pages[0],
-            {
-                "employee_name": emp_name,
-                "test_date": test_date_obj.strftime("%d-%B-%Y"),
-                "cert_number": cert_number,
-                "validity_date": validity_date,
-                "status": status_text
-            }
-        )
+        for para in doc.paragraphs:
+            if 'Usman Waheed' in para.text:
+                para.text = para.text.replace('Usman Waheed', emp_name)
+                para.clear()
+                run = para.add_run(emp_name)
+                run.font.name = 'Monotype Corsiva'
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
+                run.font.size = Pt(26)
+            if '25-September-2025' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+            if '25/PTIS/DPT/00410' in para.text:
+                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+            if 'Date of Certification' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+            if 'Validity: 24-September-2030' in para.text:
+                para.text = para.text.replace('24-September-2030', validity_date_obj.strftime("%d-%B-%Y"))
+
+        status_text = 'Status: Pass' if status == "Pass" else 'Status: Fail'
+        for para in doc.paragraphs:
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
 
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
-        output_path = f"/tmp/{certificate_filename}"
-
-        with open(output_path, "wb") as output_file:
-            writer.write(output_file)
+        certificate_filename = f"Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        doc.save(f"/tmp/{certificate_filename}")
 
         st.success(f"Generated certificate: {certificate_filename}")
-        return output_path, certificate_filename
+        return f"/tmp/{certificate_filename}", certificate_filename
     
     except Exception as e:
-        st.error(f"Error generating {template_type} certificate: {str(e)}")
+        st.error(f"Error generating certificate: {str(e)}")
         return None, None
 
 # =====================
@@ -774,7 +768,7 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
         
-        # Certificate filter - only employee name
+        # Simple certificate filter - only employee name
         passed_results = results_df[results_df["Status"] == "Pass"]
         cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
         
@@ -785,37 +779,26 @@ if st.session_state.admin_logged_in:
             key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
         )
         
-        if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
-            passed_results = results_df[results_df["Status"] == "Pass"]
-            grouped = passed_results.groupby('Name')
-            
-            qualifying_rows = []
-            for name, group in grouped:
-                passed_standards = set(group['Test Type'].str.strip())
-                if required_standards.issubset(passed_standards):
-                    cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
-                    if not cumm_row.empty:
-                        qualifying_rows.append(cumm_row.iloc[0])
-            
-            qualifying_df = pd.DataFrame(qualifying_rows)
+        if st.button("Generate Certificates for Selected Employee(s)"):
+            # Filter based on certificate name filter
+            cert_filtered_df = passed_results.copy()
             
             if selected_cert_name != "All":
-                qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
-            
-            if qualifying_df.empty:
-                st.warning("No employees found who have passed all 4 standards (DS-1, Cummulative, API SPEC 5CT & 5A5, API RP 7G-2).")
+                cert_filtered_df = cert_filtered_df[cert_filtered_df["Name"] == selected_cert_name]
+
+            if cert_filtered_df.empty:
+                st.warning("No passed employees found for the selected certificate filter.")
             else:
                 certificate_files = []
-                for _, row in qualifying_df.iterrows():
+                for _, row in cert_filtered_df.iterrows():
                     emp_id = row['ID']
                     emp_name = row['Name']
                     test_date = row['Date / Time']
                     status = row['Status']
-                    for template_type in ['PT', 'UT', 'MT', 'VT']:
-                        certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status, template_type)
-                        if certificate_path:
-                            certificate_files.append((certificate_path, certificate_filename))
+
+                    certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status)
+                    if certificate_path:
+                        certificate_files.append((certificate_path, certificate_filename))
 
                 if certificate_files:
                     zip_buffer = io.BytesIO()
@@ -824,7 +807,8 @@ if st.session_state.admin_logged_in:
                             zipf.write(cert_path, cert_filename)
 
                     zip_buffer.seek(0)
-                    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
+
+                    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_passed"
                     
                     st.download_button(
                         label=f"Download Certificates (ZIP) for {filename_suffix}",
@@ -833,7 +817,7 @@ if st.session_state.admin_logged_in:
                         mime="application/zip"
                     )
                 else:
-                    st.error("Failed to generate any certificates. Check templates and permissions.")
+                    st.error("Failed to generate any certificates. Check template and permissions.")
         
         st.markdown("---")
         if st.button("Logout"):
@@ -1161,10 +1145,10 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
-    if "attempted" not in st.session_state.quiz:
-        st.session_state.quiz["attempted"] = set()
-    if "skipped_questions" not in st.session_state.quiz:
-        st.session_state.quiz["skipped_questions"] = set()
+    if "attempted" not in qstate:
+        qstate["attempted"] = set()
+    if "skipped_questions" not in qstate:
+        qstate["skipped_questions"] = set()
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
