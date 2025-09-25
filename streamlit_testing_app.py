@@ -532,65 +532,69 @@ if st.session_state.admin_logged_in:
     if not results_df.empty:
         st.markdown("---")
         st.subheader("🔍 Filters")
+        if "filter_reset_counter" not in st.session_state:
+            st.session_state.filter_reset_counter = 0
         
+        # Create ID-Name mapping for synchronization
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
+            # Employee ID filter
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            selected_id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
             
-            # Store previous selections to detect changes
-            prev_selected_id = st.session_state.get(selected_id_key, "All")
-            prev_selected_name = st.session_state.get(f"emp_name_filter_{st.session_state.filter_reset_counter}", "All")
-            
-            # Determine initial index for Employee ID
-            if prev_selected_name != "All" and prev_selected_id == "All":
-                corresponding_id = name_id_mapping.get(prev_selected_name, "All")
-                id_index = employee_ids.index(corresponding_id) if corresponding_id in employee_ids else 0
+            # Check if name was changed and sync ID
+            selected_name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
+            if selected_name_key in st.session_state:
+                selected_name = st.session_state[selected_name_key]
+                if selected_name != "All" and selected_name in name_id_mapping:
+                    corresponding_id = name_id_mapping[selected_name]
+                    if corresponding_id in employee_ids:
+                        id_index = employee_ids.index(corresponding_id)
+                    else:
+                        id_index = 0
+                else:
+                    id_index = 0
             else:
-                id_index = employee_ids.index(prev_selected_id) if prev_selected_id in employee_ids else 0
+                id_index = 0
             
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
                 index=id_index,
-                key=selected_id_key
+                key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col2:
+            # Employee Name filter
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            selected_name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
             
-            # Determine initial index for Employee Name
-            if prev_selected_id != "All" and prev_selected_name == "All":
-                corresponding_name = id_name_mapping.get(prev_selected_id, "All")
-                name_index = employee_names.index(corresponding_name) if corresponding_name in employee_names else 0
+            # Check if ID was changed and sync name
+            selected_id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
+            if selected_id_key in st.session_state:
+                selected_id = st.session_state[selected_id_key]
+                if selected_id != "All" and selected_id in id_name_mapping:
+                    corresponding_name = id_name_mapping[selected_id]
+                    if corresponding_name in employee_names:
+                        name_index = employee_names.index(corresponding_name)
+                    else:
+                        name_index = 0
+                else:
+                    name_index = 0
             else:
-                name_index = employee_names.index(prev_selected_name) if prev_selected_name in employee_names else 0
+                name_index = 0
             
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
                 index=name_index,
-                key=selected_name_key
+                key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
             )
         
-        # Synchronize filters
-        if selected_emp_id != prev_selected_id and selected_emp_id != "All":
-            corresponding_name = id_name_mapping.get(selected_emp_id, "All")
-            if corresponding_name in employee_names and st.session_state[selected_name_key] != corresponding_name:
-                st.session_state[selected_name_key] = corresponding_name
-                st.rerun()
-        elif selected_emp_name != prev_selected_name and selected_emp_name != "All":
-            corresponding_id = name_id_mapping.get(selected_emp_name, "All")
-            if corresponding_id in employee_ids and st.session_state[selected_id_key] != corresponding_id:
-                st.session_state[selected_id_key] = corresponding_id
-                st.rerun()
-        
         with filter_col3:
+            # Status filter
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox(
                 "Filter by Status", 
@@ -600,6 +604,7 @@ if st.session_state.admin_logged_in:
             )
         
         with filter_col4:
+            # Test Type/Standard filter
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox(
                 "Filter by Test Type", 
@@ -611,15 +616,17 @@ if st.session_state.admin_logged_in:
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
         with filter_col5:
             st.write("")
-            if st.button("🗑️ Clear All Filters"):
+            if st.button("🗑 Clear All Filters"):
                 st.session_state.filter_reset_counter += 1
                 keys_to_remove = [key for key in st.session_state.keys() if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_'))]
                 for key in keys_to_remove:
                     del st.session_state[key]
                 st.rerun()
         
+        # Apply filters - use whichever filter is not "All"
         filtered_df = results_df.copy()
         
+        # If either ID or Name is selected (not "All"), filter by that employee
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
         elif selected_emp_name != "All":
@@ -630,14 +637,19 @@ if st.session_state.admin_logged_in:
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
 
+        # Display sync status
         if selected_emp_id != "All" or selected_emp_name != "All":
-            display_name = selected_emp_name if selected_emp_name != "All" else id_name_mapping.get(selected_emp_id, "Unknown")
-            display_id = selected_emp_id if selected_emp_id != "All" else name_id_mapping.get(selected_emp_name, "Unknown")
-            st.info(f"🔗 **Selected Employee**: ID: {display_id} | Name: {display_name}")
+            if selected_emp_id != "All":
+                display_name = id_name_mapping.get(selected_emp_id, "Unknown")
+                st.info(f"🔗 *Employee Selected*: ID: {selected_emp_id} | Name: {display_name}")
+            else:
+                display_id = name_id_mapping.get(selected_emp_name, "Unknown")
+                st.info(f"🔗 *Employee Selected*: Name: {selected_emp_name} | ID: {display_id}")
 
         st.markdown("---")
         st.subheader("📥 Individual Test Download")
         
+        # Use the synchronized selection for individual test download
         if selected_emp_id != "All" or selected_emp_name != "All":
             if selected_emp_id != "All":
                 emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
@@ -649,7 +661,7 @@ if st.session_state.admin_logged_in:
                 emp_id_display = name_id_mapping.get(selected_emp_name, "Unknown")
             
             if not emp_filtered.empty:
-                st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}** (ID: {emp_id_display})")
+                st.info(f"Showing {len(emp_filtered)} test(s) for employee: *{emp_name_display}* (ID: {emp_id_display})")
                 emp_filtered = emp_filtered.sort_values("Date / Time", ascending=False).reset_index(drop=True)
                 
                 for idx, test_row in emp_filtered.iterrows():
@@ -673,7 +685,7 @@ if st.session_state.admin_logged_in:
                                 mime="text/csv",
                                 use_container_width=True
                             )
-                        st.write("**Test Details:**")
+                        st.write("*Test Details:*")
                         st.json({
                             "Employee ID": test_row['ID'],
                             "Employee Name": test_row['Name'],
