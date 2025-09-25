@@ -761,12 +761,12 @@ if st.session_state.admin_logged_in:
             else:
                 cert_id_index = cert_employee_ids.index(prev_cert_id) if prev_cert_id in cert_employee_ids else 0
             
-            selected_cert_id = st.selectbox(
-                "Certificate Filter - Employee ID",
-                cert_employee_ids,
-                index=cert_id_index,
-                key=f"cert_id_filter_{st.session_state.filter_reset_counter}"
-            )
+            # selected_cert_id = st.selectbox(
+            #     "Certificate Filter - Employee ID",
+            #     cert_employee_ids,
+            #     index=cert_id_index,
+            #     key=f"cert_id_filter_{st.session_state.filter_reset_counter}"
+            # )
         
         with cert_col2:
             cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
