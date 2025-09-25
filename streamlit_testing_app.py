@@ -755,11 +755,11 @@ if st.session_state.admin_logged_in:
             prev_cert_name = st.session_state.get(f"cert_name_filter_{st.session_state.filter_reset_counter}", "All")
             
             # Determine initial index for Certificate ID
-            if prev_cert_name != "All" and prev_cert_id == "All":
-                corresponding_id = cert_name_id_mapping.get(prev_cert_name, "All")
-                cert_id_index = cert_employee_ids.index(corresponding_id) if corresponding_id in cert_employee_ids else 0
-            else:
-                cert_id_index = cert_employee_ids.index(prev_cert_id) if prev_cert_id in cert_employee_ids else 0
+            # if prev_cert_name != "All" and prev_cert_id == "All":
+            #     corresponding_id = cert_name_id_mapping.get(prev_cert_name, "All")
+            #     cert_id_index = cert_employee_ids.index(corresponding_id) if corresponding_id in cert_employee_ids else 0
+            # else:
+            #     cert_id_index = cert_employee_ids.index(prev_cert_id) if prev_cert_id in cert_employee_ids else 0
             
             # selected_cert_id = st.selectbox(
             #     "Certificate Filter - Employee ID",
