@@ -36,7 +36,7 @@ client = gspread.authorize(creds)
 GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 # =====================
-# Cached Loaders (Unchanged)
+# Cached Loaders
 # =====================
 @st.cache_data
 def load_employees_and_standards():
@@ -81,7 +81,100 @@ def load_employees_and_standards():
         standards = pd.DataFrame(columns=["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"])
         return employees, standards
 
-# ... (Keep all other functions unchanged: load_all_results, load_questions, get_info_for_standard, create_individual_test_report, download_individual_test, start_quiz_session, format_timer, append_result)
+@st.cache_data
+def load_questions():
+    try:
+        sheet = client.open_by_url(GSHEET_URL)
+        try:
+            questions_data = sheet.worksheet("Questions").get_all_records()
+            questions = pd.DataFrame(questions_data)
+            if questions.empty:
+                st.warning("Questions sheet is empty. No questions loaded.")
+                return pd.DataFrame(columns=["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"])
+            required_cols = ["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"]
+            for col in required_cols:
+                if col not in questions.columns:
+                    questions[col] = ""
+            questions = questions[required_cols]
+            questions["Standard"] = questions["Standard"].astype(str).str.strip()
+            return questions
+        except Exception as e:
+            st.error(f"Error loading Questions sheet: {str(e)}")
+            return pd.DataFrame(columns=["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"])
+    except Exception as e:
+        st.error(f"Error in load_questions: {str(e)}")
+        return pd.DataFrame(columns=["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"])
+
+@st.cache_data
+def load_all_results():
+    try:
+        sheet = client.open_by_url(GSHEET_URL)
+        worksheet_names = ["Result 2", "Result2", "Result", "Results"]
+        worksheet = None
+        for name in worksheet_names:
+            try:
+                worksheet = sheet.worksheet(name)
+                break
+            except:
+                continue
+        if worksheet is None:
+            try:
+                all_worksheets = sheet.worksheets()
+                for ws in all_worksheets:
+                    if "result" in ws.title.lower():
+                        worksheet = ws
+                        break
+            except:
+                pass
+        if worksheet is None:
+            st.warning("No results worksheet found.")
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+        
+        results_data = worksheet.get_all_records()
+        results = pd.DataFrame(results_data)
+        if results.empty:
+            st.info("No results found in the results worksheet.")
+            return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+        
+        # Standardize column names
+        results.columns = [col.strip() for col in results.columns]
+        required_cols = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
+        for col in required_cols:
+            if col not in results.columns:
+                results[col] = ""
+        
+        # Clean data
+        results["ID"] = results["ID"].astype(str).str.strip()
+        results["Name"] = results["Name"].astype(str).str.strip()
+        results["Total"] = pd.to_numeric(results["Total"], errors="coerce").fillna(0).astype(int)
+        results["Right"] = pd.to_numeric(results["Right"], errors="coerce").fillna(0).astype(int)
+        results["Wrong"] = pd.to_numeric(results["Wrong"], errors="coerce").fillna(0).astype(int)
+        results["Percentage"] = pd.to_numeric(results["Percentage"].str.replace("%", "", regex=False), errors="coerce").fillna(0)
+        results["Criteria"] = pd.to_numeric(results["Criteria"].str.replace("%", "", regex=False), errors="coerce").fillna(0)
+        results["Test Type"] = results["Test Type"].astype(str).str.strip()
+        results["Date / Time"] = results["Date / Time"].astype(str).str.strip()
+        
+        return results[required_cols]
+    except Exception as e:
+        st.error(f"Error loading results: {str(e)}")
+        return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+
+def get_info_for_standard(standards, selected_standard):
+    try:
+        if standards.empty or selected_standard is None:
+            return 0, 0, 0, 0, 0
+        standard_row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
+        if standard_row.empty:
+            return 0, 0, 0, 0, 0
+        total = int(standard_row["Total Questions"].iloc[0] or 0)
+        criteria = float(standard_row["Passing Criteria"].iloc[0] or 0)
+        h = int(standard_row["Hours"].iloc[0] or 0)
+        m = int(standard_row["Minutes"].iloc[0] or 0)
+        s = int(standard_row["Seconds"].iloc[0] or 0)
+        return total, criteria, h, m, s
+    except Exception as e:
+        st.error(f"Error fetching standard info: {str(e)}")
+        return 0, 0, 0, 0, 0
 
 # =====================
 # Certificate Generation (PDF with reportlab)
