@@ -360,7 +360,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         old_name = 'Usman Waheed'
         new_name = emp_name
         # Assume available width is about 600 pixels for name field (increased further)
-        name_font_size = calculate_font_size(new_name, 600, 56, 32)  # Start with 56, minimum 32
+        name_font_size = calculate_font_size(new_name, 600, 48, 32)  # Start with 56, minimum 32
         replacements[old_name] = (new_name, corsiva_font, name_font_size, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
 
         # Dates - remove excessive spacing and use appropriate font size
