@@ -275,115 +275,50 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Variables to track paragraph positions
-        employee_name_found = False
-        asnt_level_found = False
-
-        # Process paragraphs
-        for i, para in enumerate(doc.paragraphs):
-            # Replace employee name (e.g., Naeem Ashraf)
+        # Replace placeholders with proper alignment
+        for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                para.paragraph_format.space_before = Pt(0)
-                para.paragraph_format.space_after = Pt(0)
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
                 for run in para.runs:
                     run.font.name = 'Monotype Corsiva'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
                     run.font.size = Pt(26)
-                employee_name_found = True
-                # Insert certificate number paragraph immediately after
-                if i + 1 < len(doc.paragraphs):
-                    cert_para = doc.paragraphs[i + 1]
-                else:
-                    cert_para = doc.add_paragraph()
-                cert_para.text = cert_number
-                cert_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                cert_para.paragraph_format.left_indent = Pt(10)  # 2-3 spaces ≈ 10pt
-                cert_para.paragraph_format.space_before = Pt(0)
-                cert_para.paragraph_format.space_after = Pt(0)
-                for run in cert_para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-
-            # Replace ASNT NDT LEVEL-III and add validity date below
-            if 'ASNT NDT LEVEL-III' in para.text:
-                asnt_level_found = True
-                # Insert validity date paragraph immediately after
-                if i + 1 < len(doc.paragraphs):
-                    validity_para = doc.paragraphs[i + 1]
-                else:
-                    validity_para = doc.add_paragraph()
-                validity_para.text = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
-                validity_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                validity_para.paragraph_format.right_indent = Pt(10)  # 2-3 backspaces ≈ 10pt
-                validity_para.paragraph_format.space_before = Pt(0)
-                validity_para.paragraph_format.space_after = Pt(0)
-                for run in validity_para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-
-            # Replace other placeholders
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                para.paragraph_format.space_before = Pt(0)
-                para.paragraph_format.space_after = Pt(0)
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            if '25/PTIS/DPT/00410' in para.text:
+                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                para.paragraph_format.space_before = Pt(0)
-                para.paragraph_format.space_after = Pt(0)
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            if 'Validity: 24-September-2030' in para.text:
+                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                para.paragraph_format.space_before = Pt(0)
-                para.paragraph_format.space_after = Pt(0)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
-
-        # If placeholders weren't found, append at the end with correct formatting
-        if not employee_name_found:
-            name_para = doc.add_paragraph(emp_name)
-            name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            name_para.paragraph_format.space_before = Pt(0)
-            name_para.paragraph_format.space_after = Pt(0)
-            for run in name_para.runs:
-                run.font.name = 'Monotype Corsiva'
-                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
-                run.font.size = Pt(26)
-            cert_para = doc.add_paragraph(cert_number)
-            cert_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            cert_para.paragraph_format.left_indent = Pt(10)
-            cert_para.paragraph_format.space_before = Pt(0)
-            cert_para.paragraph_format.space_after = Pt(0)
-            for run in cert_para.runs:
-                run.font.name = 'Arial'
-                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                run.font.size = Pt(12)
-
-        if not asnt_level_found:
-            validity_para = doc.add_paragraph(f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-            validity_para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-            validity_para.paragraph_format.right_indent = Pt(10)
-            validity_para.paragraph_format.space_before = Pt(0)
-            validity_para.paragraph_format.space_after = Pt(0)
-            for run in validity_para.runs:
-                run.font.name = 'Arial'
-                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                run.font.size = Pt(12)
 
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
