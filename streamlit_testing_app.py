@@ -174,11 +174,11 @@ if certificate_files:
 else:
     st.error("Failed to generate any certificates. Check templates and permissions.")
         
-        st.markdown("---")
-        if st.button("Logout"):
-            st.session_state.admin_logged_in = False
-            st.session_state.pop("quiz", None)
-            st.rerun()
+    st.markdown("---")
+    if st.button("Logout"):
+        st.session_state.admin_logged_in = False
+        st.session_state.pop("quiz", None)
+        st.rerun()
     else:
         st.info("No results available yet in the Result 2 sheet.")
         if st.button("Logout"):
