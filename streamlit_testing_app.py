@@ -14,6 +14,7 @@ import zipfile
 import traceback
 from docx import Document
 from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
 # =====================
@@ -22,7 +23,6 @@ from docx.oxml.ns import qn
 BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-TEMPLATE_PATH = os.path.join(BASE_DIR, "db", "dpt_template.docx")
 
 # =====================
 # Google Sheets Setup
@@ -205,7 +205,7 @@ def load_questions():
                 "Boiling point of water?",
                 "Who wrote Romeo and Juliet?"
             ],
-            "A": ["3 нашої ери", "Berlin", "A language", "50°C", "Dickens"],
+            "A": ["3", "Berlin", "A language", "50°C", "Dickens"],
             "B": ["4", "Paris", "A snake", "100°C", "Shakespeare"],
             "C": ["5", "London", "A fruit", "0°C", "Twain"],
             "D": ["6", "Madrid", "A bird", "212°F", "Hemingway"],
@@ -264,41 +264,69 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     try:
         doc = Document(template_path)
         
+        # Extract date part and calculate validity date
         date_str = test_date.split()[0] if " " in test_date else test_date
-        test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        try:
+            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        except ValueError:
+            st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
+            return None, None
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
-        validity_date = validity_date_obj.strftime("%d-%m-%Y")
-        
-        cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
+        cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
+        status_text = 'Pass' if status == "Pass" else 'Fail'
 
+        # Replace placeholders with proper alignment
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
-                para.clear()
-                run = para.add_run(emp_name)
-                run.font.name = 'Monotype Corsiva'
-                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
-                run.font.size = Pt(26)
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
+                for run in para.runs:
+                    run.font.name = 'Monotype Corsiva'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
+                    run.font.size = Pt(26)
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
             if 'Validity: 24-September-2030' in para.text:
-                para.text = para.text.replace('24-September-2030', validity_date_obj.strftime("%d-%B-%Y"))
-
-        status_text = 'Status: Pass' if status == "Pass" else 'Status: Fail'
-        for para in doc.paragraphs:
+                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
 
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
-        doc.save(f"/tmp/{certificate_filename}")
+        output_path = f"/tmp/{certificate_filename}"
+        doc.save(output_path)
 
         st.success(f"Generated certificate: {certificate_filename}")
-        return f"/tmp/{certificate_filename}", certificate_filename
+        return output_path, certificate_filename
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
@@ -780,15 +808,14 @@ if st.session_state.admin_logged_in:
         )
         
         if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "API RP 7G-2", "API SPEC 5CT & 5A5", "Cummulative"}
-            passed_results = filtered_df[filtered_df["Status"] == "Pass"]
+            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
+            passed_results = results_df[results_df["Status"] == "Pass"]
             grouped = passed_results.groupby('Name')
             
             qualifying_rows = []
             for name, group in grouped:
                 passed_standards = set(group['Test Type'].str.strip())
                 if required_standards.issubset(passed_standards):
-                    # Get the Cummulative row for date
                     cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
                     if not cumm_row.empty:
                         qualifying_rows.append(cumm_row.iloc[0])
@@ -799,7 +826,7 @@ if st.session_state.admin_logged_in:
                 qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
             
             if qualifying_df.empty:
-                st.warning("No employees who have passed all 4 standards (DS-1, API RP 7G-2, API SPEC 5CT & 5A5, Cummulative).")
+                st.warning("No employees found who have passed all 4 standards (DS-1, Cummulative, API SPEC 5CT & 5A5, API RP 7G-2).")
             else:
                 certificate_files = []
                 for _, row in qualifying_df.iterrows():
@@ -819,7 +846,6 @@ if st.session_state.admin_logged_in:
                             zipf.write(cert_path, cert_filename)
 
                     zip_buffer.seek(0)
-
                     filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
                     
                     st.download_button(
@@ -1157,10 +1183,10 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
-    if "attempted" not in qstate:
-        qstate["attempted"] = set()
-    if "skipped_questions" not in qstate:
-        qstate["skipped_questions"] = set()
+    if "attempted" not in st.session_state.quiz:
+        st.session_state.quiz["attempted"] = set()
+    if "skipped_questions" not in st.session_state.quiz:
+        st.session_state.quiz["skipped_questions"] = set()
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
