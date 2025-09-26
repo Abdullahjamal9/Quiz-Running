@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -17,7 +16,6 @@ from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
-from docx.shared import Pt, Inches
 
 # =====================
 # Paths / Files
@@ -257,9 +255,6 @@ def get_template_path(template_type):
         st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
         return None
 
-# Add this import at the top of your file with other docx imports:
-# from docx.shared import Pt, Inches
-
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     template_path = get_template_path(template_type)
     if not template_path:
@@ -294,13 +289,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for date
                 if template_type == "MT":
-                    # For MT: Position towards center-right
+                    # For MT: Much less right padding to bring date closer to center-right
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "                    " + para.text  # 20 spaces for positioning
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 elif template_type == "VT":
-                    # For VT: Position towards right but not completely
+                    # For VT: Move date back/left by reducing right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.text = "        " + para.text  # 8 spaces to pull back from edge
+                    para.text = "    " + para.text  # Add 4 spaces to the left to push it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
@@ -312,13 +307,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
                 # Template-specific alignment for certificate number
                 if template_type == "MT":
-                    # For MT: Position towards center-left
+                    # For MT: Much less left padding to position closer to center-left
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "                    " + para.text  # 20 spaces for positioning
+                    para.text = "            " + para.text  # Reduced to 12 spaces
                 elif template_type == "VT":
-                    # For VT: Position towards left but not completely at edge
+                    # For VT: Move certificate number back/right by adding more left padding
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    para.text = "        " + para.text  # 8 spaces from left edge
+                    para.text = "      " + para.text  # Increased from 2 to 6 spaces to move it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
@@ -330,13 +325,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for certification date
                 if template_type == "MT":
-                    # For MT: Position towards center-right
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "                    " + para.text  # 20 spaces for positioning
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 elif template_type == "VT":
-                    # For VT: Position towards right but not completely
+                    # For VT: Move certification date back/left
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.text = "        " + para.text  # 8 spaces to pull back from edge
+                    para.text = "    " + para.text  # Add 4 spaces to the left to push it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
@@ -348,13 +343,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('Validity: 04-August-2027', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
                 # Template-specific alignment for validity date
                 if template_type == "MT":
-                    # For MT: Position towards center-right
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "                    " + para.text  # 20 spaces for positioning
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 elif template_type == "VT":
-                    # For VT: Position towards right but not completely
+                    # For VT: Move validity date back/left
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.text = "        " + para.text  # 8 spaces to pull back from edge
+                    para.text = "    " + para.text  # Add 4 spaces to the left to push it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
@@ -381,6 +376,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
         return None, None
+
 # =====================
 # Individual Test Downloads
 # =====================
