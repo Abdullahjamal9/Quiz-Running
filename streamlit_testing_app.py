@@ -289,9 +289,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for date - VT now uses same as MT
                 if template_type in ["MT", "VT"]:
-                    # For both MT and VT: Much less right padding to bring date closer to center-right
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # 12 spaces
+                    # For both MT and VT: Use right alignment with left indent for positioning
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.paragraph_format.left_indent = Inches(3.0)  # Adjust this value to position as needed
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
@@ -303,9 +303,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
                 # Template-specific alignment for certificate number - VT now uses same as MT
                 if template_type in ["MT", "VT"]:
-                    # For both MT and VT: Much less left padding to position closer to center-left
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "            " + para.text  # 12 spaces
+                    # For both MT and VT: Use left alignment with left indent for positioning
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    para.paragraph_format.left_indent = Inches(3.0)  # Adjust this value to position as needed
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
@@ -317,9 +317,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for certification date - VT now uses same as MT
                 if template_type in ["MT", "VT"]:
-                    # For both MT and VT: Much less right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # 12 spaces
+                    # For both MT and VT: Use right alignment with left indent for positioning
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.paragraph_format.left_indent = Inches(3.0)  # Adjust this value to position as needed
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
