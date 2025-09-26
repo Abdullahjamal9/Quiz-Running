@@ -263,23 +263,23 @@ import fitz  # ADD this import for PyMuPDF
 # Certificate Generation
 # =====================
 def get_template_path(template_type):
-    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")  # CHANGED to .pdf
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")
     if os.path.exists(template_path):
         return template_path
     
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"  # CHANGED to .pdf
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            temp_path = f"/tmp/{template_type}_template.pdf"  # CHANGED to .pdf
+            temp_path = f"/tmp/{template_type}_template.pdf"
             with open(temp_path, "wb") as file:
                 file.write(response.content)
             return temp_path
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")  # CHANGED to .pdf
-        return None
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")
+        return None, None
 
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     template_path = get_template_path(template_type)
@@ -288,7 +288,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        # NEW: Open PDF with PyMuPDF
+        # Open PDF with PyMuPDF
         doc = fitz.open(template_path)
         page = doc[0]  # Assume single-page certificate; adjust if multi-page
 
@@ -298,22 +298,40 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
         except ValueError:
             st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
+            doc.close()
             return None, None
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # NEW: Define replacements - old_text: (new_text, fontname, fontsize, align, text_color, fill, fontfile)
-        # fontfile: Set to path if custom .ttf is available in DB_FOLDER; else None for built-in fonts
-        # corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf") if os.path.exists(os.path.join(DB_FOLDER, "monotype_corsiva.ttf")) else None
-        # arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf") if os.path.exists(os.path.join(DB_FOLDER, "arial.ttf")) else None
+        # Register custom fonts if available
+        corsiva_font = 'times-italic'  # Fallback for Monotype Corsiva
+        arial_font = 'helv'  # Fallback for Arial
+        corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
+        arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
 
+        if os.path.exists(corsiva_fontfile):
+            font = fitz.Font(fontfile=corsiva_fontfile)
+            if font.valid:
+                doc.insert_font(fontname="MonotypeCorsiva", fontfile=corsiva_fontfile)
+                corsiva_font = "MonotypeCorsiva"
+            else:
+                st.warning("Invalid Monotype Corsiva font file; using Times-Italic fallback.")
+        if os.path.exists(arial_fontfile):
+            font = fitz.Font(fontfile=arial_fontfile)
+            if font.valid:
+                doc.insert_font(fontname="Arial", fontfile=arial_fontfile)
+                arial_font = "Arial"
+            else:
+                st.warning("Invalid Arial font file; using Helvetica fallback.")
+
+        # Define replacements: (new_text, fontname, fontsize, align, text_color, fill)
         replacements = {}
 
         # Employee name
         old_name = 'Usman Waheed'
         new_name = emp_name
-        replacements[old_name] = (new_name, 'times-italic', 26, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1), None)  # Approx Corsiva; use corsiva_fontfile if available
+        replacements[old_name] = (new_name, corsiva_font, 26, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
 
         # Dates (test date and certification date share same placeholder)
         old_date = '05-August-2022'
@@ -323,7 +341,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_date = fitz.TEXT_ALIGN_CENTER
         else:
             align_date = fitz.TEXT_ALIGN_RIGHT
-        replacements[old_date] = (new_date, 'helv', 12, align_date, (0,0,0), (1,1,1), None)  # Approx Arial; use arial_fontfile if available
+        replacements[old_date] = (new_date, arial_font, 12, align_date, (0,0,0), (1,1,1))
 
         # Cert number
         old_cert = '25/PTIS/DPT/00410'
@@ -333,7 +351,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_cert = fitz.TEXT_ALIGN_CENTER
         else:
             align_cert = fitz.TEXT_ALIGN_LEFT
-        replacements[old_cert] = (new_cert, 'helv', 12, align_cert, (0,0,0), (1,1,1), None)
+        replacements[old_cert] = (new_cert, arial_font, 12, align_cert, (0,0,0), (1,1,1))
 
         # Validity
         old_validity = 'Validity: 04-August-2027'
@@ -343,29 +361,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_valid = fitz.TEXT_ALIGN_CENTER
         else:
             align_valid = fitz.TEXT_ALIGN_RIGHT
-        replacements[old_validity] = (new_validity, 'helv', 12, align_valid, (0,0,0), (1,1,1), None)
+        replacements[old_validity] = (new_validity, arial_font, 12, align_valid, (0,0,0), (1,1,1))
 
-        # Status (handle both possible placeholders)
-        new_status = f'Status: {status_text}'
-        align_status = fitz.TEXT_ALIGN_LEFT
-        possible_status_olds = ['Status: Pass', 'Status: Fail']
-        for old_status in possible_status_olds:
-            hits = page.search_for(old_status)
-            for rect in hits:
-                page.add_redact_annot(
-                    rect,
-                    text=new_status,
-                    fontname='helv',
-                    fontsize=12,
-                    align=align_status,
-                    text_color=(0,0,0),
-                    fill=(1,1,1),
-                    fontfile=None  # Use arial_fontfile if available
-                )
-
-        # Apply other replacements
-        for old, (new, fontname, fontsize, align, color, fill, fontfile) in replacements.items():
+        # Apply replacements
+        for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
             hits = page.search_for(old)
+            if not hits:
+                st.warning(f"Placeholder '{old}' not found in {template_type} template.")
             for rect in hits:
                 page.add_redact_annot(
                     rect,
@@ -374,8 +376,26 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     fontsize=fontsize,
                     align=align,
                     text_color=color,
-                    fill=fill,
-                    fontfile=fontfile
+                    fill=fill
+                )
+
+        # Status (handle both possible placeholders)
+        new_status = f'Status: {status_text}'
+        align_status = fitz.TEXT_ALIGN_LEFT
+        possible_status_olds = ['Status: Pass', 'Status: Fail']
+        for old_status in possible_status_olds:
+            hits = page.search_for(old_status)
+            if not hits:
+                st.warning(f"Status placeholder '{old_status}' not found in {template_type} template.")
+            for rect in hits:
+                page.add_redact_annot(
+                    rect,
+                    text=new_status,
+                    fontname=arial_font,
+                    fontsize=12,
+                    align=align_status,
+                    text_color=(0,0,0),
+                    fill=(1,1,1)
                 )
 
         # Apply all redactions
@@ -383,7 +403,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
 
         # Save the modified PDF
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"  # CHANGED to .pdf
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
         doc.save(output_path, garbage=3, deflate=True)
         doc.close()
@@ -394,9 +414,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
         return None, None
-
-# ... (rest of your code unchanged, including the ZIP bundling in the UI section)
-
 # =====================
 # Individual Test Downloads
 # =====================
