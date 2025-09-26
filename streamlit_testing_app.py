@@ -18,11 +18,6 @@ from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 
-# PDF generation imports
-from reportlab.lib.pagesizes import A4
-from reportlab.pdfgen import canvas
-from reportlab.lib.colors import black
-
 # =====================
 # Paths / Files
 # =====================
@@ -240,7 +235,7 @@ def get_info_for_standard(standards, selected_standard):
         return 50, 70, 1, 0, 0
 
 # =====================
-# Certificate Generation with PDF Conversion
+# Certificate Generation
 # =====================
 def get_template_path(template_type):
     template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
@@ -260,144 +255,6 @@ def get_template_path(template_type):
     except Exception as e:
         st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
         return None
-def docx_to_pdf_manual(docx_path, emp_id, emp_name, test_date, template_type):
-    """Manually convert DOCX content to PDF using ReportLab"""
-    try:
-        # Read the DOCX file to extract text content
-        doc = Document(docx_path)
-        
-        # Extract date and calculate validity
-        date_str = test_date.split()[0] if " " in test_date else test_date
-        try:
-            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
-        except ValueError:
-            st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
-            return None, None
-        
-        validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
-        cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
-        
-        # Create PDF buffer
-        buffer = io.BytesIO()
-        p = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
-        
-        # Set up fonts and colors
-        try:
-            # Try to register a cursive-like font for names, fallback to Helvetica-Oblique
-            p.setFont("Helvetica-Oblique", 26)
-        except:
-            p.setFont("Helvetica", 26)
-        
-        y_position = height - 100
-        
-        # Parse DOCX and convert to PDF
-        for paragraph in doc.paragraphs:
-            text = paragraph.text.strip()
-            if not text:
-                y_position -= 20
-                continue
-            
-            # Replace placeholders
-            if 'Usman Waheed' in text:
-                text = text.replace('Usman Waheed', emp_name)
-                # Employee name - center aligned, larger font
-                p.setFont("Helvetica-Oblique", 26)
-                p.setFillColor(black)
-                p.drawCentredText(width/2, y_position, text)
-                
-            elif '25-September-2025' in text:
-                text = text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                p.setFont("Helvetica", 12)
-                if template_type == "MT":
-                    # For MT: position more towards center-right
-                    p.drawString(width/2 + 50, y_position, text)
-                else:
-                    # Right align for others
-                    p.drawRightString(width - 50, y_position, text)
-                    
-            elif '25/PTIS/DPT/00410' in text:
-                text = text.replace('25/PTIS/DPT/00410', cert_number)
-                p.setFont("Helvetica", 12)
-                if template_type == "MT":
-                    # For MT: position more towards center-left
-                    p.drawString(width/2 - 200, y_position, text)
-                elif template_type == "VT":
-                    # For VT: move 2 spaces forward
-                    p.drawString(60, y_position, text)
-                else:
-                    # Left align for others
-                    p.drawString(50, y_position, text)
-                    
-            elif 'Date of Certification' in text:
-                text = text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                p.setFont("Helvetica", 12)
-                if template_type == "MT":
-                    p.drawString(width/2 + 50, y_position, text)
-                else:
-                    p.drawRightString(width - 50, y_position, text)
-                    
-            elif 'Validity: 24-September-2030' in text:
-                text = text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                p.setFont("Helvetica", 12)
-                if template_type == "MT":
-                    p.drawString(width/2 + 50, y_position, text)
-                else:
-                    p.drawRightString(width - 50, y_position, text)
-                    
-            elif 'Status' in text:
-                status_text = 'Pass' if status == "Pass" else 'Fail'
-                text = text.replace('Status: Fail', f'Status: {status_text}').replace('Status: Pass', f'Status: {status_text}')
-                p.setFont("Helvetica", 12)
-                p.drawString(50, y_position, text)
-                
-            else:
-                # Regular text content
-                p.setFont("Helvetica", 12)
-                p.setFillColor(black)
-                
-                # Handle long text by wrapping
-                max_width = width - 100
-                lines = []
-                words = text.split(' ')
-                current_line = []
-                
-                for word in words:
-                    test_line = ' '.join(current_line + [word])
-                    if p.stringWidth(test_line, "Helvetica", 12) <= max_width:
-                        current_line.append(word)
-                    else:
-                        if current_line:
-                            lines.append(' '.join(current_line))
-                            current_line = [word]
-                        else:
-                            lines.append(word)
-                
-                if current_line:
-                    lines.append(' '.join(current_line))
-                
-                # Draw wrapped text
-                for line in lines:
-                    p.drawString(50, y_position, line)
-                    y_position -= 15
-                continue
-            
-            y_position -= 25
-            
-            # Start new page if needed
-            if y_position < 100:
-                p.showPage()
-                y_position = height - 100
-        
-        # Finalize PDF
-        p.save()
-        buffer.seek(0)
-        
-        return buffer
-        
-    except Exception as e:
-        st.error(f"Error converting DOCX to PDF: {str(e)}")
-        return None
 
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     template_path = get_template_path(template_type)
@@ -406,7 +263,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        # First create the DOCX with populated data (existing logic)
         doc = Document(template_path)
         
         # Extract date part and calculate validity date
@@ -420,11 +276,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Replace placeholders with proper alignment (existing logic preserved)
+        # Replace placeholders with proper alignment
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
                 for run in para.runs:
                     run.font.name = 'Monotype Corsiva'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
@@ -432,11 +288,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for date
                 if template_type == "MT":
+                    # For MT: Much less right padding to bring date closer to center-right
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -444,14 +302,17 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+                # Template-specific alignment for certificate number
                 if template_type == "MT":
+                    # For MT: Much less left padding to position closer to center-left
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "            " + para.text
+                    para.text = "            " + para.text  # Reduced to 12 spaces
                 elif template_type == "VT":
+                    # For VT: Move 2 spaces forward
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     para.text = "  " + para.text
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -459,11 +320,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for certification date
                 if template_type == "MT":
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -471,11 +334,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Validity: 24-September-2030' in para.text:
                 para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                # Template-specific alignment for validity date
                 if template_type == "MT":
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -483,37 +348,18 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
 
-        # Save temporary DOCX file
-        temp_docx_path = f"/tmp/{template_type}_temp_{emp_id}_{date_str}.docx"
-        doc.save(temp_docx_path)
-        
-        # Convert DOCX to PDF
-        pdf_buffer = docx_to_pdf_manual(temp_docx_path, emp_id, emp_name, test_date, template_type)
-        
-        if pdf_buffer is None:
-            return None, None
-        
-        # Clean up temporary DOCX file
-        try:
-            os.remove(temp_docx_path)
-        except:
-            pass
-        
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
-        
-        # Save PDF to temporary file for download
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         output_path = f"/tmp/{certificate_filename}"
-        with open(output_path, "wb") as f:
-            f.write(pdf_buffer.getvalue())
+        doc.save(output_path)
 
-        st.success(f"Generated PDF certificate: {certificate_filename}")
+        st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
     
     except Exception as e:
