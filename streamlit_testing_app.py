@@ -256,9 +256,6 @@ def get_template_path(template_type):
         st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
         return None
 
-from datetime import datetime, timedelta
-from dateutil import parser  # Add python-dateutil to dependencies for flexible date parsing
-
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     template_path = get_template_path(template_type)
     if not template_path:
@@ -268,41 +265,36 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     try:
         doc = Document(template_path)
         
-        # Parse test_date dynamically
+        # Extract date part and calculate validity date
+        date_str = test_date.split()[0] if " " in test_date else test_date
         try:
-            # Try to parse the date with dateutil.parser for flexibility
-            test_date_obj = parser.parse(test_date, dayfirst=True)
-        except ValueError as e:
-            st.error(f"Invalid date format in test_date: {test_date}. Please ensure it's a valid date.")
+            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        except ValueError:
+            st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
             return None, None
-
-        # Extract only the date part (remove time if present)
-        test_date_str = test_date_obj.strftime("%d-%m-%Y")
-        test_date_display = test_date_obj.strftime("%d-%B-%Y")  # For display in certificate
-        validity_date_obj = test_date_obj + timedelta(days=5*365)
-        validity_date_display = validity_date_obj.strftime("%d-%B-%Y")
-        
-        # Generate certificate number using DDMMYYYY format
-        cert_number = f"{emp_id}/PTIS/{template_type}/{test_date_obj.strftime('%d%m%Y')}"
+        validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
+        cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
         # Replace placeholders with proper alignment
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
                 for run in para.runs:
                     run.font.name = 'Monotype Corsiva'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
                     run.font.size = Pt(26)
             
             if '25-September-2025' in para.text:
-                para.text = para.text.replace('25-September-2025', test_date_display)
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for date
                 if template_type == "MT":
+                    # For MT: Much less right padding to bring date closer to center-right
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -310,38 +302,45 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+                # Template-specific alignment for certificate number
                 if template_type == "MT":
+                    # For MT: Much less left padding to position closer to center-left
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "            " + para.text
+                    para.text = "            " + para.text  # Reduced to 12 spaces
                 elif template_type == "VT":
+                    # For VT: Move 2 spaces forward
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     para.text = "  " + para.text
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
             
             if 'Date of Certification' in para.text:
-                para.text = para.text.replace('25-September-2025', test_date_display)
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for certification date
                 if template_type == "MT":
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
             
             if 'Validity: 24-September-2030' in para.text:
-                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_display}')
+                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                # Template-specific alignment for validity date
                 if template_type == "MT":
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -349,14 +348,14 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
                     
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{test_date_str}.docx"
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         output_path = f"/tmp/{certificate_filename}"
         doc.save(output_path)
 
