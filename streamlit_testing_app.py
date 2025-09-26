@@ -17,6 +17,13 @@ from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+from reportlab.lib.units import inch
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
 
 # =====================
 # Paths / Files
@@ -256,15 +263,9 @@ def get_template_path(template_type):
         st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
         return None
 
-def generate_certificate(emp_id, emp_name, test_date, status, template_type):
-    template_path = get_template_path(template_type)
-    if not template_path:
-        st.error(f"No {template_type} template available. Cannot generate certificate.")
-        return None, None
 
+def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     try:
-        doc = Document(template_path)
-        
         # Extract date part and calculate validity date
         date_str = test_date.split()[0] if " " in test_date else test_date
         try:
@@ -272,100 +273,118 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         except ValueError:
             st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
             return None, None
+        
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Replace placeholders with proper alignment
-        for para in doc.paragraphs:
-            if 'Usman Waheed' in para.text:
-                para.text = para.text.replace('Usman Waheed', emp_name)
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
-                for run in para.runs:
-                    run.font.name = 'Monotype Corsiva'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
-                    run.font.size = Pt(26)
-            
-            if '25-September-2025' in para.text:
-                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for date
-                if template_type == "MT":
-                    # For MT: Much less right padding to bring date closer to center-right
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if '25/PTIS/DPT/00410' in para.text:
-                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-                # Template-specific alignment for certificate number
-                if template_type == "MT":
-                    # For MT: Much less left padding to position closer to center-left
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "            " + para.text  # Reduced to 12 spaces
-                elif template_type == "VT":
-                    # For VT: Move 2 spaces forward
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    para.text = "  " + para.text
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if 'Date of Certification' in para.text:
-                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for certification date
-                if template_type == "MT":
-                    # For MT: Much less right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if 'Validity: 24-September-2030' in para.text:
-                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                # Template-specific alignment for validity date
-                if template_type == "MT":
-                    # For MT: Much less right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if 'Status' in para.text:
-                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-
+        # Create PDF
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
-        doc.save(output_path)
-
-        st.success(f"Generated certificate: {certificate_filename}")
+        
+        # Create PDF document
+        doc = SimpleDocTemplate(output_path, pagesize=A4)
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # Custom styles
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            textColor=colors.darkblue
+        )
+        
+        name_style = ParagraphStyle(
+            'CustomName',
+            parent=styles['Normal'],
+            fontSize=26,
+            spaceAfter=20,
+            alignment=TA_CENTER,
+            textColor=colors.black,
+            fontName='Helvetica-Bold'
+        )
+        
+        content_style = ParagraphStyle(
+            'CustomContent',
+            parent=styles['Normal'],
+            fontSize=12,
+            spaceAfter=10,
+            alignment=TA_LEFT,
+            textColor=colors.black
+        )
+        
+        right_align_style = ParagraphStyle(
+            'RightAlign',
+            parent=styles['Normal'],
+            fontSize=12,
+            spaceAfter=10,
+            alignment=TA_RIGHT,
+            textColor=colors.black
+        )
+        
+        # Certificate content
+        story.append(Paragraph("PTIS CERTIFICATE", title_style))
+        story.append(Spacer(1, 20))
+        
+        # Manager/Training section
+        story.append(Paragraph("Manager QHSE/Training", content_style))
+        story.append(Paragraph("NAEEM ASHRAF", content_style))
+        story.append(Spacer(1, 20))
+        
+        # Employee name (centered)
+        story.append(Paragraph(emp_name, name_style))
+        story.append(Spacer(1, 30))
+        
+        # Certificate details
+        if template_type == "MT":
+            # For MT template: Special alignment
+            story.append(Paragraph(f"            {cert_number}", content_style))
+            story.append(Paragraph(f"{test_date_obj.strftime('%d-%B-%Y')}            ", right_align_style))
+        else:
+            # For other templates: Standard alignment
+            if template_type == "VT":
+                story.append(Paragraph(f"  {cert_number}", content_style))
+            else:
+                story.append(Paragraph(cert_number, content_style))
+            story.append(Paragraph(test_date_obj.strftime("%d-%B-%Y"), right_align_style))
+        
+        story.append(Spacer(1, 20))
+        
+        # Sponsoring Authority (centered)
+        story.append(Paragraph("Sponsoring Authority", ParagraphStyle(
+            'Center', parent=styles['Normal'], fontSize=12, alignment=TA_CENTER
+        )))
+        story.append(Paragraph("PTIS", ParagraphStyle(
+            'Center', parent=styles['Normal'], fontSize=12, alignment=TA_CENTER
+        )))
+        story.append(Spacer(1, 20))
+        
+        # Examiner section
+        story.append(Paragraph("Examiner", right_align_style))
+        story.append(Paragraph("ASNT NDT LEVEL-III", right_align_style))
+        story.append(Spacer(1, 20))
+        
+        # Additional details
+        story.append(Paragraph(f"Date of Certification: {test_date_obj.strftime('%d-%B-%Y')}", right_align_style))
+        story.append(Paragraph(f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}", right_align_style))
+        story.append(Spacer(1, 20))
+        
+        # Status
+        story.append(Paragraph(f"Status: {status_text}", content_style))
+        
+        # Build PDF
+        doc.build(story)
+        
+        st.success(f"Generated PDF certificate: {certificate_filename}")
         return output_path, certificate_filename
     
     except Exception as e:
-        st.error(f"Error generating {template_type} certificate: {str(e)}")
+        st.error(f"Error generating {template_type} PDF certificate: {str(e)}")
         return None, None
-
 # =====================
 # Individual Test Downloads
 # =====================
