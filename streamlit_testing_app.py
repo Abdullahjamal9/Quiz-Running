@@ -152,7 +152,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
 # Update the ZIP generation section in your main code
 # In the certificate generation loop:
 certificate_files = []
-for _, row in qualifying_df.iterrows():
+for row in qualifying_df.iterrows():
     emp_id = row['ID']
     emp_name = row['Name']
     test_date = row['Date / Time']
