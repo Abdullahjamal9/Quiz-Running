@@ -287,11 +287,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '05-August-2022' in para.text:
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for date - VT now uses same as MT
+                # Template-specific alignment for date
                 if template_type in ["MT", "VT"]:
-                    # For both MT and VT: Use right alignment with left indent for positioning
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.paragraph_format.left_indent = Pt(216)  # Adjust this value to position as needed (216pt = ~3 inches)
+                    # For MT and VT: Center with reduced right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # 12 spaces
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
@@ -301,11 +301,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-                # Template-specific alignment for certificate number - VT now uses same as MT
+                # Template-specific alignment for certificate number
                 if template_type in ["MT", "VT"]:
-                    # For both MT and VT: Use left alignment with left indent for positioning
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    para.paragraph_format.left_indent = Pt(216)  # Adjust this value to position as needed (216pt = ~3 inches)
+                    # For MT and VT: Center with reduced left padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = "            " + para.text  # 12 spaces
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
@@ -315,11 +315,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for certification date - VT now uses same as MT
+                # Template-specific alignment for certification date
                 if template_type in ["MT", "VT"]:
-                    # For both MT and VT: Use right alignment with left indent for positioning
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.paragraph_format.left_indent = Pt(216)  # Adjust this value to position as needed (216pt = ~3 inches)
+                    # For MT and VT: Center with reduced right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # 12 spaces
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
@@ -329,11 +329,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Validity: 04-August-2027' in para.text:
                 para.text = para.text.replace('Validity: 04-August-2027', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                # Template-specific alignment for validity date - VT now uses same as MT
+                # Template-specific alignment for validity date
                 if template_type in ["MT", "VT"]:
-                    # For both MT and VT: Use right alignment with left indent for positioning
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.paragraph_format.left_indent = Pt(216)  # Adjust this value to position as needed (216pt = ~3 inches)
+                    # For MT and VT: Center with reduced right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # 12 spaces
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
