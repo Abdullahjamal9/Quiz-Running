@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -275,7 +276,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Replace placeholders with consistent alignment for all templates
+        # Replace placeholders with proper alignment
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
@@ -287,7 +288,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align all dates
+                # Template-specific alignment for date
+                if template_type == "MT":
+                    # For MT: Much less right padding to bring date closer to center-right
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -295,9 +302,17 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-                # Consistent alignment for all templates - 2 spaces forward from left
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                para.text = "  " + para.text
+                # Template-specific alignment for certificate number
+                if template_type == "MT":
+                    # For MT: Much less left padding to position closer to center-left
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = "            " + para.text  # Reduced to 12 spaces
+                elif template_type == "VT":
+                    # For VT: Move 2 spaces forward
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    para.text = "  " + para.text
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -305,7 +320,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align all certification dates
+                # Template-specific alignment for certification date
+                if template_type == "MT":
+                    # For MT: Much less right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -313,7 +334,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Validity: 24-September-2030' in para.text:
                 para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align all validity dates
+                # Template-specific alignment for validity date
+                if template_type == "MT":
+                    # For MT: Much less right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
