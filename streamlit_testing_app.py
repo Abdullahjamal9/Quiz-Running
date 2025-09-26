@@ -353,7 +353,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
-
+                    
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         output_path = f"/tmp/{certificate_filename}"
