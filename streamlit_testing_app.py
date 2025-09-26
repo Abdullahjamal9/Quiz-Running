@@ -25,10 +25,14 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.colors import black
 from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 
-# Register a fallback font (Helvetica as Monotype Corsiva isn't standard)
-# If you have a TTF for Monotype Corsiva, add it to your repo and register:
-# pdfmetrics.registerFont(TTFont('Corsiva', os.path.join(BASE_DIR, 'db/fonts/corsiva.ttf')))
-pdfmetrics.registerFont(TTFont('Corsiva', 'Helvetica'))  # Fallback to Helvetica
+# Optional: Register a custom TTF font (e.g., Great Vibes for cursive effect)
+# Place TTF file in your repo, e.g., db/fonts/GreatVibes-Regular.ttf
+# Download from: https://fonts.google.com/specimen/Great+Vibes
+# Uncomment and adjust path if you include the TTF file
+# try:
+#     pdfmetrics.registerFont(TTFont('GreatVibes', os.path.join(BASE_DIR, 'db/fonts/GreatVibes-Regular.ttf')))
+# except Exception as e:
+#     st.warning(f"Failed to load custom font: {str(e)}. Using Helvetica instead.")
 
 def get_template_path(template_type):
     template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
@@ -86,7 +90,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             font_size = 12
             for run in para.runs:
                 if run.font.name and 'Corsiva' in run.font.name:
-                    font_name = 'Corsiva'  # Use registered font or fallback
+                    font_name = 'GreatVibes' if 'GreatVibes' in pdfmetrics.getRegisteredFontNames() else 'Helvetica-Bold'
                 if run.font.size:
                     font_size = run.font.size.pt
                 break  # Use first run's style
@@ -94,7 +98,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             # Replace placeholders
             if 'Usman Waheed' in text:
                 text = text.replace('Usman Waheed', emp_name)
-                font_name = 'Corsiva'
+                font_name = 'GreatVibes' if 'GreatVibes' in pdfmetrics.getRegisteredFontNames() else 'Helvetica-Bold'
                 font_size = 26
                 align = TA_CENTER
             elif '25-September-2025' in text or 'Date of Certification' in text:
