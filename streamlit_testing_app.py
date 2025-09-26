@@ -265,7 +265,14 @@ def get_template_path(template_type):
 
 
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
+    template_path = get_template_path(template_type)
+    if not template_path:
+        st.error(f"No {template_type} template available. Cannot generate certificate.")
+        return None, None
+
     try:
+        doc = Document(template_path)
+        
         # Extract date part and calculate validity date
         date_str = test_date.split()[0] if " " in test_date else test_date
         try:
@@ -273,117 +280,90 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         except ValueError:
             st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
             return None, None
-        
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Create PDF
+        # Replace placeholders with consistent alignment for all templates (KEEPING YOUR ORIGINAL LOGIC)
+        for para in doc.paragraphs:
+            if 'Usman Waheed' in para.text:
+                para.text = para.text.replace('Usman Waheed', emp_name)
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
+                for run in para.runs:
+                    run.font.name = 'Monotype Corsiva'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
+                    run.font.size = Pt(26)
+            
+            if '25-September-2025' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align all dates
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if '25/PTIS/DPT/00410' in para.text:
+                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+                # Consistent alignment for all templates - 2 spaces forward from left
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                para.text = "  " + para.text
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Date of Certification' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align all certification dates
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Validity: 24-September-2030' in para.text:
+                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align all validity dates
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+
+        # Save as temporary DOCX first
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        temp_docx_path = f"/tmp/temp_{template_type}_{emp_id}_{safe_name}_{date_str}.docx"
+        doc.save(temp_docx_path)
+        
+        # Convert DOCX to PDF
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
         
-        # Create PDF document
-        doc = SimpleDocTemplate(output_path, pagesize=A4)
-        story = []
-        styles = getSampleStyleSheet()
-        
-        # Custom styles
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            spaceAfter=30,
-            alignment=TA_CENTER,
-            textColor=colors.darkblue
-        )
-        
-        name_style = ParagraphStyle(
-            'CustomName',
-            parent=styles['Normal'],
-            fontSize=26,
-            spaceAfter=20,
-            alignment=TA_CENTER,
-            textColor=colors.black,
-            fontName='Helvetica-Bold'
-        )
-        
-        content_style = ParagraphStyle(
-            'CustomContent',
-            parent=styles['Normal'],
-            fontSize=12,
-            spaceAfter=10,
-            alignment=TA_LEFT,
-            textColor=colors.black
-        )
-        
-        right_align_style = ParagraphStyle(
-            'RightAlign',
-            parent=styles['Normal'],
-            fontSize=12,
-            spaceAfter=10,
-            alignment=TA_RIGHT,
-            textColor=colors.black
-        )
-        
-        # Certificate content
-        story.append(Paragraph("PTIS CERTIFICATE", title_style))
-        story.append(Spacer(1, 20))
-        
-        # Manager/Training section
-        story.append(Paragraph("Manager QHSE/Training", content_style))
-        story.append(Paragraph("NAEEM ASHRAF", content_style))
-        story.append(Spacer(1, 20))
-        
-        # Employee name (centered)
-        story.append(Paragraph(emp_name, name_style))
-        story.append(Spacer(1, 30))
-        
-        # Certificate details
-        if template_type == "MT":
-            # For MT template: Special alignment
-            story.append(Paragraph(f"            {cert_number}", content_style))
-            story.append(Paragraph(f"{test_date_obj.strftime('%d-%B-%Y')}            ", right_align_style))
-        else:
-            # For other templates: Standard alignment
-            if template_type == "VT":
-                story.append(Paragraph(f"  {cert_number}", content_style))
-            else:
-                story.append(Paragraph(cert_number, content_style))
-            story.append(Paragraph(test_date_obj.strftime("%d-%B-%Y"), right_align_style))
-        
-        story.append(Spacer(1, 20))
-        
-        # Sponsoring Authority (centered)
-        story.append(Paragraph("Sponsoring Authority", ParagraphStyle(
-            'Center', parent=styles['Normal'], fontSize=12, alignment=TA_CENTER
-        )))
-        story.append(Paragraph("PTIS", ParagraphStyle(
-            'Center', parent=styles['Normal'], fontSize=12, alignment=TA_CENTER
-        )))
-        story.append(Spacer(1, 20))
-        
-        # Examiner section
-        story.append(Paragraph("Examiner", right_align_style))
-        story.append(Paragraph("ASNT NDT LEVEL-III", right_align_style))
-        story.append(Spacer(1, 20))
-        
-        # Additional details
-        story.append(Paragraph(f"Date of Certification: {test_date_obj.strftime('%d-%B-%Y')}", right_align_style))
-        story.append(Paragraph(f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}", right_align_style))
-        story.append(Spacer(1, 20))
-        
-        # Status
-        story.append(Paragraph(f"Status: {status_text}", content_style))
-        
-        # Build PDF
-        doc.build(story)
-        
-        st.success(f"Generated PDF certificate: {certificate_filename}")
-        return output_path, certificate_filename
+        try:
+            from docx2pdf import convert
+            convert(temp_docx_path, output_path)
+            
+            # Clean up temporary DOCX file
+            os.remove(temp_docx_path)
+            
+            st.success(f"Generated PDF certificate: {certificate_filename}")
+            return output_path, certificate_filename
+            
+        except ImportError:
+            st.error("python-docx2pdf not installed. Please install it with: pip install python-docx2pdf")
+            return temp_docx_path, f"temp_{template_type}_{emp_id}_{safe_name}_{date_str}.docx"
+        except Exception as convert_error:
+            st.error(f"Error converting to PDF: {str(convert_error)}. Keeping DOCX file.")
+            return temp_docx_path, f"temp_{template_type}_{emp_id}_{safe_name}_{date_str}.docx"
     
     except Exception as e:
-        st.error(f"Error generating {template_type} PDF certificate: {str(e)}")
+        st.error(f"Error generating {template_type} certificate: {str(e)}")
         return None, None
 # =====================
 # Individual Test Downloads
