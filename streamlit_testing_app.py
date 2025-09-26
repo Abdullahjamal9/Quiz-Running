@@ -366,8 +366,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         # Apply replacements
         for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
             hits = page.search_for(old)
-            if not hits:
-                st.warning(f"Placeholder '{old}' not found in {template_type} template.")
             for rect in hits:
                 page.add_redact_annot(
                     rect,
@@ -385,8 +383,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         possible_status_olds = ['Status: Pass', 'Status: Fail']
         for old_status in possible_status_olds:
             hits = page.search_for(old_status)
-            if not hits:
-                st.warning(f"Status placeholder '{old_status}' not found in {template_type} template.")
             for rect in hits:
                 page.add_redact_annot(
                     rect,
