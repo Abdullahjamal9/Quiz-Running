@@ -325,48 +325,81 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             else:
                 st.warning("Invalid Arial font file; using Helvetica fallback.")
 
-        # Define replacements: (new_text, fontname, fontsize, align, text_color, fill)
+        # Function to calculate optimal font size based on text length and available width
+        def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
+            """Calculate optimal font size to fit text within given width"""
+            font_size = base_font_size
+            # Rough estimation: each character takes about 0.6 * font_size pixels
+            estimated_width = len(text) * (font_size * 0.6)
+            
+            while estimated_width > max_width and font_size > min_font_size:
+                font_size -= 1
+                estimated_width = len(text) * (font_size * 0.6)
+            
+            return font_size
+
+        # Define replacements with adaptive font sizing
         replacements = {}
 
-        # Employee name (increased font size to 42)
+        # Employee name - calculate optimal size based on name length
         old_name = 'Usman Waheed'
         new_name = emp_name
-        replacements[old_name] = (new_name, corsiva_font, 42, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
+        # Assume available width is about 400 pixels for name field
+        name_font_size = calculate_font_size(new_name, 400, 36, 20)  # Start with 36, minimum 20
+        replacements[old_name] = (new_name, corsiva_font, name_font_size, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
 
-        # Dates (increased font size to 22)
+        # Dates - remove excessive spacing and use appropriate font size
         old_date = '05-August-2022'
         new_date = test_date_obj.strftime("%d-%B-%Y")
+        
+        # Remove the excessive padding - just use normal alignment
         if template_type in ["MT", "VT"]:
-            new_date += "            "  # 12 spaces for right padding
             align_date = fitz.TEXT_ALIGN_CENTER
         else:
             align_date = fitz.TEXT_ALIGN_RIGHT
-        replacements[old_date] = (new_date, arial_font, 22, align_date, (0,0,0), (1,1,1))
+        
+        # Use moderate font size for dates
+        date_font_size = 18  # Reduced from 22 to prevent overflow
+        replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
 
-        # Cert number (font size unchanged at 12)
+        # Certificate number - remove padding
         old_cert = '25/PTIS/DPT/00410'
         new_cert = cert_number
+        
         if template_type in ["MT", "VT"]:
-            new_cert = "            " + new_cert  # 12 spaces for left padding
             align_cert = fitz.TEXT_ALIGN_CENTER
         else:
             align_cert = fitz.TEXT_ALIGN_LEFT
+        
         replacements[old_cert] = (new_cert, arial_font, 12, align_cert, (0,0,0), (1,1,1))
 
-        # Validity (increased font size to 22)
+        # Validity - remove excessive spacing
         old_validity = 'Validity: 04-August-2027'
         new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
+        
         if template_type in ["MT", "VT"]:
-            new_validity += "            "  # 12 spaces for right padding
             align_valid = fitz.TEXT_ALIGN_CENTER
         else:
             align_valid = fitz.TEXT_ALIGN_RIGHT
-        replacements[old_validity] = (new_validity, arial_font, 22, align_valid, (0,0,0), (1,1,1))
+        
+        # Use same font size as date for consistency
+        replacements[old_validity] = (new_validity, arial_font, date_font_size, align_valid, (0,0,0), (1,1,1))
 
-        # Apply replacements
+        # Apply replacements with better error handling
         for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
             hits = page.search_for(old)
+            if not hits:
+                st.warning(f"Could not find text '{old}' in template. Skipping replacement.")
+                continue
+                
             for rect in hits:
+                # Ensure the rectangle has some minimum height for the font
+                if rect.height < fontsize:
+                    # Expand rectangle height if too small
+                    center_y = (rect.y0 + rect.y1) / 2
+                    rect.y0 = center_y - fontsize/2
+                    rect.y1 = center_y + fontsize/2
+                
                 page.add_redact_annot(
                     rect,
                     text=new,
@@ -377,22 +410,38 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     fill=fill
                 )
 
-        # Status (font size unchanged at 16)
+        # Status handling with better search
         new_status = f'Status: {status_text}'
         align_status = fitz.TEXT_ALIGN_LEFT
-        possible_status_olds = ['Status: Pass', 'Status: Fail']
-        for old_status in possible_status_olds:
-            hits = page.search_for(old_status)
-            for rect in hits:
-                page.add_redact_annot(
-                    rect,
-                    text=new_status,
-                    fontname=arial_font,
-                    fontsize=16,
-                    align=align_status,
-                    text_color=(0,0,0),
-                    fill=(1,1,1)
-                )
+        
+        # Search for existing status text more broadly
+        status_found = False
+        possible_status_patterns = ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']
+        
+        for pattern in possible_status_patterns:
+            hits = page.search_for(pattern)
+            if hits:
+                for rect in hits:
+                    # Ensure rectangle is big enough for status text
+                    if rect.height < 16:
+                        center_y = (rect.y0 + rect.y1) / 2
+                        rect.y0 = center_y - 8
+                        rect.y1 = center_y + 8
+                    
+                    page.add_redact_annot(
+                        rect,
+                        text=new_status,
+                        fontname=arial_font,
+                        fontsize=16,
+                        align=align_status,
+                        text_color=(0,0,0),
+                        fill=(1,1,1)
+                    )
+                status_found = True
+                break
+        
+        if not status_found:
+            st.warning("Could not find status field in template.")
 
         # Apply all redactions
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
@@ -409,6 +458,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
+        if 'doc' in locals():
+            doc.close()
         return None, None
 # =====================
 # Individual Test Downloads
