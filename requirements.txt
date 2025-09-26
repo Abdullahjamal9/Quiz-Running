@@ -10,3 +10,4 @@ requests
 PYPDF2
 reportlab
 fitz
+pymupdf
