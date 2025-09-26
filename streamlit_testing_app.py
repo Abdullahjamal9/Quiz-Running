@@ -301,7 +301,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             doc.close()
             return None, None
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
-        cert_number = f"{emp_id}/PTIS/{template_type}/{test_date_obj.strftime('%Y')}"
+        cert_number = f"{emp_id}/PTIS/{template_type}/2025"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
         # Register custom fonts if available
@@ -363,7 +363,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
 
         # Certificate number - remove padding and increase font size
-        old_cert = '25/PTIS/DPT/00410'
+        old_cert = f"25/PTIS/{template_type}/00410"
         new_cert = cert_number
         
         if template_type in ["MT", "VT"]:
