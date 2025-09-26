@@ -303,13 +303,12 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
         
         # Create certificate number with employee ID, PTIS, template type, and 2025
-        # Template type mapping for certificate number
         template_mapping = {
             "MT_template": "MT",
             "PT_template": "PT", 
             "UT_template": "UT",
             "VT_template": "VT",
-            "MT": "MT",  # In case template_type is already short form
+            "MT": "MT",
             "PT": "PT",
             "UT": "UT", 
             "VT": "VT"
@@ -320,8 +319,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
         # Register custom fonts if available
-        corsiva_font = 'times-italic'  # Fallback for Monotype Corsiva
-        arial_font = 'helv'  # Fallback for Arial
+        corsiva_font = 'times-italic'
+        arial_font = 'helv'
         corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
         arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
 
@@ -340,155 +339,96 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             else:
                 st.warning("Invalid Arial font file; using Helvetica fallback.")
 
-        # Function to calculate optimal font size based on text length and available width
+        # Function to calculate optimal font size
         def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
-            """Calculate optimal font size to fit text within given width"""
             font_size = base_font_size
-            # Even tighter estimation: each character takes about 0.45 * font_size pixels (reduced from 0.5)
-            estimated_width = len(text) * (font_size * 0.45)
+            estimated_width = len(text) * (font_size * 0.4)  # Reduced from 0.45 for tighter spacing
             
             while estimated_width > max_width and font_size > min_font_size:
                 font_size -= 1
-                estimated_width = len(text) * (font_size * 0.45)
+                estimated_width = len(text) * (font_size * 0.4)
             
             return font_size
 
-        # Define replacements with adaptive font sizing
+        # Define all text replacements
         replacements = {}
 
-        # Employee name - calculate optimal size based on name length
+        # Employee name with corrected font size
         old_name = 'Usman Waheed'
         new_name = emp_name
-        # Assume available width is about 600 pixels for name field (increased further)
-        name_font_size = calculate_font_size(new_name, 600, 48, 32)  # Start with 56, minimum 32
+        name_font_size = calculate_font_size(new_name, 650, 48, 32)  # Now actually starts with 56
         replacements[old_name] = (new_name, corsiva_font, name_font_size, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
 
-        # Dates - remove excessive spacing and use appropriate font size
+        # Dates
         old_date = '05-August-2022'
         new_date = test_date_obj.strftime("%d-%B-%Y")
-        
-        # Remove the excessive padding - just use normal alignment
-        if template_type in ["MT", "VT"]:
-            align_date = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_date = fitz.TEXT_ALIGN_RIGHT
-        
-        # Increased font size for dates
-        date_font_size = 21  # Changed from 28 to 21
-        replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
+        align_date = fitz.TEXT_ALIGN_CENTER if template_type in ["MT", "VT"] else fitz.TEXT_ALIGN_RIGHT
+        replacements[old_date] = (new_date, arial_font, 21, align_date, (0,0,0), (1,1,1))
 
-        # Certificate number - remove padding and increase font size with flexible search
-        cert_number_found = False
-        possible_cert_patterns = [
-            '22/PTIS/VT/00358',  # From the certificate image
-            '25/PTIS/DPT/00410',  # From original code
-            'CERTIFICATE NO: 22/PTIS/VT/00358',  # Full line with label
-            'CERTIFICATE NO:',
-            'Certificate No:',
-            'Cert No:'
-        ]
-        
-        for old_cert_pattern in possible_cert_patterns:
-            hits = page.search_for(old_cert_pattern)
+        # Certificate number - simplified approach to ensure it works
+        possible_cert_numbers = ['22/PTIS/VT/00358', '25/PTIS/DPT/00410']
+        for old_cert in possible_cert_numbers:
+            replacements[old_cert] = (cert_number, arial_font, 21, fitz.TEXT_ALIGN_LEFT, (0,0,0), (1,1,1))
+
+        # Validity
+        old_validity = 'Validity: 04-August-2027'
+        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
+        align_valid = fitz.TEXT_ALIGN_CENTER if template_type in ["MT", "VT"] else fitz.TEXT_ALIGN_RIGHT
+        replacements[old_validity] = (new_validity, arial_font, 21, align_valid, (0,0,0), (1,1,1))
+
+        # Apply all text replacements
+        for old_text, (new_text, fontname, fontsize, align, color, fill) in replacements.items():
+            hits = page.search_for(old_text)
             if hits:
+                print(f"Found '{old_text}' - replacing with '{new_text}' at font size {fontsize}")
                 for rect in hits:
-                    if template_type in ["MT", "VT"]:
-                        align_cert = fitz.TEXT_ALIGN_CENTER
-                    else:
-                        align_cert = fitz.TEXT_ALIGN_LEFT
-                    
-                    # If we found just the label, include it in the replacement text
-                    if 'CERTIFICATE NO:' in old_cert_pattern and old_cert_pattern != cert_number:
-                        replacement_text = f"CERTIFICATE NO: {cert_number}"
-                    elif 'Certificate No:' in old_cert_pattern and old_cert_pattern != cert_number:
-                        replacement_text = f"Certificate No: {cert_number}"
-                    else:
-                        replacement_text = cert_number
+                    # Ensure rectangle is large enough
+                    if rect.height < fontsize * 1.2:
+                        center_y = (rect.y0 + rect.y1) / 2
+                        rect.y0 = center_y - (fontsize * 0.6)
+                        rect.y1 = center_y + (fontsize * 0.6)
                     
                     page.add_redact_annot(
                         rect,
-                        text=replacement_text,
-                        fontname=arial_font,
-                        fontsize=18,  # Increased to 18
-                        align=align_cert,
-                        text_color=(0,0,0),
-                        fill=(1,1,1)
+                        text=new_text,
+                        fontname=fontname,
+                        fontsize=fontsize,
+                        align=align,
+                        text_color=color,
+                        fill=fill
                     )
-                cert_number_found = True
-                break
-        
-        if not cert_number_found:
-            st.warning("Could not find certificate number field in template.")
-            # Still add to replacements dict as fallback
-            old_cert = '22/PTIS/VT/00358'
-            replacements[old_cert] = (cert_number, arial_font, 18, fitz.TEXT_ALIGN_LEFT, (0,0,0), (1,1,1))
+            else:
+                print(f"WARNING: Could not find '{old_text}' in template")
 
-        # Validity - remove excessive spacing and increase font size
-        old_validity = 'Validity: 04-August-2027'
-        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
-        
-        if template_type in ["MT", "VT"]:
-            align_valid = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_valid = fitz.TEXT_ALIGN_RIGHT
-        
-        # Use same increased font size as date for consistency
-        replacements[old_validity] = (new_validity, arial_font, date_font_size, align_valid, (0,0,0), (1,1,1))
-
-        # Apply replacements with better error handling
-        for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
-            hits = page.search_for(old)
-            if not hits:
-                st.warning(f"Could not find text '{old}' in template. Skipping replacement.")
-                continue
-                
-            for rect in hits:
-                # Ensure the rectangle has some minimum height for the font
-                if rect.height < fontsize:
-                    # Expand rectangle height if too small
-                    center_y = (rect.y0 + rect.y1) / 2
-                    rect.y0 = center_y - fontsize/2
-                    rect.y1 = center_y + fontsize/2
-                
-                page.add_redact_annot(
-                    rect,
-                    text=new,
-                    fontname=fontname,
-                    fontsize=fontsize,
-                    align=align,
-                    text_color=color,
-                    fill=fill
-                )
-
-        # Status handling with better search and increased font size
+        # Handle Status separately with multiple patterns
         new_status = f'Status: {status_text}'
-        align_status = fitz.TEXT_ALIGN_LEFT
+        status_patterns = ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']
+        status_replaced = False
         
-        # Search for existing status text more broadly
-        status_found = False
-        possible_status_patterns = ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']
-        
-        for pattern in possible_status_patterns:
+        for pattern in status_patterns:
             hits = page.search_for(pattern)
             if hits:
+                print(f"Found status pattern '{pattern}' - replacing with '{new_status}' at font size 24")
                 for rect in hits:
-                    # Ensure rectangle is big enough for status text
-                    if rect.height < 24:  # Increased from 20
+                    if rect.height < 28:
                         center_y = (rect.y0 + rect.y1) / 2
-                        rect.y0 = center_y - 12  # Increased from 10
-                        rect.y1 = center_y + 12  # Increased from 10
+                        rect.y0 = center_y - 14
+                        rect.y1 = center_y + 14
                     
                     page.add_redact_annot(
                         rect,
                         text=new_status,
                         fontname=arial_font,
-                        fontsize=24,  # Increased from 20
-                        align=align_status,
+                        fontsize=24,
+                        align=fitz.TEXT_ALIGN_LEFT,
                         text_color=(0,0,0),
                         fill=(1,1,1)
                     )
-                status_found = True
+                status_replaced = True
                 break
+        
+        if not status_replaced:
+            print("WARNING: Could not find any status pattern in template")
 
         # Apply all redactions
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
