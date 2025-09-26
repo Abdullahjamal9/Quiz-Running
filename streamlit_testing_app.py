@@ -149,46 +149,87 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         st.error(f"Error generating {template_type} certificate: {str(e)}")
         return None, None
 
-# Update the ZIP generation section in your main code
-# In the certificate generation loop:
-certificate_files = []
-for row in qualifying_df.iterrows():
-    emp_id = row['ID']
-    emp_name = row['Name']
-    test_date = row['Date / Time']
-    status = row['Status']
-    for template_type in ['PT', 'UT', 'MT', 'VT']:
-        certificate_data, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status, template_type)
-        if certificate_data:
-            certificate_files.append((certificate_data, certificate_filename))
+# Certificate Generation Section (replace in your main code under "Generate Certificates")
+st.markdown("---")
+st.subheader("📜 Generate Certificates")
 
-if certificate_files:
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-        for cert_data, cert_filename in certificate_files:
-            zipf.writestr(cert_filename, cert_data)  # Write PDF data directly
-    zip_buffer.seek(0)
-    filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
-    st.download_button(
-        label=f"Download Certificates (ZIP) for {filename_suffix}",
-        data=zip_buffer,
-        file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-        mime="application/zip"
-    )
-else:
-    st.error("Failed to generate any certificates. Check templates and permissions.")
-        
-    st.markdown("---")
-    if st.button("Logout"):
-        st.session_state.admin_logged_in = False
-        st.session_state.pop("quiz", None)
-        st.rerun()
+# Simple certificate filter - only employee name
+results_df = load_all_results()  # Ensure results_df is loaded
+passed_results = results_df[results_df["Status"] == "Pass"]
+cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
+
+selected_cert_name = st.selectbox(
+    "Filter Certificates by Employee Name",
+    cert_employee_names,
+    index=0,
+    key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
+)
+
+if st.button("Generate Certificates for Qualifying Employees"):
+    required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
+    passed_results = results_df[results_df["Status"] == "Pass"]
+    
+    # Initialize qualifying_rows
+    qualifying_rows = []
+    if not passed_results.empty:
+        grouped = passed_results.groupby('Name')
+        for name, group in grouped:
+            passed_standards = set(group['Test Type'].str.strip())
+            if required_standards.issubset(passed_standards):
+                cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
+                if not cumm_row.empty:
+                    qualifying_rows.append(cumm_row.iloc[0])
+    
+    # Create qualifying_df
+    qualifying_df = pd.DataFrame(qualifying_rows)
+    
+    # Apply name filter
+    if selected_cert_name != "All":
+        qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
+    
+    # Check if qualifying_df is empty
+    if qualifying_df.empty:
+        st.warning("No qualifying candidates found. Ensure employees have passed all required standards (DS-1, Cummulative, API SPEC 5CT & 5A5, API RP 7G-2).")
     else:
-        st.info("No results available yet in the Result 2 sheet.")
-        if st.button("Logout"):
-            st.session_state.admin_logged_in = False
-            st.session_state.pop("quiz", None)
-            st.rerun()
+        st.info(f"Found {len(qualifying_df)} qualifying candidate(s) for certificate generation.")
+        certificate_files = []
+        for _, row in qualifying_df.iterrows():
+            emp_id = str(row['ID'])
+            emp_name = str(row['Name'])
+            test_date = str(row['Date / Time'])
+            status = str(row['Status'])
+            for template_type in ['PT', 'UT', 'MT', 'VT']:
+                certificate_data, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status, template_type)
+                if certificate_data:
+                    certificate_files.append((certificate_data, certificate_filename))
+        
+        if certificate_files:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                for cert_data, cert_filename in certificate_files:
+                    zipf.writestr(cert_filename, cert_data)  # Write PDF data directly
+            zip_buffer.seek(0)
+            filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
+            st.download_button(
+                label=f"Download Certificates (ZIP) for {filename_suffix}",
+                data=zip_buffer,
+                file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                mime="application/zip"
+            )
+        else:
+            st.error("Failed to generate any certificates. Check templates and permissions.")
+        
+            st.markdown("---")
+            if st.button("Logout"):
+                st.session_state.admin_logged_in = False
+                st.session_state.pop("quiz", None)
+                st.rerun()
+            else:
+                st.info("No results available yet in the Result 2 sheet.")
+                if st.button("Logout"):
+                    st.session_state.admin_logged_in = False
+                    st.session_state.pop("quiz", None)
+                    st.rerun()
 
 # Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
