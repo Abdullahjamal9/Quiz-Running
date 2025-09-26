@@ -17,6 +17,7 @@ from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+import subprocess
 
 # =====================
 # Paths / Files
@@ -276,11 +277,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Replace placeholders with proper alignment
+        # Replace placeholders (same as before)
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in para.runs:
                     run.font.name = 'Monotype Corsiva'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
@@ -288,13 +289,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for date
-                if template_type == "MT":
-                    # For MT: Much less right padding to bring date closer to center-right
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -302,17 +297,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-                # Template-specific alignment for certificate number
-                if template_type == "MT":
-                    # For MT: Much less left padding to position closer to center-left
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "            " + para.text  # Reduced to 12 spaces
-                elif template_type == "VT":
-                    # For VT: Move 2 spaces forward
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    para.text = "  " + para.text
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                para.text = "  " + para.text
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -320,13 +306,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for certification date
-                if template_type == "MT":
-                    # For MT: Much less right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -334,13 +314,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Validity: 24-September-2030' in para.text:
                 para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                # Template-specific alignment for validity date
-                if template_type == "MT":
-                    # For MT: Much less right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
+                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -348,19 +322,38 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
 
+        # Save as temporary DOCX first
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        temp_docx_path = f"/tmp/temp_{template_type}_{emp_id}_{safe_name}_{date_str}.docx"
+        doc.save(temp_docx_path)
+        
+        # Convert to PDF
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
-        doc.save(output_path)
-
-        st.success(f"Generated certificate: {certificate_filename}")
-        return output_path, certificate_filename
+        
+        try:
+            # Using python-docx2pdf (install with: pip install python-docx2pdf)
+            from docx2pdf import convert
+            convert(temp_docx_path, output_path)
+            
+            # Clean up temporary DOCX
+            os.remove(temp_docx_path)
+            
+            st.success(f"Generated PDF certificate: {certificate_filename}")
+            return output_path, certificate_filename
+            
+        except ImportError:
+            st.error("python-docx2pdf not installed. Please install it with: pip install python-docx2pdf")
+            return None, None
+        except Exception as convert_error:
+            st.error(f"Error converting to PDF: {str(convert_error)}")
+            return None, None
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
