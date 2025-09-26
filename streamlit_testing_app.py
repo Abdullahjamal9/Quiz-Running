@@ -12,10 +12,11 @@ import io
 import requests
 import zipfile
 import traceback
-from docx import Document
-from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.oxml.ns import qn
+# from docx import Document  # REMOVE this import (no longer needed)
+# from docx.shared import Pt  # REMOVE
+# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
+# from docx.oxml.ns import qn  # REMOVE
+import fitz
 
 # =====================
 # Paths / Files
@@ -237,22 +238,22 @@ def get_info_for_standard(standards, selected_standard):
 # Certificate Generation
 # =====================
 def get_template_path(template_type):
-    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")  # CHANGED to .pdf
     if os.path.exists(template_path):
         return template_path
     
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.docx"
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"  # CHANGED to .pdf
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            temp_path = f"/tmp/{template_type}_template.docx"
+            temp_path = f"/tmp/{template_type}_template.pdf"  # CHANGED to .pdf
             with open(temp_path, "wb") as file:
                 file.write(response.content)
             return temp_path
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")  # CHANGED to .pdf
         return None
 
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
@@ -262,8 +263,10 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        doc = Document(template_path)
-        
+        # NEW: Open PDF with PyMuPDF
+        doc = fitz.open(template_path)
+        page = doc[0]  # Assume single-page certificate; adjust if multi-page
+
         # Extract date part and calculate validity date
         date_str = test_date.split()[0] if " " in test_date else test_date
         try:
@@ -275,84 +278,90 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Replace placeholders with proper alignment
-        for para in doc.paragraphs:
-            if 'Usman Waheed' in para.text:
-                para.text = para.text.replace('Usman Waheed', emp_name)
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
-                for run in para.runs:
-                    run.font.name = 'Monotype Corsiva'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
-                    run.font.size = Pt(26)
-            
-            if '05-August-2022' in para.text:
-                para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for date
-                if template_type in ["MT", "VT"]:
-                    # For MT and VT: Center with reduced right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if '25/PTIS/DPT/00410' in para.text:
-                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-                # Template-specific alignment for certificate number
-                if template_type in ["MT", "VT"]:
-                    # For MT and VT: Center with reduced left padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "            " + para.text  # 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if 'Date of Certification' in para.text:
-                para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for certification date
-                if template_type in ["MT", "VT"]:
-                    # For MT and VT: Center with reduced right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if 'Validity: 04-August-2027' in para.text:
-                para.text = para.text.replace('Validity: 04-August-2027', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                # Template-specific alignment for validity date
-                if template_type in ["MT", "VT"]:
-                    # For MT and VT: Center with reduced right padding
-                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # 12 spaces
-                else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-            
-            if 'Status' in para.text:
-                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
-                    
+        # NEW: Define replacements - old_text: (new_text, fontname, fontsize, align, text_color, fill, fontfile)
+        # fontfile: Set to path if custom .ttf is available in DB_FOLDER; else None for built-in fonts
+        # corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf") if os.path.exists(os.path.join(DB_FOLDER, "monotype_corsiva.ttf")) else None
+        # arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf") if os.path.exists(os.path.join(DB_FOLDER, "arial.ttf")) else None
+
+        replacements = {}
+
+        # Employee name
+        old_name = 'Usman Waheed'
+        new_name = emp_name
+        replacements[old_name] = (new_name, 'times-italic', 26, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1), None)  # Approx Corsiva; use corsiva_fontfile if available
+
+        # Dates (test date and certification date share same placeholder)
+        old_date = '05-August-2022'
+        new_date = test_date_obj.strftime("%d-%B-%Y")
+        if template_type in ["MT", "VT"]:
+            new_date += "            "  # 12 spaces for right padding
+            align_date = fitz.TEXT_ALIGN_CENTER
+        else:
+            align_date = fitz.TEXT_ALIGN_RIGHT
+        replacements[old_date] = (new_date, 'helv', 12, align_date, (0,0,0), (1,1,1), None)  # Approx Arial; use arial_fontfile if available
+
+        # Cert number
+        old_cert = '25/PTIS/DPT/00410'
+        new_cert = cert_number
+        if template_type in ["MT", "VT"]:
+            new_cert = "            " + new_cert  # 12 spaces for left padding
+            align_cert = fitz.TEXT_ALIGN_CENTER
+        else:
+            align_cert = fitz.TEXT_ALIGN_LEFT
+        replacements[old_cert] = (new_cert, 'helv', 12, align_cert, (0,0,0), (1,1,1), None)
+
+        # Validity
+        old_validity = 'Validity: 04-August-2027'
+        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
+        if template_type in ["MT", "VT"]:
+            new_validity += "            "  # 12 spaces for right padding
+            align_valid = fitz.TEXT_ALIGN_CENTER
+        else:
+            align_valid = fitz.TEXT_ALIGN_RIGHT
+        replacements[old_validity] = (new_validity, 'helv', 12, align_valid, (0,0,0), (1,1,1), None)
+
+        # Status (handle both possible placeholders)
+        new_status = f'Status: {status_text}'
+        align_status = fitz.TEXT_ALIGN_LEFT
+        possible_status_olds = ['Status: Pass', 'Status: Fail']
+        for old_status in possible_status_olds:
+            hits = page.search_for(old_status)
+            for rect in hits:
+                page.add_redact_annot(
+                    rect,
+                    text=new_status,
+                    fontname='helv',
+                    fontsize=12,
+                    align=align_status,
+                    text_color=(0,0,0),
+                    fill=(1,1,1),
+                    fontfile=None  # Use arial_fontfile if available
+                )
+
+        # Apply other replacements
+        for old, (new, fontname, fontsize, align, color, fill, fontfile) in replacements.items():
+            hits = page.search_for(old)
+            for rect in hits:
+                page.add_redact_annot(
+                    rect,
+                    text=new,
+                    fontname=fontname,
+                    fontsize=fontsize,
+                    align=align,
+                    text_color=color,
+                    fill=fill,
+                    fontfile=fontfile
+                )
+
+        # Apply all redactions
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+
+        # Save the modified PDF
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"  # CHANGED to .pdf
         output_path = f"/tmp/{certificate_filename}"
-        doc.save(output_path)
+        doc.save(output_path, garbage=3, deflate=True)
+        doc.close()
 
         st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
