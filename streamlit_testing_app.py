@@ -328,12 +328,12 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         # Define replacements: (new_text, fontname, fontsize, align, text_color, fill)
         replacements = {}
 
-        # Employee name
+        # Employee name (increased font size to 36)
         old_name = 'Usman Waheed'
         new_name = emp_name
-        replacements[old_name] = (new_name, corsiva_font, 26, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
+        replacements[old_name] = (new_name, corsiva_font, 36, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
 
-        # Dates (test date and certification date share same placeholder)
+        # Dates (increased font size to 16)
         old_date = '05-August-2022'
         new_date = test_date_obj.strftime("%d-%B-%Y")
         if template_type in ["MT", "VT"]:
@@ -341,9 +341,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_date = fitz.TEXT_ALIGN_CENTER
         else:
             align_date = fitz.TEXT_ALIGN_RIGHT
-        replacements[old_date] = (new_date, arial_font, 12, align_date, (0,0,0), (1,1,1))
+        replacements[old_date] = (new_date, arial_font, 16, align_date, (0,0,0), (1,1,1))
 
-        # Cert number
+        # Cert number (font size unchanged at 12)
         old_cert = '25/PTIS/DPT/00410'
         new_cert = cert_number
         if template_type in ["MT", "VT"]:
@@ -353,7 +353,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_cert = fitz.TEXT_ALIGN_LEFT
         replacements[old_cert] = (new_cert, arial_font, 12, align_cert, (0,0,0), (1,1,1))
 
-        # Validity
+        # Validity (increased font size to 16)
         old_validity = 'Validity: 04-August-2027'
         new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
         if template_type in ["MT", "VT"]:
@@ -361,7 +361,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_valid = fitz.TEXT_ALIGN_CENTER
         else:
             align_valid = fitz.TEXT_ALIGN_RIGHT
-        replacements[old_validity] = (new_validity, arial_font, 12, align_valid, (0,0,0), (1,1,1))
+        replacements[old_validity] = (new_validity, arial_font, 16, align_valid, (0,0,0), (1,1,1))
 
         # Apply replacements
         for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
@@ -379,7 +379,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     fill=fill
                 )
 
-        # Status (handle both possible placeholders)
+        # Status (font size unchanged at 12)
         new_status = f'Status: {status_text}'
         align_status = fitz.TEXT_ALIGN_LEFT
         possible_status_olds = ['Status: Pass', 'Status: Fail']
