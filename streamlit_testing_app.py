@@ -12,34 +12,17 @@ import io
 import requests
 import zipfile
 import traceback
-from PyPDF2 import PdfReader, PdfWriter
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.units import inch
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from io import BytesIO
+from docx import Document
+from docx.shared import Pt
+from docx.oxml.ns import qn
 
 # =====================
 # Paths / Files
 # =====================
 BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
-FONTS_FOLDER = os.path.join(DB_FOLDER, "fonts")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-
-# Register Monotype Corsiva font (or fallback to Arial)
-FONT_PATH = os.path.join(FONTS_FOLDER, "MonotypeCorsiva.ttf")
-try:
-    if os.path.exists(FONT_PATH):
-        pdfmetrics.registerFont(TTFont("MonotypeCorsiva", FONT_PATH))
-        NAME_FONT = "MonotypeCorsiva"
-    else:
-        st.warning("MonotypeCorsiva.ttf not found in db/fonts/. Using Arial as fallback.")
-        NAME_FONT = "Helvetica"
-except Exception as e:
-    st.warning(f"Error loading MonotypeCorsiva font: {str(e)}. Using Arial as fallback.")
-    NAME_FONT = "Helvetica"
+TEMPLATE_PATH = os.path.join(BASE_DIR, "db", "dpt_template.docx")
 
 # =====================
 # Google Sheets Setup
@@ -222,7 +205,7 @@ def load_questions():
                 "Boiling point of water?",
                 "Who wrote Romeo and Juliet?"
             ],
-            "A": ["3", "Berlin", "A language", "50°C", "Dickens"],
+            "A": ["3 нашої ери", "Berlin", "A language", "50°C", "Dickens"],
             "B": ["4", "Paris", "A snake", "100°C", "Shakespeare"],
             "C": ["5", "London", "A fruit", "0°C", "Twain"],
             "D": ["6", "Madrid", "A bird", "212°F", "Hemingway"],
@@ -254,22 +237,22 @@ def get_info_for_standard(standards, selected_standard):
 # Certificate Generation
 # =====================
 def get_template_path(template_type):
-    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
     if os.path.exists(template_path):
         return template_path
     
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.docx"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            temp_path = f"/tmp/{template_type}_template.pdf"
+            temp_path = f"/tmp/{template_type}_template.docx"
             with open(temp_path, "wb") as file:
                 file.write(response.content)
             return temp_path
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
         return None
 
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
@@ -279,67 +262,43 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        # Extract date part (e.g., "04-09-2025" from "04-09-2025 10:00:00 AM")
+        doc = Document(template_path)
+        
         date_str = test_date.split()[0] if " " in test_date else test_date
-        try:
-            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
-        except ValueError:
-            st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
-            return None, None
-
-        validity_date = (test_date_obj + datetime.timedelta(days=5*365)).strftime("%d-%B-%Y")
+        test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
+        validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
+        validity_date = validity_date_obj.strftime("%d-%m-%Y")
+        
         cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
-        status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Create a new PDF with text overlay
-        packet = BytesIO()
-        c = canvas.Canvas(packet, pagesize=letter)
-        
-        # Define text positions (adjust these based on your template layout)
-        TEXT_POSITIONS = {
-            'employee_name': (100, 500),  # X, Y coordinates in points
-            'test_date': (100, 450),
-            'cert_number': (100, 400),
-            'validity_date': (100, 350),
-            'status': (100, 300)
-        }
+        for para in doc.paragraphs:
+            if 'Usman Waheed' in para.text:
+                para.text = para.text.replace('Usman Waheed', emp_name)
+                para.clear()
+                run = para.add_run(emp_name)
+                run.font.name = 'Monotype Corsiva'
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
+                run.font.size = Pt(26)
+            if '25-September-2025' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+            if '25/PTIS/DPT/00410' in para.text:
+                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+            if 'Date of Certification' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+            if 'Validity: 24-September-2030' in para.text:
+                para.text = para.text.replace('24-September-2030', validity_date_obj.strftime("%d-%B-%Y"))
 
-        # Draw text
-        c.setFont(NAME_FONT, 26)  # Monotype Corsiva for employee name
-        c.drawString(TEXT_POSITIONS['employee_name'][0], TEXT_POSITIONS['employee_name'][1], emp_name)
-        
-        c.setFont("Helvetica", 12)  # Arial/Helvetica for other fields
-        c.drawString(TEXT_POSITIONS['test_date'][0], TEXT_POSITIONS['test_date'][1], test_date_obj.strftime("%d-%B-%Y"))
-        c.drawString(TEXT_POSITIONS['cert_number'][0], TEXT_POSITIONS['cert_number'][1], cert_number)
-        c.drawString(TEXT_POSITIONS['validity_date'][0], TEXT_POSITIONS['validity_date'][1], validity_date)
-        c.drawString(TEXT_POSITIONS['status'][0], TEXT_POSITIONS['status'][1], status_text)
-        
-        c.showPage()
-        c.save()
-        packet.seek(0)
+        status_text = 'Status: Pass' if status == "Pass" else 'Status: Fail'
+        for para in doc.paragraphs:
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
 
-        # Merge text overlay with template
-        overlay_pdf = PdfReader(packet)
-        template_pdf = PdfReader(template_path)
-        output = PdfWriter()
-
-        # Merge each page of the template with the overlay
-        for page_num in range(len(template_pdf.pages)):
-            page = template_pdf.pages[page_num]
-            if page_num == 0:  # Apply text overlay only to the first page
-                page.merge_page(overlay_pdf.pages[0])
-            output.add_page(page)
-
-        # Save the output PDF
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
-        output_path = f"/tmp/{certificate_filename}"
-
-        with open(output_path, "wb") as output_file:
-            output.write(output_file)
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        doc.save(f"/tmp/{certificate_filename}")
 
         st.success(f"Generated certificate: {certificate_filename}")
-        return output_path, certificate_filename
+        return f"/tmp/{certificate_filename}", certificate_filename
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
@@ -449,6 +408,17 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 break
             except Exception:
                 continue
+        
+        if worksheet is None:
+            try:
+                all_worksheets = sheet.worksheets()
+                for ws in all_worksheets:
+                    if "result" in ws.title.lower():
+                        worksheet = ws
+                        st.info(f"Saving results to worksheet: '{ws.title}'")
+                        break
+            except:
+                pass
         
         if worksheet is None:
             return False, "Could not find results worksheet to save data"
@@ -798,7 +768,7 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
         
-        # Certificate filter - only employee name
+        # Simple certificate filter - only employee name
         passed_results = results_df[results_df["Status"] == "Pass"]
         cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
         
@@ -810,14 +780,15 @@ if st.session_state.admin_logged_in:
         )
         
         if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
-            passed_results = results_df[results_df["Status"] == "Pass"]
+            required_standards = {"DS-1", "API RP 7G-2", "API SPEC 5CT & 5A5", "Cummulative"}
+            passed_results = filtered_df[filtered_df["Status"] == "Pass"]
             grouped = passed_results.groupby('Name')
             
             qualifying_rows = []
             for name, group in grouped:
                 passed_standards = set(group['Test Type'].str.strip())
                 if required_standards.issubset(passed_standards):
+                    # Get the Cummulative row for date
                     cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
                     if not cumm_row.empty:
                         qualifying_rows.append(cumm_row.iloc[0])
@@ -828,7 +799,7 @@ if st.session_state.admin_logged_in:
                 qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
             
             if qualifying_df.empty:
-                st.warning("No employees found who have passed all 4 standards (DS-1, Cummulative, API SPEC 5CT & 5A5, API RP 7G-2).")
+                st.warning("No employees who have passed all 4 standards (DS-1, API RP 7G-2, API SPEC 5CT & 5A5, Cummulative).")
             else:
                 certificate_files = []
                 for _, row in qualifying_df.iterrows():
@@ -848,6 +819,7 @@ if st.session_state.admin_logged_in:
                             zipf.write(cert_path, cert_filename)
 
                     zip_buffer.seek(0)
+
                     filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
                     
                     st.download_button(
@@ -1185,10 +1157,10 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
-    if "attempted" not in st.session_state.quiz:
-        st.session_state.quiz["attempted"] = set()
-    if "skipped_questions" not in st.session_state.quiz:
-        st.session_state.quiz["skipped_questions"] = set()
+    if "attempted" not in qstate:
+        qstate["attempted"] = set()
+    if "skipped_questions" not in qstate:
+        qstate["skipped_questions"] = set()
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
