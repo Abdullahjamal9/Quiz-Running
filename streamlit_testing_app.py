@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -12,12 +13,10 @@ import io
 import requests
 import zipfile
 import traceback
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from reportlab.lib.units import inch
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
 
 # =====================
 # Paths / Files
@@ -25,7 +24,6 @@ from reportlab.lib.enums import TA_CENTER, TA_RIGHT, TA_LEFT
 BASE_DIR = os.path.dirname(__file__)
 DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
-FONT_PATH = os.path.join(DB_FOLDER, "Monotype_Corsiva.ttf")  # Path to TTF font file
 
 # =====================
 # Google Sheets Setup
@@ -82,105 +80,191 @@ def load_employees_and_standards():
         return employees, standards
 
 @st.cache_data
-def load_questions():
-    try:
-        sheet = client.open_by_url(GSHEET_URL)
-        try:
-            questions_data = sheet.worksheet("Questions").get_all_records()
-            questions = pd.DataFrame(questions_data)
-            if questions.empty:
-                st.warning("Questions sheet is empty. No questions loaded.")
-                return pd.DataFrame(columns=["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"])
-            required_cols = ["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"]
-            for col in required_cols:
-                if col not in questions.columns:
-                    questions[col] = ""
-            questions = questions[required_cols]
-            questions["Standard"] = questions["Standard"].astype(str).str.strip()
-            return questions
-        except Exception as e:
-            st.error(f"Error loading Questions sheet: {str(e)}")
-            return pd.DataFrame(columns=["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"])
-    except Exception as e:
-        st.error(f"Error in load_questions: {str(e)}")
-        return pd.DataFrame(columns=["Qno", "Question", "A", "B", "C", "D", "Answer", "Standard"])
-
-@st.cache_data
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
+        
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
+        
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
                 break
-            except:
+            except Exception:
                 continue
+        
         if worksheet is None:
-            try:
-                all_worksheets = sheet.worksheets()
-                for ws in all_worksheets:
-                    if "result" in ws.title.lower():
-                        worksheet = ws
-                        break
-            except:
-                pass
-        if worksheet is None:
-            st.warning("No results worksheet found.")
+            st.error("Could not find any results worksheet.")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
-        results_data = worksheet.get_all_records()
-        results = pd.DataFrame(results_data)
-        if results.empty:
-            st.info("No results found in the results worksheet.")
+        all_values = worksheet.get_all_values()
+        if len(all_values) < 2:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
         
-        # Standardize column names
-        results.columns = [col.strip() for col in results.columns]
-        required_cols = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
-        for col in required_cols:
-            if col not in results.columns:
-                results[col] = ""
+        headers = all_values[0]
+        data_rows = all_values[1:]
         
-        # Clean data
-        results["ID"] = results["ID"].astype(str).str.strip()
-        results["Name"] = results["Name"].astype(str).str.strip()
-        results["Total"] = pd.to_numeric(results["Total"], errors="coerce").fillna(0).astype(int)
-        results["Right"] = pd.to_numeric(results["Right"], errors="coerce").fillna(0).astype(int)
-        results["Wrong"] = pd.to_numeric(results["Wrong"], errors="coerce").fillna(0).astype(int)
-        results["Percentage"] = pd.to_numeric(results["Percentage"].str.replace("%", "", regex=False), errors="coerce").fillna(0)
-        results["Criteria"] = pd.to_numeric(results["Criteria"].str.replace("%", "", regex=False), errors="coerce").fillna(0)
-        results["Test Type"] = results["Test Type"].astype(str).str.strip()
-        results["Date / Time"] = results["Date / Time"].astype(str).str.strip()
+        df = pd.DataFrame(data_rows, columns=headers)
+        df['_original_order'] = range(len(df))
+        df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
         
-        return results[required_cols]
+        column_mapping = {
+            'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
+            'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
+            'Total': ['TOTAL QUESTION', 'Total Question', 'Total', 'total', 'Total Questions'],
+            'Right': ['CORRECT ANSWER', 'Correct Answer', 'Right', 'right', 'Correct'],
+            'Wrong': ['WRONG ANSWER', 'Wrong Answer', 'Wrong', 'wrong', 'Incorrect'],
+            'Percentage': ['PERCENTAGE', 'Percentage', 'percentage', 'Score', 'score'],
+            'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
+            'Status': ['STATUS', 'Status', 'status', 'Result'],
+            'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
+            'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
+        }
+        
+        for standard_name, possible_names in column_mapping.items():
+            for col in df.columns:
+                if col in possible_names and col != '_original_order':
+                    df = df.rename(columns={col: standard_name})
+                    break
+        
+        required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
+        for col in required_columns:
+            if col not in df.columns:
+                df[col] = ""
+        
+        numeric_cols = ["Total", "Right", "Wrong"]
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+        
+        if "Percentage" in df.columns:
+            df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
+            df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
+        
+        df = df.sort_values('_original_order').drop('_original_order', axis=1)
+        df = df.reset_index(drop=True)
+        
+        return df[required_columns]
+        
     except Exception as e:
         st.error(f"Error loading results: {str(e)}")
+        st.error(f"Detailed error: {traceback.format_exc()}")
         return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+
+@st.cache_data
+def load_questions():
+    try:
+        sheet = client.open_by_url(GSHEET_URL)
+        
+        question_worksheet_names = ["Questions", "Question Bank", "Quiz Questions", "QuestionData"]
+        questions_data = None
+        worksheet_used = None
+        
+        for name in question_worksheet_names:
+            try:
+                worksheet = sheet.worksheet(name)
+                questions_data = worksheet.get_all_records()
+                worksheet_used = name
+                break
+            except Exception as ws_error:
+                st.warning(f"Worksheet '{name}' not found or inaccessible: {str(ws_error)}")
+                continue
+        
+        if questions_data is None or not questions_data:
+            raise Exception("No valid questions worksheet found.")
+        
+        questions = pd.DataFrame(questions_data)
+        if questions.empty:
+            raise Exception("Questions worksheet is empty.")
+        
+        required_columns = ["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"]
+        for col in required_columns:
+            if col not in questions.columns:
+                questions[col] = ""
+        
+        questions["Standard"] = questions["Standard"].astype(str).str.strip()
+        questions["Question"] = questions["Question"].astype(str).str.strip()
+        questions["A"] = questions["A"].astype(str).str.strip()
+        questions["B"] = questions["B"].astype(str).str.strip()
+        questions["C"] = questions["C"].astype(str).str.strip()
+        questions["D"] = questions["D"].astype(str).str.strip()
+        questions["Answer"] = questions["Answer"].astype(str).str.strip()
+        
+        return questions[required_columns]
+    
+    except Exception as e:
+        st.error(f"Error loading questions from Google Sheet: {str(e)}")
+        st.info("Generating sample questions for testing...")
+        sample_questions = pd.DataFrame({
+            "Qno": [1, 2, 3, 4, 5],
+            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cummulative"],
+            "Question": [
+                "What is 2 + 2?",
+                "Capital of France?",
+                "What is Python?",
+                "Boiling point of water?",
+                "Who wrote Romeo and Juliet?"
+            ],
+            "A": ["3", "Berlin", "A language", "50°C", "Dickens"],
+            "B": ["4", "Paris", "A snake", "100°C", "Shakespeare"],
+            "C": ["5", "London", "A fruit", "0°C", "Twain"],
+            "D": ["6", "Madrid", "A bird", "212°F", "Hemingway"],
+            "Answer": ["B", "B", "A", "B", "B"]
+        })
+        st.warning("Using sample questions. Add a 'Questions' worksheet to your Google Sheet for real data.")
+        return sample_questions
 
 def get_info_for_standard(standards, selected_standard):
     try:
-        if standards.empty or selected_standard is None:
-            return 0, 0, 0, 0, 0
-        standard_row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
-        if standard_row.empty:
-            return 0, 0, 0, 0, 0
-        total = int(standard_row["Total Questions"].iloc[0] or 0)
-        criteria = float(standard_row["Passing Criteria"].iloc[0] or 0)
-        h = int(standard_row["Hours"].iloc[0] or 0)
-        m = int(standard_row["Minutes"].iloc[0] or 0)
-        s = int(standard_row["Seconds"].iloc[0] or 0)
-        return total, criteria, h, m, s
+        if selected_standard == "Cummulative":
+            return 50, 70, 1, 0, 0
+        row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
+        if not row.empty:
+            total = int(row.iloc[0].get("Total Questions", 50))
+            criteria = int(row.iloc[0].get("Passing Criteria", 70))
+            h = int(row.iloc[0].get("Hours", 1))
+            m = int(row.iloc[0].get("Minutes", 0))
+            s = int(row.iloc[0].get("Seconds", 0))
+            return total, criteria, h, m, s
+        else:
+            st.warning(f"No info found for standard: {selected_standard}. Using defaults.")
+            return 50, 70, 1, 0, 0
     except Exception as e:
-        st.error(f"Error fetching standard info: {str(e)}")
-        return 0, 0, 0, 0, 0
+        st.error(f"Error getting standard info: {str(e)}")
+        return 50, 70, 1, 0, 0
 
 # =====================
-# Certificate Generation (PDF with reportlab)
+# Certificate Generation
 # =====================
-def generate_certificate(emp_id, emp_name, test_date, status, template_type):
+def get_template_path(template_type):
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
+    if os.path.exists(template_path):
+        return template_path
+    
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.docx"
     try:
+        response = requests.get(github_url, timeout=10)
+        if response.status_code == 200:
+            temp_path = f"/tmp/{template_type}_template.docx"
+            with open(temp_path, "wb") as file:
+                file.write(response.content)
+            return temp_path
+        else:
+            raise Exception(f"HTTP {response.status_code}")
+    except Exception as e:
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
+        return None
+
+def generate_certificate(emp_id, emp_name, test_date, status, template_type):
+    template_path = get_template_path(template_type)
+    if not template_path:
+        st.error(f"No {template_type} template available. Cannot generate certificate.")
+        return None, None
+
+    try:
+        doc = Document(template_path)
+        
         # Extract date part and calculate validity date
         date_str = test_date.split()[0] if " " in test_date else test_date
         try:
@@ -192,81 +276,91 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
+        # Replace placeholders with proper alignment
+        for para in doc.paragraphs:
+            if 'Usman Waheed' in para.text:
+                para.text = para.text.replace('Usman Waheed', emp_name)
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
+                for run in para.runs:
+                    run.font.name = 'Monotype Corsiva'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
+                    run.font.size = Pt(26)
+            
+            if '25-September-2025' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for date
+                if template_type == "MT":
+                    # For MT: Much less right padding to bring date closer to center-right
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if '25/PTIS/DPT/00410' in para.text:
+                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+                # Template-specific alignment for certificate number
+                if template_type == "MT":
+                    # For MT: Much less left padding to position closer to center-left
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = "            " + para.text  # Reduced to 12 spaces
+                elif template_type == "VT":
+                    # For VT: Move 2 spaces forward
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    para.text = "  " + para.text
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Date of Certification' in para.text:
+                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for certification date
+                if template_type == "MT":
+                    # For MT: Much less right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Validity: 24-September-2030' in para.text:
+                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                # Template-specific alignment for validity date
+                if template_type == "MT":
+                    # For MT: Much less right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        pdf_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
-        pdf_path = f"/tmp/{pdf_filename}"
-        
-        # Create PDF canvas (letter size, landscape for certificate feel)
-        c = canvas.Canvas(pdf_path, pagesize=letter)
-        width, height = letter
-        
-        # Register custom font (Monotype Corsiva) if available
-        try:
-            if os.path.exists(FONT_PATH):
-                pdfmetrics.registerFont(TTFont('MonotypeCorsiva', FONT_PATH))
-                name_font = 'MonotypeCorsiva'
-                st.info("Using Monotype Corsiva font for certificates.")
-            else:
-                name_font = 'Helvetica-Bold'  # Fallback cursive-like font
-                st.warning("Monotype Corsiva not found; using Helvetica-Bold.")
-        except Exception as font_error:
-            st.warning(f"Font registration failed: {font_error}. Using fallback.")
-            name_font = 'Helvetica-Bold'
-        
-        # Employee Name (Centered, size 26, Monotype Corsiva)
-        c.setFont(name_font, 26)
-        c.drawCentredString(width/2, height - 2*inch, emp_name)
-        
-        # Common elements (Arial, size 12)
-        c.setFont("Helvetica", 12)
-        
-        # Template-specific positioning (based on your original logic)
-        if template_type == "MT":
-            # MT: Centered with padding (simulate spaces with positioning)
-            test_date_y = height - 3*inch
-            cert_num_y = height - 3.5*inch
-            cert_date_y = height - 4*inch
-            validity_y = height - 4.5*inch
-            status_y = height - 5*inch
-            
-            c.drawCentredString(width/2, test_date_y, test_date_obj.strftime("%d-%B-%Y"))
-            c.drawCentredString(width/2 - 0.5*inch, cert_num_y, cert_number)  # Slight left shift for padding
-            c.drawCentredString(width/2, cert_date_y, f"Date of Certification: {test_date_obj.strftime('%d-%B-%Y')}")
-            c.drawCentredString(width/2, validity_y, f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}")
-            c.drawString(width/2 - 1*inch, status_y, f"Status: {status_text}")
-        
-        elif template_type == "VT":
-            # VT: Left-aligned with slight right shift (2 spaces ~ 0.2 inch)
-            test_date_y = height - 3*inch
-            cert_num_y = height - 3.5*inch
-            cert_date_y = height - 4*inch
-            validity_y = height - 4.5*inch
-            status_y = height - 5*inch
-            
-            c.drawRightString(width - 0.2*inch, test_date_y, test_date_obj.strftime("%d-%B-%Y"))
-            c.drawString(0.2*inch, cert_num_y, cert_number)
-            c.drawRightString(width - 0.2*inch, cert_date_y, f"Date of Certification: {test_date_obj.strftime('%d-%B-%Y')}")
-            c.drawRightString(width - 0.2*inch, validity_y, f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}")
-            c.drawString(0*inch, status_y, f"Status: {status_text}")
-        
-        else:  # PT, UT: Default right/left alignments
-            test_date_y = height - 3*inch
-            cert_num_y = height - 3.5*inch
-            cert_date_y = height - 4*inch
-            validity_y = height - 4.5*inch
-            status_y = height - 5*inch
-            
-            c.drawRightString(width, test_date_y, test_date_obj.strftime("%d-%B-%Y"))
-            c.drawString(0, cert_num_y, cert_number)
-            c.drawRightString(width, cert_date_y, f"Date of Certification: {test_date_obj.strftime('%d-%B-%Y')}")
-            c.drawRightString(width, validity_y, f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}")
-            c.drawString(0, status_y, f"Status: {status_text}")
-        
-        # Save PDF
-        c.save()
-        
-        st.success(f"Generated PDF certificate: {pdf_filename}")
-        return pdf_path, pdf_filename
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        output_path = f"/tmp/{certificate_filename}"
+        doc.save(output_path)
+
+        st.success(f"Generated certificate: {certificate_filename}")
+        return output_path, certificate_filename
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
@@ -501,9 +595,11 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("🔍 Filters")
         
+        # Create mappings for ID-Name relationship
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
+        # Initialize session state keys if they don't exist
         id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
         name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
         
@@ -517,6 +613,7 @@ if st.session_state.admin_logged_in:
         with filter_col1:
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
             
+            # Check if name changed and sync ID accordingly
             current_name = st.session_state.get(name_key, "All")
             if current_name != "All" and current_name in name_id_mapping:
                 expected_id = name_id_mapping[current_name]
@@ -533,6 +630,7 @@ if st.session_state.admin_logged_in:
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
             
+            # Check if ID changed and sync name accordingly
             if selected_emp_id != "All" and selected_emp_id in id_name_mapping:
                 expected_name = id_name_mapping[selected_emp_id]
                 if st.session_state[name_key] != expected_name:
@@ -549,6 +647,7 @@ if st.session_state.admin_logged_in:
                 key=name_key
             )
             
+            # If name was changed manually, sync ID
             if selected_emp_name != st.session_state.get(f"prev_{name_key}", "All"):
                 if selected_emp_name != "All" and selected_emp_name in name_id_mapping:
                     expected_id = name_id_mapping[selected_emp_name]
@@ -559,6 +658,7 @@ if st.session_state.admin_logged_in:
                     st.session_state[id_key] = "All"
                     st.rerun()
             
+            # Store previous value for comparison
             st.session_state[f"prev_{name_key}"] = selected_emp_name
         
         with filter_col3:
@@ -726,9 +826,11 @@ if st.session_state.admin_logged_in:
                 }
             )
         
+        # Certificate Generation
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
         
+        # Simple certificate filter - only employee name
         passed_results = results_df[results_df["Status"] == "Pass"]
         cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
         
