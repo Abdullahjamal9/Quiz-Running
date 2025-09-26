@@ -301,7 +301,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             doc.close()
             return None, None
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
-        cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
+        cert_number = f"{emp_id}/PTIS/{template_type}/{test_date_obj.strftime('%Y')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
         # Register custom fonts if available
@@ -371,7 +371,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         else:
             align_cert = fitz.TEXT_ALIGN_LEFT
         
-        replacements[old_cert] = (new_cert, arial_font, 14, align_cert, (0,0,0), (1,1,1))  # Increased from 12
+        replacements[old_cert] = (new_cert, arial_font, 21, align_cert, (0,0,0), (1,1,1))  # Increased from 12
 
         # Validity - remove excessive spacing and increase font size
         old_validity = 'Validity: 04-August-2027'
