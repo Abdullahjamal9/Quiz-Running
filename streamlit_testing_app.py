@@ -247,7 +247,7 @@ def get_template_path(template_type):
     if os.path.exists(template_path):
         return template_path
     
-    github_url = f"https://raw.githubusercontent.com/Abdullahjamal9/Quiz-Running/main/db/{template_type}_template.docx"
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.docx"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
