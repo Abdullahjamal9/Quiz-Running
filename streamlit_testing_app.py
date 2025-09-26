@@ -237,6 +237,31 @@ def get_info_for_standard(standards, selected_standard):
 # =====================
 # Certificate Generation
 # =====================
+import streamlit as st
+import pandas as pd
+import numpy as np
+import datetime
+import time
+import os
+import gspread
+from google.oauth2.service_account import Credentials
+import streamlit.components.v1 as components
+import pytz
+import io
+import requests
+import zipfile
+import traceback
+# from docx import Document  # REMOVE this import (no longer needed)
+# from docx.shared import Pt  # REMOVE
+# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
+# from docx.oxml.ns import qn  # REMOVE
+import fitz  # ADD this import for PyMuPDF
+
+# ... (rest of your imports and code unchanged up to Certificate Generation)
+
+# =====================
+# Certificate Generation
+# =====================
 def get_template_path(template_type):
     template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")  # CHANGED to .pdf
     if os.path.exists(template_path):
@@ -335,11 +360,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     align=align_status,
                     text_color=(0,0,0),
                     fill=(1,1,1),
-                    fontsize=None  # Use arial_fontfile if available
+                    fontfile=None  # Use arial_fontfile if available
                 )
 
         # Apply other replacements
-        for old, (new, fontname, fontsize, align, color, fill, fontsize) in replacements.items():
+        for old, (new, fontname, fontsize, align, color, fill, fontfile) in replacements.items():
             hits = page.search_for(old)
             for rect in hits:
                 page.add_redact_annot(
@@ -350,7 +375,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     align=align,
                     text_color=color,
                     fill=fill,
-                    fontsize=fontsize
+                    fontfile=fontfile
                 )
 
         # Apply all redactions
@@ -369,6 +394,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
         return None, None
+
+# ... (rest of your code unchanged, including the ZIP bundling in the UI section)
 
 # =====================
 # Individual Test Downloads
