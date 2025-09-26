@@ -9,4 +9,4 @@ python-docx
 requests
 PYPDF2
 reportlab
-python-docx2pdf
+
