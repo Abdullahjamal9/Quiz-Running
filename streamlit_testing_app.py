@@ -374,7 +374,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_date = fitz.TEXT_ALIGN_RIGHT
         
         # Increased font size for dates
-        date_font_size = 21  # Increased from 18
+        date_font_size = 24  # Increased from 18
         replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
 
         # Certificate number - remove padding and increase font size with flexible search
@@ -395,11 +395,18 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     else:
                         align_cert = fitz.TEXT_ALIGN_LEFT
                     
+                    # Adjust rectangle to fit text tightly, reducing spacing
+                    cert_font_size = 21
+                    if rect.height < cert_font_size:
+                        center_y = (rect.y0 + rect.y1) / 2
+                        rect.y0 = center_y - cert_font_size / 2
+                        rect.y1 = center_y + cert_font_size / 2
+                    
                     page.add_redact_annot(
                         rect,
                         text=cert_number,
                         fontname=arial_font,
-                        fontsize=21,  # Increased from 14 to 21
+                        fontsize=cert_font_size,  # Set to 21 as requested
                         align=align_cert,
                         text_color=(0,0,0),
                         fill=(1,1,1)
@@ -478,7 +485,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     )
                 status_found = True
                 break
-
+        
+        if not status_found:
+            st.warning("Could not find status field in template.")
 
         # Apply all redactions
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
