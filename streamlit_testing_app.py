@@ -242,6 +242,24 @@ def get_info_for_standard(standards, selected_standard):
 # =====================
 # Certificate Generation with PDF Conversion
 # =====================
+def get_template_path(template_type):
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
+    if os.path.exists(template_path):
+        return template_path
+    
+    github_url = f"https://raw.githubusercontent.com/Abdullahjamal9/Quiz-Running/main/db/{template_type}_template.docx"
+    try:
+        response = requests.get(github_url, timeout=10)
+        if response.status_code == 200:
+            temp_path = f"/tmp/{template_type}_template.docx"
+            with open(temp_path, "wb") as file:
+                file.write(response.content)
+            return temp_path
+        else:
+            raise Exception(f"HTTP {response.status_code}")
+    except Exception as e:
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
+        return None
 def docx_to_pdf_manual(docx_path, emp_id, emp_name, test_date, template_type):
     """Manually convert DOCX content to PDF using ReportLab"""
     try:
