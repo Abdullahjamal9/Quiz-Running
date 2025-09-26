@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -17,6 +16,7 @@ from docx import Document
 from docx.shared import Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx2pdf import convert
 
 # =====================
 # Paths / Files
@@ -242,7 +242,7 @@ def get_template_path(template_type):
     if os.path.exists(template_path):
         return template_path
     
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.docx"
+    github_url = f"https://raw.githubusercontent.com/Abdullahjamal9/Online-Testing-Module/main/db/{template_type}_template.docx"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
@@ -280,7 +280,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
-                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 for run in para.runs:
                     run.font.name = 'Monotype Corsiva'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
@@ -288,13 +288,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for date
                 if template_type == "MT":
-                    # For MT: Much less right padding to bring date closer to center-right
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
+                    para.text = para.text + "            "
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -302,17 +300,14 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-                # Template-specific alignment for certificate number
                 if template_type == "MT":
-                    # For MT: Much less left padding to position closer to center-left
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = "            " + para.text  # Reduced to 12 spaces
+                    para.text = "            " + para.text
                 elif template_type == "VT":
-                    # For VT: Move 2 spaces forward
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     para.text = "  " + para.text
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -320,13 +315,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                # Template-specific alignment for certification date
                 if template_type == "MT":
-                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
+                    para.text = para.text + "            "
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -334,13 +327,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Validity: 24-September-2030' in para.text:
                 para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                # Template-specific alignment for validity date
                 if template_type == "MT":
-                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "            "  # Reduced to 12 spaces
+                    para.text = para.text + "            "
                 else:
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
@@ -348,19 +339,35 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
 
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
-        output_path = f"/tmp/{certificate_filename}"
-        doc.save(output_path)
+        docx_filename = f"/tmp/{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
+        pdf_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
+        pdf_path = f"/tmp/{pdf_filename}"
+        
+        # Save DOCX temporarily
+        doc.save(docx_filename)
+        
+        # Convert DOCX to PDF
+        try:
+            convert(docx_filename, pdf_path)
+            st.success(f"Generated PDF certificate: {pdf_filename}")
+        except Exception as e:
+            st.error(f"Error converting DOCX to PDF: {str(e)}")
+            return None, None
+        
+        # Clean up temporary DOCX file
+        try:
+            os.remove(docx_filename)
+        except Exception:
+            pass
 
-        st.success(f"Generated certificate: {certificate_filename}")
-        return output_path, certificate_filename
+        return pdf_path, pdf_filename
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
@@ -595,11 +602,9 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("🔍 Filters")
         
-        # Create mappings for ID-Name relationship
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
-        # Initialize session state keys if they don't exist
         id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
         name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
         
@@ -613,7 +618,6 @@ if st.session_state.admin_logged_in:
         with filter_col1:
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
             
-            # Check if name changed and sync ID accordingly
             current_name = st.session_state.get(name_key, "All")
             if current_name != "All" and current_name in name_id_mapping:
                 expected_id = name_id_mapping[current_name]
@@ -630,7 +634,6 @@ if st.session_state.admin_logged_in:
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
             
-            # Check if ID changed and sync name accordingly
             if selected_emp_id != "All" and selected_emp_id in id_name_mapping:
                 expected_name = id_name_mapping[selected_emp_id]
                 if st.session_state[name_key] != expected_name:
@@ -647,7 +650,6 @@ if st.session_state.admin_logged_in:
                 key=name_key
             )
             
-            # If name was changed manually, sync ID
             if selected_emp_name != st.session_state.get(f"prev_{name_key}", "All"):
                 if selected_emp_name != "All" and selected_emp_name in name_id_mapping:
                     expected_id = name_id_mapping[selected_emp_name]
@@ -658,7 +660,6 @@ if st.session_state.admin_logged_in:
                     st.session_state[id_key] = "All"
                     st.rerun()
             
-            # Store previous value for comparison
             st.session_state[f"prev_{name_key}"] = selected_emp_name
         
         with filter_col3:
@@ -826,11 +827,9 @@ if st.session_state.admin_logged_in:
                 }
             )
         
-        # Certificate Generation
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
         
-        # Simple certificate filter - only employee name
         passed_results = results_df[results_df["Status"] == "Pass"]
         cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
         
