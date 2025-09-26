@@ -363,7 +363,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
 
         # Certificate number - remove padding and increase font size
-        old_cert = f"25/PTIS/{template_type}/00410"
+        old_cert = f"22/PTIS/{template_type}/00358"
         new_cert = cert_number
         
         if template_type in ["MT", "VT"]:
