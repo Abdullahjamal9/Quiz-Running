@@ -284,34 +284,69 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     run.font.name = 'Monotype Corsiva'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
                     run.font.size = Pt(26)
+            
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date
+                # Template-specific alignment for date
+                if template_type == "MT":
+                    # For MT: Right align but not completely at right
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    # Add some left padding by adding spaces before the date
+                    para.text = "    " + para.text
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
+            
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
-                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number
+                # Template-specific alignment for certificate number
+                if template_type == "MT":
+                    # For MT: Left align but not completely at left
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    # Add some padding by adding spaces before the cert number
+                    para.text = "    " + para.text
+                elif template_type == "VT":
+                    # For VT: Move 2 spaces forward
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    para.text = "  " + para.text
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
+            
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date
+                # Template-specific alignment for certification date
+                if template_type == "MT":
+                    # For MT: Right align but not completely at right
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.text = "    " + para.text
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
+            
             if 'Validity: 24-September-2030' in para.text:
                 para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
-                para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date
+                # Template-specific alignment for validity date
+                if template_type == "MT":
+                    # For MT: Right align but not completely at right
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.text = "    " + para.text
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
+            
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
                 para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
