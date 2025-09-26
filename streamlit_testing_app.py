@@ -290,10 +290,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for date
                 if template_type == "MT":
-                    # For MT: Center-right alignment with some left padding
+                    # For MT: Much less right padding to bring date closer to center-right
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    # Add significant right padding to push it towards right but not completely
-                    para.text = para.text + "                    "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                elif template_type == "VT":
+                    # For VT: Move date back/left by reducing right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.text = "    " + para.text  # Add 4 spaces to the left to push it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
@@ -305,14 +308,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
                 # Template-specific alignment for certificate number
                 if template_type == "MT":
-                    # For MT: Center-left alignment to position under NAEEM ASHRAF
+                    # For MT: Much less left padding to position closer to center-left
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    # Add left padding to center it under the name
-                    para.text = "                    " + para.text
+                    para.text = "            " + para.text  # Reduced to 12 spaces
                 elif template_type == "VT":
-                    # For VT: Move 2 spaces forward
+                    # For VT: Move certificate number back/right by adding more left padding
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    para.text = "  " + para.text
+                    para.text = "      " + para.text  # Increased from 2 to 6 spaces to move it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
                 for run in para.runs:
@@ -324,9 +326,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for certification date
                 if template_type == "MT":
-                    # For MT: Center-right alignment
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "                    "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                elif template_type == "VT":
+                    # For VT: Move certification date back/left
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.text = "    " + para.text  # Add 4 spaces to the left to push it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
@@ -338,9 +344,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('Validity: 04-August-2027', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
                 # Template-specific alignment for validity date
                 if template_type == "MT":
-                    # For MT: Center-right alignment
+                    # For MT: Much less right padding
                     para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                    para.text = para.text + "                    "
+                    para.text = para.text + "            "  # Reduced to 12 spaces
+                elif template_type == "VT":
+                    # For VT: Move validity date back/left
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                    para.text = "    " + para.text  # Add 4 spaces to the left to push it back
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
@@ -355,7 +365,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
-
+                    
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         output_path = f"/tmp/{certificate_filename}"
