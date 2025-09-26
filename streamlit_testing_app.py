@@ -392,7 +392,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     rect,
                     text=new_status,
                     fontname=arial_font,
-                    fontsize=12,
+                    fontsize=16,
                     align=align_status,
                     text_color=(0,0,0),
                     fill=(1,1,1)
