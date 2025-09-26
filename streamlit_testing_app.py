@@ -344,12 +344,12 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
             """Calculate optimal font size to fit text within given width"""
             font_size = base_font_size
-            # Tighter estimation: each character takes about 0.5 * font_size pixels (reduced from 0.6)
-            estimated_width = len(text) * (font_size * 0.5)
+            # Even tighter estimation: each character takes about 0.45 * font_size pixels (reduced from 0.5)
+            estimated_width = len(text) * (font_size * 0.45)
             
             while estimated_width > max_width and font_size > min_font_size:
                 font_size -= 1
-                estimated_width = len(text) * (font_size * 0.5)
+                estimated_width = len(text) * (font_size * 0.45)
             
             return font_size
 
@@ -359,8 +359,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         # Employee name - calculate optimal size based on name length
         old_name = 'Usman Waheed'
         new_name = emp_name
-        # Assume available width is about 500 pixels for name field (increased)
-        name_font_size = calculate_font_size(new_name, 500, 48, 28)  # Start with 48, minimum 28
+        # Assume available width is about 600 pixels for name field (increased further)
+        name_font_size = calculate_font_size(new_name, 600, 56, 32)  # Start with 56, minimum 32
         replacements[old_name] = (new_name, corsiva_font, name_font_size, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
 
         # Dates - remove excessive spacing and use appropriate font size
@@ -373,8 +373,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         else:
             align_date = fitz.TEXT_ALIGN_RIGHT
         
-        # Increased font size for dates
-        date_font_size = 21  # Increased from 18
+        # Increased font size for dates even more
+        date_font_size = 21  # Increased from 24
         replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
 
         # Certificate number - remove padding and increase font size with flexible search
@@ -399,7 +399,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                         rect,
                         text=cert_number,
                         fontname=arial_font,
-                        fontsize=14,
+                        fontsize=21,  # Increased from 14
                         align=align_cert,
                         text_color=(0,0,0),
                         fill=(1,1,1)
@@ -462,16 +462,16 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             if hits:
                 for rect in hits:
                     # Ensure rectangle is big enough for status text
-                    if rect.height < 20:  # Increased from 16
+                    if rect.height < 24:  # Increased from 20
                         center_y = (rect.y0 + rect.y1) / 2
-                        rect.y0 = center_y - 10  # Increased from 8
-                        rect.y1 = center_y + 10  # Increased from 8
+                        rect.y0 = center_y - 12  # Increased from 10
+                        rect.y1 = center_y + 12  # Increased from 10
                     
                     page.add_redact_annot(
                         rect,
                         text=new_status,
                         fontname=arial_font,
-                        fontsize=20,  # Increased from 16
+                        fontsize=24,  # Increased from 20
                         align=align_status,
                         text_color=(0,0,0),
                         fill=(1,1,1)
