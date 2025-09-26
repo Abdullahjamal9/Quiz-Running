@@ -374,19 +374,43 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_date = fitz.TEXT_ALIGN_RIGHT
         
         # Increased font size for dates
-        date_font_size = 24  # Increased from 18
+        date_font_size = 21  # Increased from 18
         replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
 
-        # Certificate number - remove padding and increase font size
-        old_cert = '25/PTIS/DPT/00410'
-        new_cert = cert_number
+        # Certificate number - remove padding and increase font size with flexible search
+        cert_number_found = False
+        possible_cert_patterns = [
+            '22/PTIS/VT/00358',  # From the certificate image
+            '25/PTIS/DPT/00410',  # From original code
+            'CERTIFICATE NO:',
+            'Certificate No:'
+        ]
         
-        if template_type in ["MT", "VT"]:
-            align_cert = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_cert = fitz.TEXT_ALIGN_LEFT
+        for old_cert_pattern in possible_cert_patterns:
+            hits = page.search_for(old_cert_pattern)
+            if hits:
+                for rect in hits:
+                    if template_type in ["MT", "VT"]:
+                        align_cert = fitz.TEXT_ALIGN_CENTER
+                    else:
+                        align_cert = fitz.TEXT_ALIGN_LEFT
+                    
+                    page.add_redact_annot(
+                        rect,
+                        text=cert_number,
+                        fontname=arial_font,
+                        fontsize=14,
+                        align=align_cert,
+                        text_color=(0,0,0),
+                        fill=(1,1,1)
+                    )
+                cert_number_found = True
+                break
         
-        replacements[old_cert] = (new_cert, arial_font, 14, align_cert, (0,0,0), (1,1,1))  # Increased from 12
+        if not cert_number_found:
+            st.warning("Could not find certificate number field in template.")
+            # Still add to replacements dict as fallback
+            old_cert = '22/PTIS/VT/00358'
 
         # Validity - remove excessive spacing and increase font size
         old_validity = 'Validity: 04-August-2027'
