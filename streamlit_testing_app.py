@@ -286,8 +286,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
                     run.font.size = Pt(26)
             
-            if '25-September-2025' in para.text:
-                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+            if '05-August-2022' in para.text:
+                para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for date
                 if template_type == "MT":
                     # For MT: Right align but not completely at right
@@ -321,7 +321,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     run.font.size = Pt(12)
             
             if 'Date of Certification' in para.text:
-                para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
+                para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for certification date
                 if template_type == "MT":
                     # For MT: Right align but not completely at right
