@@ -290,10 +290,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for date
                 if template_type == "MT":
-                    # For MT: Right align but not completely at right
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    # Add some left padding by adding spaces before the date
-                    para.text = "    " + para.text
+                    # For MT: Much less right padding to bring date closer to center-right
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
                 for run in para.runs:
@@ -305,10 +304,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
                 # Template-specific alignment for certificate number
                 if template_type == "MT":
-                    # For MT: Left align but not completely at left
-                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT
-                    # Add some padding by adding spaces before the cert number
-                    para.text = "    " + para.text
+                    # For MT: Much less left padding to position closer to center-left
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = "            " + para.text  # Reduced to 12 spaces
                 elif template_type == "VT":
                     # For VT: Move 2 spaces forward
                     para.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -324,9 +322,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
                 # Template-specific alignment for certification date
                 if template_type == "MT":
-                    # For MT: Right align but not completely at right
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.text = "    " + para.text
+                    # For MT: Much less right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
                 for run in para.runs:
@@ -338,9 +336,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
                 # Template-specific alignment for validity date
                 if template_type == "MT":
-                    # For MT: Right align but not completely at right
-                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-                    para.text = "    " + para.text
+                    # For MT: Much less right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # Reduced to 12 spaces
                 else:
                     para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
                 for run in para.runs:
@@ -355,7 +353,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
                     run.font.size = Pt(12)
-
+                    
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         output_path = f"/tmp/{certificate_filename}"
