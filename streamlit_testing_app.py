@@ -14,8 +14,8 @@ import zipfile
 import traceback
 from docx import Document
 from docx.shared import Pt
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
+from docx.enum.text import WD_ALIGN_PARAGRAPH
 
 # =====================
 # Paths / Files
@@ -264,18 +264,12 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     try:
         doc = Document(template_path)
         
-        # Extract date part and calculate validity date
         date_str = test_date.split()[0] if " " in test_date else test_date
-        try:
-            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
-        except ValueError:
-            st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
-            return None, None
+        test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
-        cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
-        status_text = 'Pass' if status == "Pass" else 'Fail'
+        validity_date = validity_date_obj.strftime("%d-%B-%Y")
+        cert_number = f"{emp_id}/PTIS/{date_str.replace('-', '')}"
 
-        # Replace placeholders with proper alignment
         for para in doc.paragraphs:
             if 'Usman Waheed' in para.text:
                 para.text = para.text.replace('Usman Waheed', emp_name)
@@ -287,46 +281,25 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             if '25-September-2025' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
                 para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
             if '25/PTIS/DPT/00410' in para.text:
                 para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
                 para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
             if 'Date of Certification' in para.text:
                 para.text = para.text.replace('25-September-2025', test_date_obj.strftime("%d-%B-%Y"))
                 para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
             if 'Validity: 24-September-2030' in para.text:
-                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                para.text = para.text.replace('Validity: 24-September-2030', f'Validity: {validity_date}')
                 para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
             if 'Status' in para.text:
                 para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
                 para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
-                for run in para.runs:
-                    run.font.name = 'Arial'
-                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
-                    run.font.size = Pt(12)
 
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
-        output_path = f"/tmp/{certificate_filename}"
-        doc.save(output_path)
+        doc.save(f"/tmp/{certificate_filename}")
 
         st.success(f"Generated certificate: {certificate_filename}")
-        return output_path, certificate_filename
+        return f"/tmp/{certificate_filename}", certificate_filename
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
@@ -808,7 +781,7 @@ if st.session_state.admin_logged_in:
         )
         
         if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
+            required_standards = {"DS-1", "API RP 7G-2", "API SPEC 5CT & 5A5", "Cummulative"}
             passed_results = results_df[results_df["Status"] == "Pass"]
             grouped = passed_results.groupby('Name')
             
@@ -826,7 +799,7 @@ if st.session_state.admin_logged_in:
                 qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
             
             if qualifying_df.empty:
-                st.warning("No employees found who have passed all 4 standards (DS-1, Cummulative, API SPEC 5CT & 5A5, API RP 7G-2).")
+                st.warning("No employees found who have passed all 4 standards (DS-1, API RP 7G-2, API SPEC 5CT & 5A5, Cummulative).")
             else:
                 certificate_files = []
                 for _, row in qualifying_df.iterrows():
@@ -938,22 +911,22 @@ elif "quiz" in st.session_state:
             for qid in qstate["queue"]:
                 if qid not in qstate.get("attempted", set()):
                     qstate["wrong"] += 1
-            qstate["queue"] = []
-            st.session_state.quiz = qstate
-            
-            right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            raw_score = right - (wrong * 0.25)
-            final_score = max(0, raw_score)
-            pct = (final_score/total_q)*100 if total_q else 0.0
-            
-            status = "Pass" if pct >= float(criteria) else "Fail"
-            ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-            )
-            st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
-            st.query_params.clear()
-            st.rerun()
+                qstate["queue"] = []
+                st.session_state.quiz = qstate
+                
+                right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+                raw_score = right - (wrong * 0.25)
+                final_score = max(0, raw_score)
+                pct = (final_score/total_q)*100 if total_q else 0.0
+                
+                status = "Pass" if pct >= float(criteria) else "Fail"
+                ok, msg = append_result(
+                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                )
+                st.session_state["submitted"] = True
+                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+                st.query_params.clear()
+                st.rerun()
 
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
@@ -1030,13 +1003,13 @@ elif "quiz" in st.session_state:
                     form.method = 'POST';
                     form.action = window.location.href;
                     var input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'timeout';
-                    input.value = 'true';
-                    form.appendChild(input);
-                    document.body.appendChild(form);
-                    form.submit();
-                    return;
+                    input.type = 'hidden'
+                    input.name = 'timeout'
+                    input.value = 'true'
+                    form.appendChild(input)
+                    document.body.appendChild(form)
+                    form.submit()
+                    return
                 }}
                 var h = Math.floor(remaining / 3600);
                 var m = Math.floor((remaining % 3600) / 60);
@@ -1183,10 +1156,10 @@ elif "quiz" in st.session_state:
         """
         components.html(stopped_timer_html, height=150)
 
-    if "attempted" not in st.session_state.quiz:
-        st.session_state.quiz["attempted"] = set()
-    if "skipped_questions" not in st.session_state.quiz:
-        st.session_state.quiz["skipped_questions"] = set()
+    if "attempted" not in qstate:
+        qstate["attempted"] = set()
+    if "skipped_questions" not in qstate:
+        qstate["skipped_questions"] = set()
 
     answered_count = qstate["total"] - len(qstate["queue"])
 
