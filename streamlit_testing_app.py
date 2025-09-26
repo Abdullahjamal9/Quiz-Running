@@ -826,7 +826,7 @@ if st.session_state.admin_logged_in:
                 qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
             
             if qualifying_df.empty:
-                st.warning("No employees found who have passed all 4 standards (DS-1, Cummulative, API SPEC 5CT & 5A5, API RP 7G-2).")
+                st.warning("Candidate is ineligible as not all required standards are passed.")
             else:
                 certificate_files = []
                 for _, row in qualifying_df.iterrows():
