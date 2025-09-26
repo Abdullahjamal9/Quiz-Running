@@ -335,11 +335,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     align=align_status,
                     text_color=(0,0,0),
                     fill=(1,1,1),
-                    fontfile=None  # Use arial_fontfile if available
+                    fontsize=None  # Use arial_fontfile if available
                 )
 
         # Apply other replacements
-        for old, (new, fontname, fontsize, align, color, fill, fontfile) in replacements.items():
+        for old, (new, fontname, fontsize, align, color, fill, fontsize) in replacements.items():
             hits = page.search_for(old)
             for rect in hits:
                 page.add_redact_annot(
@@ -350,7 +350,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     align=align,
                     text_color=color,
                     fill=fill,
-                    fontfile=fontfile
+                    fontsize=fontsize
                 )
 
         # Apply all redactions
