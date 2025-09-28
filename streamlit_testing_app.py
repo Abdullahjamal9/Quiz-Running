@@ -377,62 +377,115 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         date_font_size = 21  # Increased from 18
         replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
 
-        # Certificate number - remove padding and increase font size with flexible search
+        # Certificate number - handle alignment and sizing properly
         cert_number_found = False
-        possible_cert_patterns = [
-            '22/PTIS/VT/00358',  # From the certificate image
-            '25/PTIS/DPT/00410',  # From original code
-            'CERTIFICATE NO:',
-            'Certificate No:'
-        ]
         
-        for old_cert_pattern in possible_cert_patterns:
-            hits = page.search_for(old_cert_pattern)
-            if hits:
-                for rect in hits:
-                    if template_type in ["MT", "VT"]:
-                        align_cert = fitz.TEXT_ALIGN_CENTER
-                    else:
-                        align_cert = fitz.TEXT_ALIGN_LEFT
-                    
-                    # Adjust rectangle to fit text tightly, reducing spacing
-                    cert_font_size = 23
-                    if rect.height < cert_font_size:
-                        center_y = (rect.y0 + rect.y1) / 2
-                        rect.y0 = center_y - cert_font_size / 2
-                        rect.y1 = center_y + cert_font_size / 2
-                    
-                    page.add_redact_annot(
-                        rect,
-                        text=cert_number,
-                        fontname=arial_font,
-                        fontsize=cert_font_size,  # Set to 21 as requested
-                        align=align_cert,
-                        text_color=(0,0,0),
-                        fill=(1,1,1)
-                    )
-                cert_number_found = True
-                break
+        # First, try to find "CERTIFICATE NO:" to get proper positioning
+        cert_label_hits = page.search_for("CERTIFICATE NO:")
+        if not cert_label_hits:
+            cert_label_hits = page.search_for("Certificate No:")
+        
+        if cert_label_hits:
+            # Get the position of the label to align the number properly
+            label_rect = cert_label_hits[0]
+            
+            # Look for the actual certificate number that follows the label
+            possible_cert_patterns = [
+                '22/PTIS/VT/00358',  # From the certificate image
+                '25/PTIS/DPT/00410',  # From original code
+                '1506/PTIS/MT/2025'   # Current pattern
+            ]
+            
+            for old_cert_pattern in possible_cert_patterns:
+                cert_hits = page.search_for(old_cert_pattern)
+                if cert_hits:
+                    for rect in cert_hits:
+                        # Align the certificate number to start right after the label
+                        # Calculate proper positioning based on label
+                        cert_font_size = 14  # Match the size of "CERTIFICATE NO:" text
+                        
+                        # Position the number to align with the label baseline
+                        new_rect = fitz.Rect(
+                            label_rect.x1 + 5,  # Small gap after "CERTIFICATE NO:"
+                            rect.y0,
+                            rect.x1,  # Keep original right boundary
+                            rect.y1
+                        )
+                        
+                        page.add_redact_annot(
+                            new_rect,
+                            text=cert_number,
+                            fontname=arial_font,
+                            fontsize=cert_font_size,
+                            align=fitz.TEXT_ALIGN_LEFT,  # Left align to match label
+                            text_color=(0,0,0),
+                            fill=(1,1,1)
+                        )
+                    cert_number_found = True
+                    break
         
         if not cert_number_found:
             st.warning("Could not find certificate number field in template.")
-            # Still add to replacements dict as fallback
-            old_cert = '22/PTIS/VT/00358'
 
-        # Validity - remove excessive spacing and increase font size
-        old_validity = 'Validity: 04-August-2027'
-        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
+        # Handle date alignment with "DATE:" labels
+        # Find "Date of Certification:" and align the date
+        date_cert_hits = page.search_for("Date of Certification:")
+        if date_cert_hits:
+            date_cert_rect = date_cert_hits[0]
+            # Find the date that should be aligned with this label
+            date_hits = page.search_for(old_date)
+            if date_hits:
+                for rect in date_hits:
+                    # Position the date to align properly with the label
+                    new_rect = fitz.Rect(
+                        date_cert_rect.x1 + 10,  # Small gap after label
+                        rect.y0,
+                        rect.x1,
+                        rect.y1
+                    )
+                    
+                    page.add_redact_annot(
+                        new_rect,
+                        text=new_date,
+                        fontname=arial_font,
+                        fontsize=14,  # Match label size
+                        align=fitz.TEXT_ALIGN_LEFT,
+                        text_color=(0,0,0),
+                        fill=(1,1,1)
+                    )
         
-        if template_type in ["MT", "VT"]:
-            align_valid = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_valid = fitz.TEXT_ALIGN_RIGHT
-        
-        # Use same increased font size as date for consistency
-        replacements[old_validity] = (new_validity, arial_font, date_font_size, align_valid, (0,0,0), (1,1,1))
+        # Handle "DATE:" alignment in examiner section
+        examiner_date_hits = page.search_for("DATE:")
+        if examiner_date_hits:
+            for date_label_rect in examiner_date_hits:
+                # Find nearby date text to replace
+                # Look for dates in the vicinity of the DATE: label
+                all_date_hits = page.search_for(old_date)
+                for rect in all_date_hits:
+                    # Check if this date is near the DATE: label (within reasonable distance)
+                    if abs(rect.y0 - date_label_rect.y0) < 20:  # Same line approximately
+                        new_rect = fitz.Rect(
+                            date_label_rect.x1 + 10,  # Small gap after "DATE:"
+                            rect.y0,
+                            rect.x1,
+                            rect.y1
+                        )
+                        
+                        page.add_redact_annot(
+                            new_rect,
+                            text=new_date,
+                            fontname=arial_font,
+                            fontsize=14,  # Match label size
+                            align=fitz.TEXT_ALIGN_LEFT,
+                            text_color=(0,0,0),
+                            fill=(1,1,1)
+                        )
 
-        # Apply replacements with better error handling
+        # Apply remaining replacements (validity, etc.)
         for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
+            if old == old_date:  # Skip old_date as we handled it above
+                continue
+                
             hits = page.search_for(old)
             if not hits:
                 st.warning(f"Could not find text '{old}' in template. Skipping replacement.")
@@ -455,6 +508,30 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     text_color=color,
                     fill=fill
                 )
+
+        # Validity - handle alignment properly
+        old_validity = 'Validity: 04-August-2027'
+        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
+        
+        # Find "Validity:" label first
+        validity_label_hits = page.search_for("Validity:")
+        if validity_label_hits:
+            validity_hits = page.search_for(old_validity)
+            if not validity_hits:
+                # Try to find just the date part
+                validity_hits = page.search_for('04-August-2027')
+            
+            if validity_hits:
+                for rect in validity_hits:
+                    page.add_redact_annot(
+                        rect,
+                        text=new_validity,
+                        fontname=arial_font,
+                        fontsize=14,  # Match other text sizes
+                        align=fitz.TEXT_ALIGN_LEFT,
+                        text_color=(0,0,0),
+                        fill=(1,1,1)
+                    )
 
         # Status handling with better search and increased font size
         new_status = f'Status: {status_text}'
