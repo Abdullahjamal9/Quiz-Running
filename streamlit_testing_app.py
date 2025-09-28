@@ -366,19 +366,23 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 )
 
         # ---------------- CERTIFICATE NO ----------------
+        # ---------------- CERTIFICATE NO ----------------
         cert_label_hits = page.search_for("CERTIFICATE NO:")
         if cert_label_hits:
             label_rect = cert_label_hits[0]
-            cert_x0 = label_rect.x1 + 5  # 5pt gap after label
+
+            # Align with label baseline
+            cert_font_size = label_rect.height * 0.8  # match label height
+            cert_x0 = label_rect.x1 + 10  # small gap after label
             cert_y0 = label_rect.y0
             cert_y1 = label_rect.y1
-            cert_width = len(cert_number) * 10
-            cert_rect = fitz.Rect(cert_x0, cert_y0, cert_x0 + cert_width, cert_y1)
+            cert_rect = fitz.Rect(cert_x0, cert_y0, cert_x0 + 200, cert_y1)  # fixed width box
+
             page.add_redact_annot(
                 cert_rect,
                 text=cert_number,
                 fontname=arial_font,
-                fontsize=20,
+                fontsize=cert_font_size,
                 align=fitz.TEXT_ALIGN_LEFT,
                 text_color=(0,0,0),
                 fill=(1,1,1)
@@ -391,22 +395,25 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         date_label_hits = page.search_for("DATE:")
         if date_label_hits:
             label_rect = date_label_hits[0]
-            date_x0 = label_rect.x1 + 5  # 5pt gap after "DATE:"
+
+            date_font_size = label_rect.height * 0.8
+            date_x0 = label_rect.x1 + 10
             date_y0 = label_rect.y0
             date_y1 = label_rect.y1
-            date_width = len(new_date) * 10
-            date_rect = fitz.Rect(date_x0, date_y0, date_x0 + date_width, date_y1)
+            date_rect = fitz.Rect(date_x0, date_y0, date_x0 + 200, date_y1)
+
             page.add_redact_annot(
                 date_rect,
                 text=new_date,
                 fontname=arial_font,
-                fontsize=20,
+                fontsize=date_font_size,
                 align=fitz.TEXT_ALIGN_LEFT,
                 text_color=(0,0,0),
                 fill=(1,1,1)
             )
         else:
             st.warning("Could not align date – label not found.")
+
 
         # ---------------- VALIDITY ----------------
         old_validity = 'Validity: 04-August-2027'
