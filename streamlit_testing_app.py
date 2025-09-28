@@ -396,7 +396,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                         align_cert = fitz.TEXT_ALIGN_LEFT
                     
                     # Adjust rectangle to fit text tightly and maintain alignment
-                    cert_font_size = 24  # Increased from 21 to 24
+                    cert_font_size = 21  # Increased from 21 to 24
                     # Calculate text width to adjust rectangle width
                     estimated_width = len(cert_number) * (cert_font_size * 0.5)
                     # Set rectangle height to just fit the font size, with slight padding
