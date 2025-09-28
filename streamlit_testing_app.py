@@ -395,18 +395,22 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     else:
                         align_cert = fitz.TEXT_ALIGN_LEFT
                     
-                    # Adjust rectangle to fit text tightly, reducing spacing
-                    cert_font_size = 21
-                    if rect.height < cert_font_size:
-                        center_y = (rect.y0 + rect.y1) / 2
-                        rect.y0 = center_y - cert_font_size / 2
-                        rect.y1 = center_y + cert_font_size / 2
+                    # Adjust rectangle to fit text tightly and maintain alignment
+                    cert_font_size = 24  # Increased from 21 to 24
+                    # Calculate text width to adjust rectangle width
+                    estimated_width = len(cert_number) * (cert_font_size * 0.5)
+                    # Set rectangle height to just fit the font size, with slight padding
+                    rect_height = cert_font_size * 1.2  # Slightly larger than font size for padding
+                    # Keep original y1 to maintain baseline alignment with "Certificate No:"
+                    rect.y0 = rect.y1 - rect_height
+                    # Adjust width to fit text tightly
+                    rect.x1 = rect.x0 + estimated_width
                     
                     page.add_redact_annot(
                         rect,
                         text=cert_number,
                         fontname=arial_font,
-                        fontsize=cert_font_size,  # Set to 21 as requested
+                        fontsize=cert_font_size,
                         align=align_cert,
                         text_color=(0,0,0),
                         fill=(1,1,1)
@@ -485,9 +489,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     )
                 status_found = True
                 break
-        
-        if not status_found:
-            st.warning("Could not find status field in template.")
 
         # Apply all redactions
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
