@@ -400,7 +400,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     # Calculate text width to adjust rectangle width
                     estimated_width = len(cert_number) * (cert_font_size * 0.5)
                     # Set rectangle height to just fit the font size, with slight padding
-                    rect_height = cert_font_size * 1.2  # Slightly larger than font size for padding
+                    rect_height = cert_font_size  # Slightly larger than font size for padding
                     # Keep original y1 to maintain baseline alignment with "Certificate No:"
                     rect.y0 = rect.y1 - rect_height
                     # Adjust width to fit text tightly
