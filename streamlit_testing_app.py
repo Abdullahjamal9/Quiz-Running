@@ -288,6 +288,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
       - CERTIFICATE NO (right of its label)
       - Examiner DATE (right of 'DATE:' label)
     Uses redact-annot with text so values persist after apply_redactions().
+    Spacing tightened and legacy "2" under CERTIFICATE NO is cleared.
     """
     template_path = get_template_path(template_type)
     if not template_path:
@@ -365,7 +366,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
 
         def write_in_box(rect, text, fontname, fontsize, align, text_color=(0,0,0), fill=(1,1,1)):
             """Use redact-annot WITH text so it's burned in on apply_redactions()."""
-            # ensure rect tall enough
             if rect.height < fontsize:
                 cy = (rect.y0 + rect.y1) / 2
                 rect.y0 = cy - fontsize/2
@@ -449,13 +449,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 break
 
         # ==================================================
-        # The three marked items (now drawn with redact text)
+        # The three marked items — TIGHTER SPACING
         # ==================================================
-        # 1) Date of Certification
+        # 1) Date of Certification (x_pad reduced from 8 -> 3)
         placed_date = place_value_next_to_label(
             ["Date of Certification:", "Date of Certification",
              "Date  of  Certification:", "Date  of  Certification"],
-            new_date, box_width=230, x_pad=8, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
+            new_date, box_width=230, x_pad=3, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
         )
         if not placed_date:
             placed_date = place_value_by_anchor(
@@ -465,11 +465,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             if not placed_date:
                 st.warning("Could not place 'Date of Certification'.")
 
-        # 2) CERTIFICATE NO
+        # 2) CERTIFICATE NO (x_pad reduced from 10 -> 5)
         placed_cert = place_value_next_to_label(
             ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :",
              "CERTIFICATE NO", "Certificate No"],
-            cert_number, box_width=260, x_pad=10, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
+            cert_number, box_width=260, x_pad=5, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
         )
         if not placed_cert:
             placed_cert = place_value_by_anchor(
@@ -479,10 +479,10 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             if not placed_cert:
                 st.warning("Could not place 'CERTIFICATE NO'.")
 
-        # 3) Examiner DATE
+        # 3) Examiner DATE (x_pad reduced from 8 -> 3)
         placed_exam_date = place_value_next_to_label(
             ["DATE:", "DATE :", "Date:", "Date :"],
-            new_date, box_width=180, x_pad=8, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
+            new_date, box_width=180, x_pad=3, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
         )
         if not placed_exam_date:
             placed_exam_date = place_value_by_anchor(
@@ -491,6 +491,16 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             )
             if not placed_exam_date:
                 st.warning("Could not place Examiner 'DATE'.")
+
+        # --------------------------------------------------
+        # EXTRA CLEANUP: remove the old stray "2" under CERTIFICATE NO
+        # --------------------------------------------------
+        extra_cleanup_hits = var_search(["CERTIFICATE NO:", "CERTIFICATE NO"])
+        if extra_cleanup_hits:
+            r = extra_cleanup_hits[0]
+            # a thin strip just below the label that often contains the legacy "2"
+            cleanup_rect = fitz.Rect(r.x0, r.y1 + 2, r.x0 + 260, r.y1 + 22)
+            page.add_redact_annot(cleanup_rect, fill=(1,1,1))
 
         # --- Burn everything in ---
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
@@ -512,6 +522,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             pass
         st.error(f"Error generating {template_type} certificate: {e}")
         return None, None
+
 
 
 # =====================
