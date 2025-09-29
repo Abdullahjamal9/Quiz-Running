@@ -485,9 +485,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     )
                 status_found = True
                 break
-        
-        if not status_found:
-            st.warning("Could not find status field in template.")
 
         # Apply all redactions
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
