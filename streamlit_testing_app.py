@@ -283,14 +283,11 @@ def get_template_path(template_type):
 
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     """
-    Generates a one-page certificate by replacing name, validity, status,
-    and *precisely aligning* the three marked items:
-      1) Date of Certification (value centered next to the label)
-      2) CERTIFICATE NO (value centered next to the label)
-      3) Examiner DATE (value centered next to the 'DATE:' label)
-
-    Robust to label variants (with/without colon, extra spaces).
-    Includes anchor-based fallbacks if labels aren't found.
+    Generates the certificate and precisely aligns:
+      - Date of Certification (right of its label)
+      - CERTIFICATE NO (right of its label)
+      - Examiner DATE (right of 'DATE:' label)
+    Uses redact-annot with text so values persist after apply_redactions().
     """
     template_path = get_template_path(template_type)
     if not template_path:
@@ -298,19 +295,13 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        import datetime
-        import os
-        import fitz
+        import datetime, os, fitz
 
-        # ---------------------------
-        # Open PDF
-        # ---------------------------
+        # --- Open PDF ---
         doc = fitz.open(template_path)
-        page = doc[0]  # single-page
+        page = doc[0]
 
-        # ---------------------------
-        # Parse dates
-        # ---------------------------
+        # --- Parse date ---
         date_str = test_date.split()[0] if " " in test_date else test_date
         try:
             test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
@@ -323,9 +314,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         new_date = test_date_obj.strftime("%d-%B-%Y")
         new_validity = f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}"
 
-        # ---------------------------
-        # Certificate number + status
-        # ---------------------------
+        # --- Cert number + status ---
         template_mapping = {
             "MT_template": "MT", "PT_template": "PT", "UT_template": "UT", "VT_template": "VT",
             "MT": "MT", "PT": "PT", "UT": "UT", "VT": "VT"
@@ -334,13 +323,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{cert_type}/2025"
         status_text = "Pass" if status == "Pass" else "Fail"
 
-        # ---------------------------
-        # Fonts (with graceful fallback)
-        # ---------------------------
-        corsiva_font = "times-italic"  # fallback for Monotype Corsiva
-        arial_font = "helv"            # fallback for Arial
+        # --- Fonts (with fallbacks) ---
+        corsiva_font = "times-italic"  # fallback
+        arial_font   = "helv"          # fallback
         corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
-        arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
+        arial_fontfile   = os.path.join(DB_FOLDER, "arial.ttf")
 
         try:
             if os.path.exists(corsiva_fontfile):
@@ -360,9 +347,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         except Exception:
             pass
 
-        # ---------------------------
-        # Helpers
-        # ---------------------------
+        # --- Helpers ---
         def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
             fs = base_font_size
             est = len(text) * (fs * 0.5)
@@ -371,71 +356,68 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 est = len(text) * (fs * 0.5)
             return fs
 
-        def var_search(page, variants):
-            """Try multiple text variants; return first list of hits found (or [])."""
+        def var_search(variants):
             for v in variants:
                 hits = page.search_for(v)
                 if hits:
                     return hits
             return []
 
-        def clean_and_draw_textbox(rect, text, fontname, fontsize, align, color=(0,0,0), fill=(1,1,1)):
+        def write_in_box(rect, text, fontname, fontsize, align, text_color=(0,0,0), fill=(1,1,1)):
+            """Use redact-annot WITH text so it's burned in on apply_redactions()."""
             # ensure rect tall enough
             if rect.height < fontsize:
                 cy = (rect.y0 + rect.y1) / 2
-                rect.y0 = cy - fontsize / 2
-                rect.y1 = cy + fontsize / 2
-            page.add_redact_annot(rect, fill=fill)
-            # (don't apply yet; we batch once at end)
-            page.insert_textbox(rect, text, fontname=fontname, fontsize=fontsize, align=align, color=color)
+                rect.y0 = cy - fontsize/2
+                rect.y1 = cy + fontsize/2
+            page.add_redact_annot(
+                rect,
+                text=text,
+                fontname=fontname,
+                fontsize=fontsize,
+                align=align,
+                text_color=text_color,
+                fill=fill
+            )
 
-        def place_value_next_to_label(label_variants, value_text, box_width, x_pad, fontsize=21,
-                                      align=fitz.TEXT_ALIGN_CENTER, y_nudge=0, which=0):
-            """
-            Place value next to a label (try many variants).
-            Returns True if placed.
-            """
-            hits = var_search(page, label_variants)
+        def place_value_next_to_label(label_variants, value_text, box_width, x_pad,
+                                      fontsize=21, align=fitz.TEXT_ALIGN_CENTER,
+                                      y_nudge=0, which=0):
+            hits = var_search(label_variants)
             if not hits or which >= len(hits):
                 return False
             lab = hits[which]
-            rect = fitz.Rect(lab.x1 + x_pad, lab.y0 + y_nudge, lab.x1 + x_pad + box_width, lab.y1 + y_nudge)
-            clean_and_draw_textbox(rect, value_text, arial_font, fontsize, align)
+            rect = fitz.Rect(lab.x1 + x_pad, lab.y0 + y_nudge,
+                             lab.x1 + x_pad + box_width, lab.y1 + y_nudge)
+            write_in_box(rect, value_text, arial_font, fontsize, align)
             return True
 
-        def place_value_by_anchor(anchor_variants, value_text, box_width, dx, dy, fontsize=21,
-                                  align=fitz.TEXT_ALIGN_CENTER):
-            """
-            Fallback: position value using a nearby anchor text (e.g., 'Manager QHSE/Training', 'Examiner').
-            dx, dy are offsets from the anchor's top-left.
-            """
-            hits = var_search(page, anchor_variants)
+        def place_value_by_anchor(anchor_variants, value_text, box_width, dx, dy,
+                                  fontsize=21, align=fitz.TEXT_ALIGN_CENTER):
+            hits = var_search(anchor_variants)
             if not hits:
                 return False
             anc = hits[0]
-            rect = fitz.Rect(anc.x0 + dx, anc.y0 + dy, anc.x0 + dx + box_width, anc.y0 + dy + fontsize + 6)
-            clean_and_draw_textbox(rect, value_text, arial_font, fontsize, align)
+            rect = fitz.Rect(anc.x0 + dx, anc.y0 + dy,
+                             anc.x0 + dx + box_width, anc.y0 + dy + fontsize + 6)
+            write_in_box(rect, value_text, arial_font, fontsize, align)
             return True
 
-        # ---------------------------
-        # Replace Name (centered)
-        # ---------------------------
+        # --- Name (centered) ---
         old_name = "Usman Waheed"
         name_hits = page.search_for(old_name)
         if name_hits:
             name_font_size = calculate_font_size(emp_name, 500, 48, 28)
             for r in name_hits:
                 cy = (r.y0 + r.y1) / 2
-                r.y0 = cy - name_font_size / 2
-                r.y1 = cy + name_font_size / 2
+                r.y0 = cy - name_font_size/2
+                r.y1 = cy + name_font_size/2
                 page.add_redact_annot(
                     r, text=emp_name, fontname=corsiva_font, fontsize=name_font_size,
                     align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
                 )
 
-        # ---------------------------
-        # Replace Validity (keep template alignment)
-        # ---------------------------
+        # --- Validity (right/center based on template) ---
         old_validity = "Validity: 04-August-2027"
         val_hits = page.search_for(old_validity)
         if val_hits:
@@ -443,16 +425,14 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             align_valid = fitz.TEXT_ALIGN_CENTER if template_type in ["MT", "VT"] else fitz.TEXT_ALIGN_RIGHT
             for r in val_hits:
                 cy = (r.y0 + r.y1) / 2
-                r.y0 = cy - fs / 2
-                r.y1 = cy + fs / 2
+                r.y0 = cy - fs/2
+                r.y1 = cy + fs/2
                 page.add_redact_annot(
                     r, text=new_validity, fontname=arial_font, fontsize=fs,
                     align=align_valid, text_color=(0,0,0), fill=(1,1,1)
                 )
 
-        # ---------------------------
-        # Replace Status (left)
-        # ---------------------------
+        # --- Status (left) ---
         status_text_draw = f"Status: {status_text}"
         for pat in ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']:
             sth = page.search_for(pat)
@@ -460,101 +440,62 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 fs = 20
                 for r in sth:
                     cy = (r.y0 + r.y1) / 2
-                    r.y0 = cy - fs / 2
-                    r.y1 = cy + fs / 2
+                    r.y0 = cy - fs/2
+                    r.y1 = cy + fs/2
                     page.add_redact_annot(
                         r, text=status_text_draw, fontname=arial_font, fontsize=fs,
                         align=fitz.TEXT_ALIGN_LEFT, text_color=(0,0,0), fill=(1,1,1)
                     )
                 break
 
-        # ==========================================================
-        # PRECISE ALIGNMENT: the three marked items
-        # ==========================================================
-        # 1) Date of Certification (to the right of label)
+        # ==================================================
+        # The three marked items (now drawn with redact text)
+        # ==================================================
+        # 1) Date of Certification
         placed_date = place_value_next_to_label(
-            label_variants=[
-                "Date of Certification:", "Date of Certification", "Date  of  Certification:",
-                "Date  of  Certification"
-            ],
-            value_text=new_date,
-            box_width=230,
-            x_pad=8,
-            fontsize=21,
-            align=fitz.TEXT_ALIGN_CENTER,
-            y_nudge=0,
+            ["Date of Certification:", "Date of Certification",
+             "Date  of  Certification:", "Date  of  Certification"],
+            new_date, box_width=230, x_pad=8, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
         )
         if not placed_date:
-            # Fallback: use left anchor block (“Manager QHSE/Training”) area
-            # Tune dx/dy if needed for your exact template.
             placed_date = place_value_by_anchor(
-                anchor_variants=["Manager QHSE/Training", "Manager QHSE / Training", "Manager QHSE"],
-                value_text=new_date,
-                box_width=230,
-                dx=-40,      # a little left of the signature block
-                dy=-60,      # above the signature name line
-                fontsize=21,
-                align=fitz.TEXT_ALIGN_CENTER
+                ["Manager QHSE/Training", "Manager QHSE / Training", "Manager QHSE"],
+                new_date, box_width=230, dx=-40, dy=-60, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
             )
             if not placed_date:
-                st.warning("Could not place 'Date of Certification' (label & anchor not found).")
+                st.warning("Could not place 'Date of Certification'.")
 
-        # 2) CERTIFICATE NO (to the right of label)
+        # 2) CERTIFICATE NO
         placed_cert = place_value_next_to_label(
-            label_variants=[
-                "CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :",
-                "CERTIFICATE NO", "Certificate No"
-            ],
-            value_text=cert_number,
-            box_width=260,
-            x_pad=10,
-            fontsize=21,
-            align=fitz.TEXT_ALIGN_CENTER,
-            y_nudge=0,
+            ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :",
+             "CERTIFICATE NO", "Certificate No"],
+            cert_number, box_width=260, x_pad=10, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
         )
         if not placed_cert:
-            # Fallback: below the "Manager QHSE/Training" anchor block (left column)
             placed_cert = place_value_by_anchor(
-                anchor_variants=["Manager QHSE/Training", "Manager QHSE / Training", "Manager QHSE"],
-                value_text=cert_number,
-                box_width=260,
-                dx=0,        # start under the label area
-                dy=30,       # a bit below the anchor text
-                fontsize=21,
-                align=fitz.TEXT_ALIGN_CENTER
+                ["Manager QHSE/Training", "Manager QHSE / Training", "Manager QHSE"],
+                cert_number, box_width=260, dx=0, dy=30, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
             )
             if not placed_cert:
-                st.warning("Could not place 'CERTIFICATE NO' (label & anchor not found).")
+                st.warning("Could not place 'CERTIFICATE NO'.")
 
-        # 3) Examiner DATE (to the right of label near 'Examiner')
+        # 3) Examiner DATE
         placed_exam_date = place_value_next_to_label(
-            label_variants=["DATE:", "DATE :", "Date:", "Date :"],
-            value_text=new_date,
-            box_width=180,
-            x_pad=8,
-            fontsize=21,
-            align=fitz.TEXT_ALIGN_CENTER,
-            y_nudge=0,
+            ["DATE:", "DATE :", "Date:", "Date :"],
+            new_date, box_width=180, x_pad=8, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
         )
         if not placed_exam_date:
-            # Fallback using 'Examiner' anchor on the right column
             placed_exam_date = place_value_by_anchor(
-                anchor_variants=["Examiner", "EXAMINER"],
-                value_text=new_date,
-                box_width=180,
-                dx=160,      # to the right of the 'Examiner' label block
-                dy=26,       # roughly where 'DATE:' sits
-                fontsize=21,
-                align=fitz.TEXT_ALIGN_CENTER
+                ["Examiner", "EXAMINER"],
+                new_date, box_width=180, dx=160, dy=26, fontsize=21, align=fitz.TEXT_ALIGN_CENTER
             )
             if not placed_exam_date:
-                st.warning("Could not place Examiner 'DATE' (label & anchor not found).")
+                st.warning("Could not place Examiner 'DATE'.")
 
-        # ---------------------------
-        # Apply all redactions and save
-        # ---------------------------
+        # --- Burn everything in ---
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
 
+        # --- Save ---
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
@@ -571,6 +512,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             pass
         st.error(f"Error generating {template_type} certificate: {e}")
         return None, None
+
 
 # =====================
 # Individual Test Downloads
