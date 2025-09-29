@@ -414,21 +414,42 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
 
         # --- Validity (keep on right; replace whole line inline) ---
         # Find the existing validity line and overwrite it with the new validity text.
+# --- Validity (inline; align per template) ---
         validity_label_hits = page.search_for("Validity:")
         if validity_label_hits:
             vlab = validity_label_hits[0]
-            validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + 320, vlab.y1)
             fs = 21
+        
+            # Build a one-line rectangle starting at the label and extending a bit right
+            # Use a tighter width for PT/UT so it doesn't drift too far right.
+            if template_type in ["PT", "PT_template", "UT", "UT_template"]:
+                right_extra = 240   # tighter width for PT/UT
+                align_mode  = fitz.TEXT_ALIGN_LEFT
+            else:
+                # MT/VT looked fine; you can keep LEFT for consistency too.
+                right_extra = 280
+                align_mode  = fitz.TEXT_ALIGN_LEFT   # use LEFT for consistent spacing
+                # If you really want MT/VT right-aligned, set: align_mode = fitz.TEXT_ALIGN_RIGHT
+        
+            validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + right_extra, vlab.y1)
+        
+            # Ensure the line box is tall enough
             if validity_line_rect.height < fs:
                 cy = (validity_line_rect.y0 + validity_line_rect.y1) / 2
                 validity_line_rect.y0 = cy - fs/2
                 validity_line_rect.y1 = cy + fs/2
+        
+            # Replace the whole line inline (preserves spacing and nearby text)
             page.add_redact_annot(
                 validity_line_rect,
-                text=new_validity, fontname=arial_font, fontsize=fs,
-                align=(fitz.TEXT_ALIGN_RIGHT if template_type not in ["MT","VT"] else fitz.TEXT_ALIGN_LEFT),
-                text_color=(0,0,0), fill=(1,1,1)
+                text=new_validity,             # e.g., "Validity: 16-July-2030"
+                fontname=arial_font,
+                fontsize=fs,
+                align=align_mode,
+                text_color=(0,0,0),
+                fill=(1,1,1)
             )
+
 
         # --- Status (left) ---
         status_text_draw = f"Status: {status_text}"
