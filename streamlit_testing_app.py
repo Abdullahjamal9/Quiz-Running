@@ -612,6 +612,43 @@ if st.session_state.admin_logged_in:
         if prev_name_key not in st.session_state:
             st.session_state[prev_name_key] = "All"
         
+        # Pre-synchronization: Handle changes from previous run
+        needs_rerun = False
+        
+        # Check if ID changed in previous run and sync name
+        if st.session_state.get(id_key, "All") != st.session_state.get(prev_id_key, "All"):
+            current_id = st.session_state[id_key]
+            if current_id != "All" and current_id in id_name_mapping:
+                expected_name = id_name_mapping[current_id]
+                if st.session_state[name_key] != expected_name:
+                    st.session_state[name_key] = expected_name
+                    st.session_state[prev_name_key] = expected_name
+                    needs_rerun = True
+            elif current_id == "All" and st.session_state[name_key] != "All":
+                st.session_state[name_key] = "All"
+                st.session_state[prev_name_key] = "All"
+                needs_rerun = True
+            st.session_state[prev_id_key] = current_id
+        
+        # Check if name changed in previous run and sync ID
+        if st.session_state.get(name_key, "All") != st.session_state.get(prev_name_key, "All"):
+            current_name = st.session_state[name_key]
+            if current_name != "All" and current_name in name_id_mapping:
+                expected_id = name_id_mapping[current_name]
+                if st.session_state[id_key] != expected_id:
+                    st.session_state[id_key] = expected_id
+                    st.session_state[prev_id_key] = expected_id
+                    needs_rerun = True
+            elif current_name == "All" and st.session_state[id_key] != "All":
+                st.session_state[id_key] = "All"
+                st.session_state[prev_id_key] = "All"
+                needs_rerun = True
+            st.session_state[prev_name_key] = current_name
+        
+        # If synchronization occurred, rerun to reflect changes
+        if needs_rerun:
+            st.rerun()
+        
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
@@ -623,22 +660,6 @@ if st.session_state.admin_logged_in:
                 index=employee_ids.index(st.session_state[id_key]) if st.session_state[id_key] in employee_ids else 0,
                 key=id_key
             )
-            
-            # Check if ID was changed manually and sync name accordingly
-            if selected_emp_id != st.session_state.get(prev_id_key, "All"):
-                if selected_emp_id != "All" and selected_emp_id in id_name_mapping:
-                    expected_name = id_name_mapping[selected_emp_id]
-                    if st.session_state[name_key] != expected_name:
-                        st.session_state[name_key] = expected_name
-                        st.session_state[prev_name_key] = expected_name
-                        st.rerun()
-                elif selected_emp_id == "All" and st.session_state[name_key] != "All":
-                    st.session_state[name_key] = "All"
-                    st.session_state[prev_name_key] = "All"
-                    st.rerun()
-            
-            # Update previous ID value
-            st.session_state[prev_id_key] = selected_emp_id
         
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
@@ -649,22 +670,6 @@ if st.session_state.admin_logged_in:
                 index=employee_names.index(st.session_state[name_key]) if st.session_state[name_key] in employee_names else 0,
                 key=name_key
             )
-            
-            # Check if name was changed manually and sync ID accordingly
-            if selected_emp_name != st.session_state.get(prev_name_key, "All"):
-                if selected_emp_name != "All" and selected_emp_name in name_id_mapping:
-                    expected_id = name_id_mapping[selected_emp_name]
-                    if st.session_state[id_key] != expected_id:
-                        st.session_state[id_key] = expected_id
-                        st.session_state[prev_id_key] = expected_id
-                        st.rerun()
-                elif selected_emp_name == "All" and st.session_state[id_key] != "All":
-                    st.session_state[id_key] = "All"
-                    st.session_state[prev_id_key] = "All"
-                    st.rerun()
-            
-            # Update previous name value
-            st.session_state[prev_name_key] = selected_emp_name
         
         with filter_col3:
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
