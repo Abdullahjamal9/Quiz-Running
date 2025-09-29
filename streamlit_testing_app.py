@@ -1162,7 +1162,7 @@ elif "quiz" in st.session_state:
             text_color = "white"
             icon = "⚠️"
             pulse_class = ""
-        elif remaining <= 1800:
+        elif remaining <= 1200:
             bg_color = "#D97706"
             text_color = "white"
             icon = "⏰"
@@ -1249,7 +1249,7 @@ elif "quiz" in st.session_state:
                     bg_color = '#DC2626';
                     text_color = 'white';
                     icon = '⚠️';
-                }} else if (remaining <= 1800) {{
+                }} else if (remaining <= 1200) {{
                     bg_color = '#D97706';
                     text_color = 'white';
                     icon = '⏰';
@@ -1308,9 +1308,9 @@ elif "quiz" in st.session_state:
         elif remaining <= 900:
             st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
             st.warning("⚠️ WARNING: Less than 15 minutes remaining!")
-        elif remaining <= 1800:
+        elif remaining <= 1200:
             st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
-            st.info("⏰ NOTICE: Less than 30 minutes remaining!")
+            st.info("⏰ NOTICE: Less than 20 minutes remaining!")
 
     elif total_secs > 0 and "submitted" in st.session_state:
         rem_h = remaining // 3600
@@ -1327,7 +1327,7 @@ elif "quiz" in st.session_state:
             text_color = "white"
             icon = "⚠️"
             pulse_class = ""
-        elif remaining <= 1800:
+        elif remaining <= 1200:
             bg_color = "#D97706"
             text_color = "white"
             icon = "⏰"
