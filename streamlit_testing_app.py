@@ -1046,7 +1046,6 @@ if st.session_state.admin_logged_in:
             st.rerun()
 
 # Employee login and quiz
-# Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Employee Login")
     
@@ -1086,7 +1085,6 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     with col2:
         name = st.text_input(
             "Name", 
-            value=st.session_state[name_key], 
             key=name_key,
             help="This will auto-fill when you enter a valid Employee ID"
         )
