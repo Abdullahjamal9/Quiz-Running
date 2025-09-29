@@ -603,51 +603,22 @@ if st.session_state.admin_logged_in:
         if name_key not in st.session_state:
             st.session_state[name_key] = "All"
         
-        # Store previous values for change detection
-        prev_id_key = f"prev_{id_key}"
-        prev_name_key = f"prev_{name_key}"
-        
-        if prev_id_key not in st.session_state:
-            st.session_state[prev_id_key] = "All"
-        if prev_name_key not in st.session_state:
-            st.session_state[prev_name_key] = "All"
-        
-        # Pre-synchronization: Handle changes from previous run
-        needs_rerun = False
-        
-        # Check if ID changed in previous run and sync name
-        if st.session_state.get(id_key, "All") != st.session_state.get(prev_id_key, "All"):
-            current_id = st.session_state[id_key]
-            if current_id != "All" and current_id in id_name_mapping:
-                expected_name = id_name_mapping[current_id]
-                if st.session_state[name_key] != expected_name:
-                    st.session_state[name_key] = expected_name
-                    st.session_state[prev_name_key] = expected_name
-                    needs_rerun = True
-            elif current_id == "All" and st.session_state[name_key] != "All":
+        # Callback functions for synchronization
+        def sync_id_to_name():
+            """Sync ID selection to corresponding name"""
+            selected_id = st.session_state[id_key]
+            if selected_id != "All" and selected_id in id_name_mapping:
+                st.session_state[name_key] = id_name_mapping[selected_id]
+            elif selected_id == "All":
                 st.session_state[name_key] = "All"
-                st.session_state[prev_name_key] = "All"
-                needs_rerun = True
-            st.session_state[prev_id_key] = current_id
         
-        # Check if name changed in previous run and sync ID
-        if st.session_state.get(name_key, "All") != st.session_state.get(prev_name_key, "All"):
-            current_name = st.session_state[name_key]
-            if current_name != "All" and current_name in name_id_mapping:
-                expected_id = name_id_mapping[current_name]
-                if st.session_state[id_key] != expected_id:
-                    st.session_state[id_key] = expected_id
-                    st.session_state[prev_id_key] = expected_id
-                    needs_rerun = True
-            elif current_name == "All" and st.session_state[id_key] != "All":
+        def sync_name_to_id():
+            """Sync name selection to corresponding ID"""
+            selected_name = st.session_state[name_key]
+            if selected_name != "All" and selected_name in name_id_mapping:
+                st.session_state[id_key] = name_id_mapping[selected_name]
+            elif selected_name == "All":
                 st.session_state[id_key] = "All"
-                st.session_state[prev_id_key] = "All"
-                needs_rerun = True
-            st.session_state[prev_name_key] = current_name
-        
-        # If synchronization occurred, rerun to reflect changes
-        if needs_rerun:
-            st.rerun()
         
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
@@ -658,7 +629,8 @@ if st.session_state.admin_logged_in:
                 "Filter by Employee ID", 
                 employee_ids, 
                 index=employee_ids.index(st.session_state[id_key]) if st.session_state[id_key] in employee_ids else 0,
-                key=id_key
+                key=id_key,
+                on_change=sync_id_to_name
             )
         
         with filter_col2:
@@ -668,7 +640,8 @@ if st.session_state.admin_logged_in:
                 "Filter by Employee Name", 
                 employee_names, 
                 index=employee_names.index(st.session_state[name_key]) if st.session_state[name_key] in employee_names else 0,
-                key=name_key
+                key=name_key,
+                on_change=sync_name_to_id
             )
         
         with filter_col3:
