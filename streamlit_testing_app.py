@@ -1046,33 +1046,52 @@ if st.session_state.admin_logged_in:
             st.rerun()
 
 # Employee login and quiz
+# Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Employee Login")
+    
+    # Callback function to auto-populate name when Employee ID changes
+    def auto_populate_name():
+        """Auto-populate employee name based on Employee ID"""
+        emp_id_input = st.session_state[f"id_{st.session_state.reset_counter}"]
+        if emp_id_input and not employees.empty:
+            try:
+                fetched = employees[employees["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
+                if not fetched.empty:
+                    fetched_name = str(fetched.iloc[0]["Name"])
+                    # Update the name field in session state
+                    st.session_state[f"name_{st.session_state.reset_counter}"] = fetched_name
+                else:
+                    # Clear name field if no matching ID found
+                    st.session_state[f"name_{st.session_state.reset_counter}"] = ""
+            except Exception:
+                # Clear name field if error occurs
+                st.session_state[f"name_{st.session_state.reset_counter}"] = ""
+    
     col1, col2 = st.columns(2)
     with col1:
         emp_id = st.text_input(
             "Employee ID", 
             value="", 
             key=f"id_{st.session_state.reset_counter}",
-            help="Enter your employee identification number"
+            help="Enter your employee identification number and press Enter",
+            on_change=auto_populate_name
         )
-    def fetch_name(employees_df, emp_id_input):
-        if emp_id_input and not employees_df.empty:
-            try:
-                fetched = employees_df[employees_df["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
-                if not fetched.empty:
-                    return str(fetched.iloc[0]["Name"])
-            except Exception:
-                pass
-        return ""
-    fetched_name = fetch_name(employees, emp_id) if "name" not in st.session_state else st.session_state["name"]
+    
+    # Initialize name field if not exists
+    name_key = f"name_{st.session_state.reset_counter}"
+    if name_key not in st.session_state:
+        st.session_state[name_key] = ""
+    
     with col2:
         name = st.text_input(
             "Name", 
-            value=fetched_name, 
-            key=f"name_{st.session_state.reset_counter}",
-            help="This will auto-fill if your Employee ID is found"
+            value=st.session_state[name_key], 
+            key=name_key,
+            help="This will auto-fill when you enter a valid Employee ID"
         )
+    
+    # Rest of the login form remains the same
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
     if "Cummulative" not in options:
