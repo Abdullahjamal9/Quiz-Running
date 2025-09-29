@@ -12,11 +12,10 @@ import io
 import requests
 import zipfile
 import traceback
-# from docx import Document  # REMOVE this import (no longer needed)
-# from docx.shared import Pt  # REMOVE
-# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
-# from docx.oxml.ns import qn  # REMOVE
-import fitz
+from docx import Document
+from docx.shared import Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
 
 # =====================
 # Paths / Files
@@ -237,49 +236,24 @@ def get_info_for_standard(standards, selected_standard):
 # =====================
 # Certificate Generation
 # =====================
-import streamlit as st
-import pandas as pd
-import numpy as np
-import datetime
-import time
-import os
-import gspread
-from google.oauth2.service_account import Credentials
-import streamlit.components.v1 as components
-import pytz
-import io
-import requests
-import zipfile
-import traceback
-# from docx import Document  # REMOVE this import (no longer needed)
-# from docx.shared import Pt  # REMOVE
-# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
-# from docx.oxml.ns import qn  # REMOVE
-import fitz  # ADD this import for PyMuPDF
-
-# ... (rest of your imports and code unchanged up to Certificate Generation)
-
-# =====================
-# Certificate Generation
-# =====================
 def get_template_path(template_type):
-    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.docx")
     if os.path.exists(template_path):
         return template_path
     
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.docx"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            temp_path = f"/tmp/{template_type}_template.pdf"
+            temp_path = f"/tmp/{template_type}_template.docx"
             with open(temp_path, "wb") as file:
                 file.write(response.content)
             return temp_path
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")
-        return None, None
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.docx' to your repo.")
+        return None
 
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     template_path = get_template_path(template_type)
@@ -288,173 +262,105 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        # Open PDF with PyMuPDF
-        doc = fitz.open(template_path)
-        page = doc[0]  # Assume single-page certificate; adjust if multi-page
-
+        doc = Document(template_path)
+        
         # Extract date part and calculate validity date
         date_str = test_date.split()[0] if " " in test_date else test_date
         try:
             test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
         except ValueError:
             st.error(f"Invalid date format in test_date: {test_date}. Expected format: DD-MM-YYYY")
-            doc.close()
             return None, None
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
         cert_number = f"{emp_id}/PTIS/{template_type}/{date_str.replace('-', '')}"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Register custom fonts if available
-        corsiva_font = 'times-italic'  # Fallback for Monotype Corsiva
-        arial_font = 'helv'  # Fallback for Arial
-        corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
-        arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
-
-        if os.path.exists(corsiva_fontfile):
-            font = fitz.Font(fontfile=corsiva_fontfile)
-            if font.valid:
-                doc.insert_font(fontname="MonotypeCorsiva", fontfile=corsiva_fontfile)
-                corsiva_font = "MonotypeCorsiva"
-            else:
-                st.warning("Invalid Monotype Corsiva font file; using Times-Italic fallback.")
-        if os.path.exists(arial_fontfile):
-            font = fitz.Font(fontfile=arial_fontfile)
-            if font.valid:
-                doc.insert_font(fontname="Arial", fontfile=arial_fontfile)
-                arial_font = "Arial"
-            else:
-                st.warning("Invalid Arial font file; using Helvetica fallback.")
-
-        # Function to calculate optimal font size based on text length and available width
-        def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
-            """Calculate optimal font size to fit text within given width"""
-            font_size = base_font_size
-            # Tighter estimation: each character takes about 0.5 * font_size pixels (reduced from 0.6)
-            estimated_width = len(text) * (font_size * 0.5)
+        # Replace placeholders with proper alignment
+        for para in doc.paragraphs:
+            if 'Usman Waheed' in para.text:
+                para.text = para.text.replace('Usman Waheed', emp_name)
+                para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center employee name
+                for run in para.runs:
+                    run.font.name = 'Monotype Corsiva'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Monotype Corsiva')
+                    run.font.size = Pt(26)
             
-            while estimated_width > max_width and font_size > min_font_size:
-                font_size -= 1
-                estimated_width = len(text) * (font_size * 0.5)
+            if '05-August-2022' in para.text:
+                para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for date
+                if template_type in ["MT", "VT"]:
+                    # For MT and VT: Center with reduced right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align test date for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
             
-            return font_size
-
-        # Define replacements with adaptive font sizing
-        replacements = {}
-
-        # Employee name - calculate optimal size based on name length
-        old_name = 'Usman Waheed'
-        new_name = emp_name
-        # Assume available width is about 500 pixels for name field (increased)
-        name_font_size = calculate_font_size(new_name, 500, 48, 28)  # Start with 48, minimum 28
-        replacements[old_name] = (new_name, corsiva_font, name_font_size, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
-
-        # Dates - remove excessive spacing and use appropriate font size
-        old_date = '05-August-2022'
-        new_date = test_date_obj.strftime("%d-%B-%Y")
-        
-        # Remove the excessive padding - just use normal alignment
-        if template_type in ["MT", "VT"]:
-            align_date = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_date = fitz.TEXT_ALIGN_RIGHT
-        
-        # Increased font size for dates
-        date_font_size = 21  # Increased from 18
-        replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
-
-        # Certificate number - remove padding and increase font size
-        old_cert = '25/PTIS/DPT/00410'
-        new_cert = cert_number
-        
-        if template_type in ["MT", "VT"]:
-            align_cert = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_cert = fitz.TEXT_ALIGN_LEFT
-        
-        replacements[old_cert] = (new_cert, arial_font, 14, align_cert, (0,0,0), (1,1,1))  # Increased from 12
-
-        # Validity - remove excessive spacing and increase font size
-        old_validity = 'Validity: 04-August-2027'
-        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
-        
-        if template_type in ["MT", "VT"]:
-            align_valid = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_valid = fitz.TEXT_ALIGN_RIGHT
-        
-        # Use same increased font size as date for consistency
-        replacements[old_validity] = (new_validity, arial_font, date_font_size, align_valid, (0,0,0), (1,1,1))
-
-        # Apply replacements with better error handling
-        for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
-            hits = page.search_for(old)
-                
-            for rect in hits:
-                # Ensure the rectangle has some minimum height for the font
-                if rect.height < fontsize:
-                    # Expand rectangle height if too small
-                    center_y = (rect.y0 + rect.y1) / 2
-                    rect.y0 = center_y - fontsize/2
-                    rect.y1 = center_y + fontsize/2
-                
-                page.add_redact_annot(
-                    rect,
-                    text=new,
-                    fontname=fontname,
-                    fontsize=fontsize,
-                    align=align,
-                    text_color=color,
-                    fill=fill
-                )
-
-        # Status handling with better search
-        new_status = f'Status: {status_text}'
-        align_status = fitz.TEXT_ALIGN_LEFT
-        
-        # Search for existing status text more broadly
-        status_found = False
-        possible_status_patterns = ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']
-        
-        for pattern in possible_status_patterns:
-            hits = page.search_for(pattern)
-            if hits:
-                for rect in hits:
-                    # Ensure rectangle is big enough for status text
-                    if rect.height < 16:
-                        center_y = (rect.y0 + rect.y1) / 2
-                        rect.y0 = center_y - 8
-                        rect.y1 = center_y + 8
+            if '25/PTIS/DPT/00410' in para.text:
+                para.text = para.text.replace('25/PTIS/DPT/00410', cert_number)
+                # Template-specific alignment for certificate number
+                if template_type in ["MT", "VT"]:
+                    # For MT and VT: Center with reduced left padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = "            " + para.text  # 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align certificate number for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Date of Certification' in para.text:
+                para.text = para.text.replace('05-August-2022', test_date_obj.strftime("%d-%B-%Y"))
+                # Template-specific alignment for certification date
+                if template_type in ["MT", "VT"]:
+                    # For MT and VT: Center with reduced right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align certification date for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Validity: 04-August-2027' in para.text:
+                para.text = para.text.replace('Validity: 04-August-2027', f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}')
+                # Template-specific alignment for validity date
+                if template_type in ["MT", "VT"]:
+                    # For MT and VT: Center with reduced right padding
+                    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    para.text = para.text + "            "  # 12 spaces
+                else:
+                    para.alignment = WD_ALIGN_PARAGRAPH.RIGHT  # Right-align validity date for others
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
+            
+            if 'Status' in para.text:
+                para.text = para.text.replace('Status: Fail', status_text).replace('Status: Pass', status_text)
+                para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-align status
+                for run in para.runs:
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Arial')
+                    run.font.size = Pt(12)
                     
-                    page.add_redact_annot(
-                        rect,
-                        text=new_status,
-                        fontname=arial_font,
-                        fontsize=16,
-                        align=align_status,
-                        text_color=(0,0,0),
-                        fill=(1,1,1)
-                    )
-                status_found = True
-                break
-
-        # Apply all redactions
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-
-        # Save the modified PDF
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.docx"
         output_path = f"/tmp/{certificate_filename}"
-        doc.save(output_path, garbage=3, deflate=True)
-        doc.close()
+        doc.save(output_path)
 
         st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
     
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
-        if 'doc' in locals():
-            doc.close()
         return None, None
+
 # =====================
 # Individual Test Downloads
 # =====================
@@ -683,69 +589,100 @@ if st.session_state.admin_logged_in:
     if not results_df.empty:
         st.markdown("---")
         st.subheader("🔍 Filters")
-        if "filter_reset_counter" not in st.session_state:
-            st.session_state.filter_reset_counter = 0
         
-        # Create filter columns
+        # Create mappings for ID-Name relationship
+        id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
+        name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
+        
+        # Initialize session state keys if they don't exist
+        id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
+        name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
+        
+        if id_key not in st.session_state:
+            st.session_state[id_key] = "All"
+        if name_key not in st.session_state:
+            st.session_state[name_key] = "All"
+        
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
-            # Employee ID filter
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+            
+            # Check if name changed and sync ID accordingly
+            current_name = st.session_state.get(name_key, "All")
+            if current_name != "All" and current_name in name_id_mapping:
+                expected_id = name_id_mapping[current_name]
+                if st.session_state[id_key] != expected_id:
+                    st.session_state[id_key] = expected_id
+            
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=0,  # Always default to "All"
-                key=f"emp_id_filter_{st.session_state.filter_reset_counter}"
+                index=employee_ids.index(st.session_state[id_key]) if st.session_state[id_key] in employee_ids else 0,
+                key=id_key
             )
         
         with filter_col2:
-            # Employee Name filter
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
+            
+            # Check if ID changed and sync name accordingly
+            if selected_emp_id != "All" and selected_emp_id in id_name_mapping:
+                expected_name = id_name_mapping[selected_emp_id]
+                if st.session_state[name_key] != expected_name:
+                    st.session_state[name_key] = expected_name
+                    st.rerun()
+            elif selected_emp_id == "All" and st.session_state[name_key] != "All":
+                st.session_state[name_key] = "All"
+                st.rerun()
+            
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
-                index=0,  # Always default to "All"
-                key=f"emp_name_filter_{st.session_state.filter_reset_counter}"
+                index=employee_names.index(st.session_state[name_key]) if st.session_state[name_key] in employee_names else 0,
+                key=name_key
             )
+            
+            # If name was changed manually, sync ID
+            if selected_emp_name != st.session_state.get(f"prev_{name_key}", "All"):
+                if selected_emp_name != "All" and selected_emp_name in name_id_mapping:
+                    expected_id = name_id_mapping[selected_emp_name]
+                    if st.session_state[id_key] != expected_id:
+                        st.session_state[id_key] = expected_id
+                        st.rerun()
+                elif selected_emp_name == "All" and st.session_state[id_key] != "All":
+                    st.session_state[id_key] = "All"
+                    st.rerun()
+            
+            # Store previous value for comparison
+            st.session_state[f"prev_{name_key}"] = selected_emp_name
         
         with filter_col3:
-            # Status filter
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox(
                 "Filter by Status", 
                 statuses, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"status_filter_{st.session_state.filter_reset_counter}"
             )
         
         with filter_col4:
-            # Test Type/Standard filter
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox(
                 "Filter by Test Type", 
                 test_types, 
-                index=0,  # Always default to "All"
+                index=0,
                 key=f"test_type_filter_{st.session_state.filter_reset_counter}"
             )
         
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
-                # Increment the reset counter to create new widget keys
                 st.session_state.filter_reset_counter += 1
-                
-                # Also clean up any old filter keys
-                keys_to_remove = []
-                for key in st.session_state.keys():
-                    if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_')):
-                        keys_to_remove.append(key)
-                
+                keys_to_remove = [key for key in st.session_state.keys() if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_', 'prev_emp_name_filter_'))]
                 for key in keys_to_remove:
-                    del st.session_state[key]
-                
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.rerun()
         
         filtered_df = results_df.copy()
