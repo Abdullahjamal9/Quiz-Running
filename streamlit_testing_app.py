@@ -402,7 +402,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         old_name = "Usman Waheed"
         name_hits = page.search_for(old_name)
         if name_hits:
-            name_font_size = calculate_font_size(emp_name, 500, 48, 28)
+            name_font_size = calculate_font_size(emp_name, 500, 44, 28)
             for r in name_hits:
                 cy = (r.y0 + r.y1) / 2
                 r.y0 = cy - name_font_size/2
