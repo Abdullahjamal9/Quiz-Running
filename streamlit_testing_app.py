@@ -288,11 +288,15 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        # Open PDF with PyMuPDF
+        # ---------------------------
+        # Open PDF
+        # ---------------------------
         doc = fitz.open(template_path)
-        page = doc[0]  # Assume single-page certificate; adjust if multi-page
+        page = doc[0]  # Assume single-page certificate
 
-        # Extract date part and calculate validity date
+        # ---------------------------
+        # Parse dates
+        # ---------------------------
         date_str = test_date.split()[0] if " " in test_date else test_date
         try:
             test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
@@ -301,27 +305,23 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             doc.close()
             return None, None
         validity_date_obj = test_date_obj + datetime.timedelta(days=5*365)
-        
-        # Create certificate number with employee ID, PTIS, template type, and 2025
-        # Template type mapping for certificate number
+
+        # ---------------------------
+        # Cert number building
+        # ---------------------------
         template_mapping = {
-            "MT_template": "MT",
-            "PT_template": "PT", 
-            "UT_template": "UT",
-            "VT_template": "VT",
-            "MT": "MT",  # In case template_type is already short form
-            "PT": "PT",
-            "UT": "UT", 
-            "VT": "VT"
+            "MT_template": "MT", "PT_template": "PT", "UT_template": "UT", "VT_template": "VT",
+            "MT": "MT", "PT": "PT", "UT": "UT", "VT": "VT"
         }
-        
         cert_type = template_mapping.get(template_type, template_type)
         cert_number = f"{emp_id}/PTIS/{cert_type}/2025"
         status_text = 'Pass' if status == "Pass" else 'Fail'
 
-        # Register custom fonts if available
-        corsiva_font = 'times-italic'  # Fallback for Monotype Corsiva
-        arial_font = 'helv'  # Fallback for Arial
+        # ---------------------------
+        # Register fonts (if available)
+        # ---------------------------
+        corsiva_font = 'times-italic'  # fallback for Monotype Corsiva
+        arial_font = 'helv'            # fallback for Arial
         corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
         arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
 
@@ -340,156 +340,187 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             else:
                 st.warning("Invalid Arial font file; using Helvetica fallback.")
 
-        # Function to calculate optimal font size based on text length and available width
+        # ---------------------------
+        # Helpers (inside function)
+        # ---------------------------
         def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
-            """Calculate optimal font size to fit text within given width"""
+            """Adaptive font size to fit a target width."""
             font_size = base_font_size
-            # Tighter estimation: each character takes about 0.5 * font_size pixels (reduced from 0.6)
             estimated_width = len(text) * (font_size * 0.5)
-            
             while estimated_width > max_width and font_size > min_font_size:
                 font_size -= 1
                 estimated_width = len(text) * (font_size * 0.5)
-            
             return font_size
 
-        # Define replacements with adaptive font sizing
-        replacements = {}
+        def place_value_next_to_label(page, label_text, value_text,
+                                      box_width=220, x_pad=6, fontname="helv",
+                                      fontsize=18, align=fitz.TEXT_ALIGN_CENTER,
+                                      text_color=(0,0,0), fill=(1,1,1), y_nudge=0,
+                                      which_occurrence=0):
+            """
+            Find `label_text` and draw `value_text` in a clean textbox to the right.
+            Returns True if placed.
+            """
+            label_hits = page.search_for(label_text)
+            if not label_hits:
+                return False
 
-        # Employee name - calculate optimal size based on name length
+            # pick the requested occurrence (default 0 / first)
+            if which_occurrence >= len(label_hits):
+                return False
+            lab = label_hits[which_occurrence]
+
+            # draw a rectangle to the right of the label
+            value_rect = fitz.Rect(lab.x1 + x_pad,
+                                   lab.y0 + y_nudge,
+                                   lab.x1 + x_pad + box_width,
+                                   lab.y1 + y_nudge)
+
+            # clear the area first so previous text (or noise) disappears
+            page.add_redact_annot(value_rect, fill=fill)
+            page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+
+            # ensure rect is tall enough for the font
+            if value_rect.height < fontsize:
+                center_y = (value_rect.y0 + value_rect.y1) / 2
+                value_rect.y0 = center_y - fontsize / 2
+                value_rect.y1 = center_y + fontsize / 2
+
+            page.insert_textbox(value_rect, value_text,
+                                fontname=fontname,
+                                fontsize=fontsize,
+                                align=align,
+                                color=text_color)
+            return True
+
+        # ---------------------------
+        # Text we will use
+        # ---------------------------
+        new_date = test_date_obj.strftime("%d-%B-%Y")
+        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
+
+        # ---------------------------
+        # Name replacement (adaptive size, centered)
+        # ---------------------------
         old_name = 'Usman Waheed'
         new_name = emp_name
-        # Assume available width is about 500 pixels for name field (increased)
-        name_font_size = calculate_font_size(new_name, 500, 48, 28)  # Start with 48, minimum 28
-        replacements[old_name] = (new_name, corsiva_font, name_font_size, fitz.TEXT_ALIGN_CENTER, (0,0,0), (1,1,1))
-
-        # Dates - remove excessive spacing and use appropriate font size
-        old_date = '05-August-2022'
-        new_date = test_date_obj.strftime("%d-%B-%Y")
-        
-        # Remove the excessive padding - just use normal alignment
-        if template_type in ["MT", "VT"]:
-            align_date = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_date = fitz.TEXT_ALIGN_RIGHT
-        
-        # Increased font size for dates
-        date_font_size = 21  # Increased from 18
-        replacements[old_date] = (new_date, arial_font, date_font_size, align_date, (0,0,0), (1,1,1))
-
-        # Certificate number - remove padding and increase font size with flexible search
-        cert_number_found = False
-        possible_cert_patterns = [
-            '22/PTIS/VT/00358',  # From the certificate image
-            '25/PTIS/DPT/00410',  # From original code
-            'CERTIFICATE NO:',
-            'Certificate No:'
-        ]
-        
-        for old_cert_pattern in possible_cert_patterns:
-            hits = page.search_for(old_cert_pattern)
-            if hits:
-                for rect in hits:
-                    if template_type in ["MT", "VT"]:
-                        align_cert = fitz.TEXT_ALIGN_CENTER
-                    else:
-                        align_cert = fitz.TEXT_ALIGN_LEFT
-                    
-                    # Adjust rectangle to fit text tightly, reducing spacing
-                    cert_font_size = 21
-                    if rect.height < cert_font_size:
-                        center_y = (rect.y0 + rect.y1) / 2
-                        rect.y0 = center_y - cert_font_size / 2
-                        rect.y1 = center_y + cert_font_size / 2
-                    
-                    page.add_redact_annot(
-                        rect,
-                        text=cert_number,
-                        fontname=arial_font,
-                        fontsize=cert_font_size,  # Set to 21 as requested
-                        align=align_cert,
-                        text_color=(0,0,0),
-                        fill=(1,1,1)
-                    )
-                cert_number_found = True
-                break
-        
-        if not cert_number_found:
-            st.warning("Could not find certificate number field in template.")
-            # Still add to replacements dict as fallback
-            old_cert = '22/PTIS/VT/00358'
-
-        # Validity - remove excessive spacing and increase font size
-        old_validity = 'Validity: 04-August-2027'
-        new_validity = f'Validity: {validity_date_obj.strftime("%d-%B-%Y")}'
-        
-        if template_type in ["MT", "VT"]:
-            align_valid = fitz.TEXT_ALIGN_CENTER
-        else:
-            align_valid = fitz.TEXT_ALIGN_RIGHT
-        
-        # Use same increased font size as date for consistency
-        replacements[old_validity] = (new_validity, arial_font, date_font_size, align_valid, (0,0,0), (1,1,1))
-
-        # Apply replacements with better error handling
-        for old, (new, fontname, fontsize, align, color, fill) in replacements.items():
-            hits = page.search_for(old)
-            if not hits:
-                st.warning(f"Could not find text '{old}' in template. Skipping replacement.")
-                continue
-                
+        name_font_size = calculate_font_size(new_name, 500, 48, 28)
+        hits = page.search_for(old_name)
+        if hits:
             for rect in hits:
-                # Ensure the rectangle has some minimum height for the font
-                if rect.height < fontsize:
-                    # Expand rectangle height if too small
-                    center_y = (rect.y0 + rect.y1) / 2
-                    rect.y0 = center_y - fontsize/2
-                    rect.y1 = center_y + fontsize/2
-                
+                if rect.height < name_font_size:
+                    cy = (rect.y0 + rect.y1) / 2
+                    rect.y0 = cy - name_font_size/2
+                    rect.y1 = cy + name_font_size/2
                 page.add_redact_annot(
-                    rect,
-                    text=new,
-                    fontname=fontname,
-                    fontsize=fontsize,
-                    align=align,
-                    text_color=color,
-                    fill=fill
+                    rect, text=new_name, fontname=corsiva_font, fontsize=name_font_size,
+                    align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
                 )
 
-        # Status handling with better search and increased font size
+        # ---------------------------
+        # Validity replacement (right/center depending on template)
+        # ---------------------------
+        old_validity = 'Validity: 04-August-2027'
+        align_valid = fitz.TEXT_ALIGN_CENTER if template_type in ["MT", "VT"] else fitz.TEXT_ALIGN_RIGHT
+        hits = page.search_for(old_validity)
+        if hits:
+            for rect in hits:
+                fs = 21
+                if rect.height < fs:
+                    cy = (rect.y0 + rect.y1) / 2
+                    rect.y0 = cy - fs/2
+                    rect.y1 = cy + fs/2
+                page.add_redact_annot(
+                    rect, text=new_validity, fontname=arial_font, fontsize=fs,
+                    align=align_valid, text_color=(0,0,0), fill=(1,1,1)
+                )
+
+        # ---------------------------
+        # Status replacement (left aligned)
+        # ---------------------------
         new_status = f'Status: {status_text}'
-        align_status = fitz.TEXT_ALIGN_LEFT
-        
-        # Search for existing status text more broadly
-        status_found = False
-        possible_status_patterns = ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']
-        
-        for pattern in possible_status_patterns:
+        status_patterns = ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']
+        for pattern in status_patterns:
             hits = page.search_for(pattern)
             if hits:
                 for rect in hits:
-                    # Ensure rectangle is big enough for status text
-                    if rect.height < 20:  # Increased from 16
-                        center_y = (rect.y0 + rect.y1) / 2
-                        rect.y0 = center_y - 10  # Increased from 8
-                        rect.y1 = center_y + 10  # Increased from 8
-                    
+                    fs = 20
+                    if rect.height < fs:
+                        cy = (rect.y0 + rect.y1) / 2
+                        rect.y0 = cy - fs/2
+                        rect.y1 = cy + fs/2
                     page.add_redact_annot(
-                        rect,
-                        text=new_status,
-                        fontname=arial_font,
-                        fontsize=20,  # Increased from 16
-                        align=align_status,
-                        text_color=(0,0,0),
-                        fill=(1,1,1)
+                        rect, text=new_status, fontname=arial_font, fontsize=fs,
+                        align=fitz.TEXT_ALIGN_LEFT, text_color=(0,0,0), fill=(1,1,1)
                     )
-                status_found = True
-                break
+                break  # once replaced, stop
 
-        # Apply all redactions
+        # ---------------------------
+        # Precise alignment for the three marked items
+        # ---------------------------
+        # 1) "Date of Certification:" → center the date right of the label
+        placed1 = place_value_next_to_label(
+            page=page,
+            label_text="Date of Certification:",
+            value_text=new_date,
+            box_width=230,
+            x_pad=8,
+            fontname=arial_font,
+            fontsize=21,
+            align=fitz.TEXT_ALIGN_CENTER,
+            text_color=(0,0,0),
+            fill=(1,1,1),
+            y_nudge=0
+        )
+
+        # 2) "CERTIFICATE NO:" → center the generated number right of the label
+        placed2 = place_value_next_to_label(
+            page=page,
+            label_text="CERTIFICATE NO:",
+            value_text=cert_number,
+            box_width=260,
+            x_pad=10,
+            fontname=arial_font,
+            fontsize=21,
+            align=fitz.TEXT_ALIGN_CENTER,
+            text_color=(0,0,0),
+            fill=(1,1,1),
+            y_nudge=0
+        )
+
+        # 3) Examiner "DATE:" on the right → center the date right of the label
+        # If your template has multiple "DATE:" labels, adjust which_occurrence by index.
+        placed3 = place_value_next_to_label(
+            page=page,
+            label_text="DATE:",
+            value_text=new_date,
+            box_width=180,
+            x_pad=8,
+            fontname=arial_font,
+            fontsize=21,
+            align=fitz.TEXT_ALIGN_CENTER,
+            text_color=(0,0,0),
+            fill=(1,1,1),
+            y_nudge=0,
+            which_occurrence=0  # change to 1/2 if it finds a different "DATE:" first
+        )
+
+        # Optional: fallback logs if any label wasn't found
+        if not placed1:
+            st.warning("Could not precisely place 'Date of Certification' value (label not found).")
+        if not placed2:
+            st.warning("Could not precisely place 'CERTIFICATE NO' value (label not found).")
+        if not placed3:
+            st.warning("Could not precisely place Examiner 'DATE' value (label not found).")
+
+        # ---------------------------
+        # Commit redactions drawn above
+        # ---------------------------
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
 
-        # Save the modified PDF
+        # ---------------------------
+        # Save PDF
+        # ---------------------------
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
@@ -498,12 +529,15 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
 
         st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
-    
+
     except Exception as e:
         st.error(f"Error generating {template_type} certificate: {str(e)}")
-        if 'doc' in locals():
+        try:
             doc.close()
+        except:
+            pass
         return None, None
+
 # =====================
 # Individual Test Downloads
 # =====================
