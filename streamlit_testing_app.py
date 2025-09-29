@@ -587,113 +587,113 @@ if st.session_state.admin_logged_in:
     
     results_df = load_all_results()
     if not results_df.empty:
-    st.markdown("---")
-    st.subheader("🔍 Filters")
-    
-    # Create mappings for ID-Name relationship
-    id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
-    name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
-    
-    # Initialize session state keys if they don't exist
-    id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
-    name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
-    
-    if id_key not in st.session_state:
-        st.session_state[id_key] = "All"
-    if name_key not in st.session_state:
-        st.session_state[name_key] = "All"
-    
-    # Store previous values for change detection
-    prev_id_key = f"prev_{id_key}"
-    prev_name_key = f"prev_{name_key}"
-    
-    if prev_id_key not in st.session_state:
-        st.session_state[prev_id_key] = "All"
-    if prev_name_key not in st.session_state:
-        st.session_state[prev_name_key] = "All"
-    
-    filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-    
-    with filter_col1:
-        employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+        st.markdown("---")
+        st.subheader("🔍 Filters")
         
-        selected_emp_id = st.selectbox(
-            "Filter by Employee ID", 
-            employee_ids, 
-            index=employee_ids.index(st.session_state[id_key]) if st.session_state[id_key] in employee_ids else 0,
-            key=id_key
-        )
+        # Create mappings for ID-Name relationship
+        id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
+        name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
-        # Check if ID was changed manually and sync name accordingly
-        if selected_emp_id != st.session_state.get(prev_id_key, "All"):
-            if selected_emp_id != "All" and selected_emp_id in id_name_mapping:
-                expected_name = id_name_mapping[selected_emp_id]
-                if st.session_state[name_key] != expected_name:
-                    st.session_state[name_key] = expected_name
-                    st.session_state[prev_name_key] = expected_name
+        # Initialize session state keys if they don't exist
+        id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
+        name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
+        
+        if id_key not in st.session_state:
+            st.session_state[id_key] = "All"
+        if name_key not in st.session_state:
+            st.session_state[name_key] = "All"
+        
+        # Store previous values for change detection
+        prev_id_key = f"prev_{id_key}"
+        prev_name_key = f"prev_{name_key}"
+        
+        if prev_id_key not in st.session_state:
+            st.session_state[prev_id_key] = "All"
+        if prev_name_key not in st.session_state:
+            st.session_state[prev_name_key] = "All"
+        
+        filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+        
+        with filter_col1:
+            employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+            
+            selected_emp_id = st.selectbox(
+                "Filter by Employee ID", 
+                employee_ids, 
+                index=employee_ids.index(st.session_state[id_key]) if st.session_state[id_key] in employee_ids else 0,
+                key=id_key
+            )
+            
+            # Check if ID was changed manually and sync name accordingly
+            if selected_emp_id != st.session_state.get(prev_id_key, "All"):
+                if selected_emp_id != "All" and selected_emp_id in id_name_mapping:
+                    expected_name = id_name_mapping[selected_emp_id]
+                    if st.session_state[name_key] != expected_name:
+                        st.session_state[name_key] = expected_name
+                        st.session_state[prev_name_key] = expected_name
+                        st.rerun()
+                elif selected_emp_id == "All" and st.session_state[name_key] != "All":
+                    st.session_state[name_key] = "All"
+                    st.session_state[prev_name_key] = "All"
                     st.rerun()
-            elif selected_emp_id == "All" and st.session_state[name_key] != "All":
-                st.session_state[name_key] = "All"
-                st.session_state[prev_name_key] = "All"
-                st.rerun()
+            
+            # Update previous ID value
+            st.session_state[prev_id_key] = selected_emp_id
         
-        # Update previous ID value
-        st.session_state[prev_id_key] = selected_emp_id
-    
-    with filter_col2:
-        employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-        
-        selected_emp_name = st.selectbox(
-            "Filter by Employee Name", 
-            employee_names, 
-            index=employee_names.index(st.session_state[name_key]) if st.session_state[name_key] in employee_names else 0,
-            key=name_key
-        )
-        
-        # Check if name was changed manually and sync ID accordingly
-        if selected_emp_name != st.session_state.get(prev_name_key, "All"):
-            if selected_emp_name != "All" and selected_emp_name in name_id_mapping:
-                expected_id = name_id_mapping[selected_emp_name]
-                if st.session_state[id_key] != expected_id:
-                    st.session_state[id_key] = expected_id
-                    st.session_state[prev_id_key] = expected_id
+        with filter_col2:
+            employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
+            
+            selected_emp_name = st.selectbox(
+                "Filter by Employee Name", 
+                employee_names, 
+                index=employee_names.index(st.session_state[name_key]) if st.session_state[name_key] in employee_names else 0,
+                key=name_key
+            )
+            
+            # Check if name was changed manually and sync ID accordingly
+            if selected_emp_name != st.session_state.get(prev_name_key, "All"):
+                if selected_emp_name != "All" and selected_emp_name in name_id_mapping:
+                    expected_id = name_id_mapping[selected_emp_name]
+                    if st.session_state[id_key] != expected_id:
+                        st.session_state[id_key] = expected_id
+                        st.session_state[prev_id_key] = expected_id
+                        st.rerun()
+                elif selected_emp_name == "All" and st.session_state[id_key] != "All":
+                    st.session_state[id_key] = "All"
+                    st.session_state[prev_id_key] = "All"
                     st.rerun()
-            elif selected_emp_name == "All" and st.session_state[id_key] != "All":
-                st.session_state[id_key] = "All"
-                st.session_state[prev_id_key] = "All"
-                st.rerun()
+            
+            # Update previous name value
+            st.session_state[prev_name_key] = selected_emp_name
         
-        # Update previous name value
-        st.session_state[prev_name_key] = selected_emp_name
-    
-    with filter_col3:
-        statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
-        selected_status = st.selectbox(
-            "Filter by Status", 
-            statuses, 
-            index=0,
-            key=f"status_filter_{st.session_state.filter_reset_counter}"
-        )
-    
-    with filter_col4:
-        test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
-        selected_test_type = st.selectbox(
-            "Filter by Test Type", 
-            test_types, 
-            index=0,
-            key=f"test_type_filter_{st.session_state.filter_reset_counter}"
-        )
-    
-    filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
-    with filter_col5:
-        st.write("")
-        if st.button("🗑️ Clear All Filters"):
-            st.session_state.filter_reset_counter += 1
-            keys_to_remove = [key for key in st.session_state.keys() if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_', 'prev_emp_id_filter_', 'prev_emp_name_filter_'))]
-            for key in keys_to_remove:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
+        with filter_col3:
+            statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
+            selected_status = st.selectbox(
+                "Filter by Status", 
+                statuses, 
+                index=0,
+                key=f"status_filter_{st.session_state.filter_reset_counter}"
+            )
+        
+        with filter_col4:
+            test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
+            selected_test_type = st.selectbox(
+                "Filter by Test Type", 
+                test_types, 
+                index=0,
+                key=f"test_type_filter_{st.session_state.filter_reset_counter}"
+            )
+        
+        filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
+        with filter_col5:
+            st.write("")
+            if st.button("🗑️ Clear All Filters"):
+                st.session_state.filter_reset_counter += 1
+                keys_to_remove = [key for key in st.session_state.keys() if key.startswith(('emp_id_filter_', 'emp_name_filter_', 'status_filter_', 'test_type_filter_', 'prev_emp_id_filter_', 'prev_emp_name_filter_'))]
+                for key in keys_to_remove:
+                    if key in st.session_state:
+                        del st.session_state[key]
+                st.rerun()
         
         filtered_df = results_df.copy()
         
