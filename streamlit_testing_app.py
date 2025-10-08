@@ -31,6 +31,27 @@ creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"],
 client = gspread.authorize(creds)
 GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
+# === add these helpers here ===
+def draw_textbox(page, rect, text, fontname="helv", fontsize=16, align=fitz.TEXT_ALIGN_LEFT):
+    page.insert_textbox(rect, str(text), fontname=fontname, fontsize=fontsize,
+                        color=(0, 0, 0), align=align)
+
+def write_after_label(page, label_variants, text, pad=6, width=320, fontsize=21, fontname="helv", align=fitz.TEXT_ALIGN_LEFT):
+    for v in label_variants:
+        hits = page.search_for(v)
+        if hits:
+            lab = hits[0]
+            rect = fitz.Rect(lab.x1 + pad, lab.y0, lab.x1 + pad + width, lab.y1)
+            draw_textbox(page, rect, text, fontname=fontname, fontsize=fontsize, align=align)
+            return True
+    return False
+
+def find_header_rect(page, variants):
+    for v in variants:
+        hits = page.search_for(v)
+        if hits:
+            return hits[0]
+    return None
 # =====================
 # Utilities (updated)
 # =====================
@@ -346,8 +367,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
                          table_rows: dict | None = None,
                          has_validity: bool = False):
     """
-    table_rows: dict -> { "DS-1": {"Percentage": 82.5, "Criteria": 80.0, "Date": "..."} , ... }
-    has_validity: set False for templates without validity.
+    Draws overlay text (no redactions) so fixed template text (footer, contact lines) stays intact.
+    Fills the table by anchoring to the table headers and writing rows by y-offset.
+    table_rows = { "DS-1": {"Percentage": 82.5, "Criteria": 80.0, "Date": "..."} , ... }
     """
     template_path = get_template_path(template_type)
     if not template_path:
@@ -358,7 +380,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
         doc = fitz.open(template_path)
         page = doc[0]
 
-        # Parse test date robustly
+        # 1) Parse date
         test_dt = _to_dt_general(test_date)
         if pd.isna(test_dt):
             st.error(f"Invalid date format: {test_date} (unable to parse)")
@@ -368,20 +390,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
             test_dt = pd.to_datetime(test_dt).to_pydatetime()
         new_date = test_dt.strftime("%d-%B-%Y")
 
-        # Certificate number mapping
-        template_mapping = {
-            "MT_template": "MT", "PT_template": "PT", "UT_template": "UT", "VT_template": "VT",
-            "MT": "MT", "PT": "PT", "UT": "UT", "VT": "VT",
-            "DS-1_template": "DS-1",
-            "Cumulative_template": "CUMULATIVE",
-            "API RP 7G-2_template": "API RP 7G-2",
-            "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
-        }
-        cert_type = template_mapping.get(template_type, template_type)
-        cert_number = f"{emp_id}/PTIS/{cert_type}/{test_dt.year}"
-        status_text = "Pass" if status == "Pass" else "Fail"
-
-        # Fonts (fallback)
+        # 2) Fonts (fallback names OK)
         corsiva_font = "times-italic"
         arial_font = "helv"
         corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
@@ -403,109 +412,106 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
         except Exception:
             pass
 
-        # Inline write helper
-        def write_inline_after_label(label_variants, inline_text, right_extra=280, fontsize=21, fontname=arial_font, align=fitz.TEXT_ALIGN_LEFT):
-            for v in label_variants:
-                hits = page.search_for(v)
-                if hits:
-                    lab = hits[0]
-                    line_rect = fitz.Rect(lab.x0, lab.y0, lab.x0 + lab.width + right_extra, lab.y1)
-                    if line_rect.height < fontsize:
-                        cy = (line_rect.y0 + line_rect.y1) / 2
-                        line_rect.y0 = cy - fontsize/2
-                        line_rect.y1 = cy + fontsize/2
-                    page.add_redact_annot(
-                        line_rect, text=inline_text, fontname=fontname, fontsize=fontsize,
-                        align=align, text_color=(0,0,0), fill=(1,1,1)
-                    )
-                    return True
-            return False
+        # 3) Cert no / mapping
+        template_mapping = {
+            "MT_template": "MT", "PT_template": "PT", "UT_template": "UT", "VT_template": "VT",
+            "MT": "MT", "PT": "PT", "UT": "UT", "VT": "VT",
+            "DS-1_template": "DS-1",
+            "Cumulative_template": "CUMULATIVE",
+            "API RP 7G-2_template": "API RP 7G-2",
+            "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
+        }
+        cert_type = template_mapping.get(template_type, template_type)
+        cert_number = f"{emp_id}/PTIS/{cert_type}/{test_dt.year}"
+        status_text = "Pass" if str(status).strip().lower() == "pass" else "Fail"
 
-        # Name replacement: try placeholder then fallback
+        # 4) Name (overlay). First, look for the placeholder; otherwise use a generic centered area.
         name_hits = page.search_for("Usman Waheed")
         if name_hits:
             name_rect = name_hits[0]
         else:
-            # fallback rect—adjust as needed per template
+            # fallback area: adjust if needed for your templates
             name_rect = fitz.Rect(120, 330, 500, 370)
-        page.add_redact_annot(
-            name_rect, text=str(emp_name), fontname=corsiva_font, fontsize=40,
-            align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
-        )
+        draw_textbox(page, name_rect, emp_name, fontname=corsiva_font, fontsize=40, align=fitz.TEXT_ALIGN_CENTER)
 
-        # Status (if present)
+        # 5) Status (optional if your template shows it)
         for pat in ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']:
             sth = page.search_for(pat)
             if sth:
                 r = sth[0]
-                fs = 20
-                cy = (r.y0 + r.y1) / 2
-                r.y0 = cy - fs/2
-                r.y1 = cy + fs/2
-                page.add_redact_annot(
-                    r, text=f"Status: {status_text}", fontname=arial_font, fontsize=fs,
-                    align=fitz.TEXT_ALIGN_LEFT, text_color=(0,0,0), fill=(1,1,1)
-                )
+                draw_textbox(page, r, f"Status: {status_text}", fontname=arial_font, fontsize=20, align=fitz.TEXT_ALIGN_LEFT)
                 break
 
-        # CERTIFICATE NO / DATE
-        write_inline_after_label(["CERTIFICATE NO:", "Certificate No:", "CERTIFICATE NO"], f"CERTIFICATE NO: {cert_number}", right_extra=320)
-        write_inline_after_label(["DATE:", "Date:"], f"DATE: {new_date}", right_extra=240)
+        # 6) CERTIFICATE NO / DATE (overlay to the right of labels)
+        write_after_label(page, ["CERTIFICATE NO:", "Certificate No:", "CERTIFICATE NO"], f"{cert_number}",
+                          pad=8, width=360, fontsize=21, fontname=arial_font, align=fitz.TEXT_ALIGN_LEFT)
+        write_after_label(page, ["DATE:", "Date:"], f"{new_date}",
+                          pad=8, width=260, fontsize=21, fontname=arial_font, align=fitz.TEXT_ALIGN_LEFT)
 
-        # Validity (skip unless specified)
+        # 7) Validity: only if the template truly has it
         if has_validity:
-            validity_label_hits = page.search_for("Validity:")
-            if validity_label_hits:
-                vlab = validity_label_hits[0]
-                fs = 21
-                validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + 260, vlab.y1)
-                if validity_line_rect.height < fs:
-                    cy = (validity_line_rect.y0 + validity_line_rect.y1) / 2
-                    validity_line_rect.y0 = cy - fs/2
-                    validity_line_rect.y1 = cy + fs/2
+            # If your templates actually have a visible "Validity:" label:
+            vhit = page.search_for("Validity:")
+            if vhit:
+                vlab = vhit[0]
                 validity_date_obj = test_dt + relativedelta(years=5)
-                new_validity = f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}"
-                page.add_redact_annot(
-                    validity_line_rect, text=new_validity, fontname=arial_font,
-                    fontsize=fs, align=fitz.TEXT_ALIGN_LEFT, text_color=(0,0,0), fill=(1,1,1)
-                )
+                validity_text = f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}"
+                rect = fitz.Rect(vlab.x1 + 8, vlab.y0, vlab.x1 + 8 + 300, vlab.y1)
+                draw_textbox(page, rect, validity_text, fontname=arial_font, fontsize=21, align=fitz.TEXT_ALIGN_LEFT)
 
-        # TABLE FILL: Standard | Percentage | Criteria (if provided)
+        # 8) TABLE FILL — anchor to headers and write rows under them
         if table_rows:
-            for display_label, vals in table_rows.items():
-                if not vals:
-                    continue
-                # find row by label text (try multiple casings)
-                row_hits = []
-                for variant in {display_label, display_label.upper(), display_label.title()}:
-                    row_hits = page.search_for(str(variant))
-                    if row_hits:
+            # locate headers
+            h_std = find_header_rect(page, ["Standard", "STANDARD"])
+            h_pct = find_header_rect(page, ["Percentage", "PERCENTAGE"])
+            h_crt = find_header_rect(page, ["Criteria", "CRITERIA"])
+
+            if h_std and h_pct and h_crt:
+                # column rects under headers (tweak widths if needed)
+                col_pad_y = 6          # gap below header line
+                row_height = 20        # vertical spacing per row
+                max_rows = 10          # safety cap
+
+                x_std = h_std.x0 + 4;   w_std = max(120, h_std.width)      # first column
+                x_pct = h_pct.x0 + 4;   w_pct = max(80, h_pct.width)       # second column
+                x_crt = h_crt.x0 + 4;   w_crt = max(80, h_crt.width)       # third column
+                base_y0 = h_std.y1 + col_pad_y
+                base_y1 = base_y0 + (h_std.y1 - h_std.y0)  # same height as header line for first row; we’ll adjust
+
+                # make a stable order for core four first, then any others present
+                preferred_order = ["DS-1", "Cumulative", "API SPEC 5CT & 5A5", "API RP 7G-2"]
+                rest = [k for k in table_rows.keys() if k not in preferred_order]
+                ordered = [k for k in preferred_order if k in table_rows] + rest
+
+                rcount = 0
+                for label in ordered:
+                    if rcount >= max_rows:
                         break
-                if not row_hits:
-                    continue
-                lr = row_hits[0]
-                fs = 16
+                    vals = table_rows.get(label)
+                    if not vals:
+                        continue
 
-                # Heuristic column offsets: tweak if any template needs
-                pct_rect = fitz.Rect(lr.x0 + 220, lr.y0, lr.x0 + 340, lr.y1)
-                crt_rect = fitz.Rect(lr.x0 + 360, lr.y0, lr.x0 + 480, lr.y1)
+                    # row rectangles
+                    y0 = base_y0 + rcount * row_height
+                    y1 = y0 + row_height - 2
 
-                pct_txt = f"{vals['Percentage']:.2f}%"
-                crt_txt = f"{vals['Criteria']:.0f}%"
+                    rect_std = fitz.Rect(x_std, y0, x_std + w_std, y1)
+                    rect_pct = fitz.Rect(x_pct, y0, x_pct + w_pct, y1)
+                    rect_crt = fitz.Rect(x_crt, y0, x_crt + w_crt, y1)
 
-                page.add_redact_annot(
-                    pct_rect, text=pct_txt, fontname=arial_font, fontsize=fs,
-                    align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
-                )
-                page.add_redact_annot(
-                    crt_rect, text=crt_txt, fontname=arial_font, fontsize=fs,
-                    align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
-                )
+                    pct_txt = f"{float(vals.get('Percentage', 0.0)):.2f}%"
+                    crt_val = vals.get('Criteria', '')
+                    crt_txt = f"{float(str(crt_val).replace('%','').strip() or 0):.0f}%"
 
-        # Burn
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+                    draw_textbox(page, rect_std, label,   fontname=arial_font, fontsize=16, align=fitz.TEXT_ALIGN_LEFT)
+                    draw_textbox(page, rect_pct, pct_txt, fontname=arial_font, fontsize=16, align=fitz.TEXT_ALIGN_CENTER)
+                    draw_textbox(page, rect_crt, crt_txt, fontname=arial_font, fontsize=16, align=fitz.TEXT_ALIGN_CENTER)
 
-        # Save
+                    rcount += 1
+            else:
+                st.warning("Table headers not found in template; skipped table fill.")
+
+        # 9) SAVE (no apply_redactions anywhere → footer stays)
         safe_name = "".join(c for c in str(emp_name) if c.isalnum() or c in (" ", "-", "_")).rstrip()
         date_str = test_dt.strftime("%d-%m-%Y")
         base_name = template_type if template_type.endswith("_template") else template_type
@@ -515,6 +521,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
         doc.close()
         st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
+
     except Exception as e:
         try:
             doc.close()
