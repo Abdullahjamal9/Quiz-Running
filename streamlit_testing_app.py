@@ -366,7 +366,7 @@ def _fit_fontsize(page, text, max_width, fontname="helv", start_size=18, min_siz
     """Reduce font size until text width fits max_width (avoids disappearing text)."""
     fs = start_size
     while fs >= min_size:
-        width = page.get_text_length(str(text), fontname=fontname, fontsize=fs)
+        width = fitz.get_text_length(str(text), fontname=fontname, fontsize=fs)
         if width <= max_width:
             return fs
         fs -= 1
