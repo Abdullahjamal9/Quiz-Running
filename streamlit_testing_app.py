@@ -32,11 +32,14 @@ client = gspread.authorize(creds)
 GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 # =====================
-# Utilities (new/updated)
+# Utilities (updated)
 # =====================
 def _norm(s: str) -> str:
-    """Normalize strings for robust comparisons."""
-    return re.sub(r'\s+', ' ', str(s).strip().upper())
+    """Normalize strings for robust comparisons (handle NBSP, ZWSP, punctuation spacing)."""
+    s = re.sub(r'[\u00A0\u200B]', ' ', str(s))     # NBSP, ZWSP -> space
+    s = s.replace('/', ' / ').replace('&', ' & ').replace('-', ' - ')
+    s = re.sub(r'\s+', ' ', s.strip().upper())
+    return s
 
 def _to_dt_general(x):
     """Robust datetime parser for 'Date / Time' values coming from Google Sheets."""
@@ -54,7 +57,7 @@ def _to_dt_general(x):
             continue
     return pd.to_datetime(x, errors="coerce")
 
-# Canonical labels used on the certificates (match your template text)
+# Canonical Core-4 labels (match your templates)
 STD_LABELS_CORE = [
     "DS-1",
     "Cumulative",                 # canonical spelling
@@ -62,40 +65,66 @@ STD_LABELS_CORE = [
     "API RP 7G-2",
 ]
 
+# Generous alias set (extend if you see more variants)
 STD_ALIASES = {
-    "DS-1": ["DS-1", "DS1", "DS- 1"],
-    "Cumulative": ["CUMULATIVE", "CUMMULATIVE"],  # accept both spellings
-    "API SPEC 5CT & 5A5": ["API SPEC 5CT & 5A5", "API 5CT", "API 5CT & 5A5"],
-    "API RP 7G-2": ["API RP 7G-2", "API 7G-2", "API RP 7G2"],
-    "MPT (General)": ["MPT (GENERAL)", "MAGNETIC PARTICLE TESTING (GENERAL)"],
-    "MPT (Specific)": ["MPT (SPECIFIC)", "MAGNETIC PARTICLE TESTING (SPECIFIC)"],
-    "Penetrant Testing (General)": ["PENETRANT TESTING (GENERAL)", "PT (GENERAL)"],
-    "Penetrant Testing (Specific)": ["PENETRANT TESTING (SPECIFIC)", "PT (SPECIFIC)"],
-    "Ultrasonic": ["ULTRASONIC", "UT", "ULTRASONIC TESTING"],
-    "Visual Testing": ["VISUAL TESTING", "VT"],
+    "DS-1": [
+        "DS-1", "DS1", "DS - 1",
+    ],
+    "Cumulative": [
+        "CUMULATIVE", "CUMMULATIVE", "CUMULATIVE TEST", "CUMMULATIVE TEST",
+    ],
+    "API SPEC 5CT & 5A5": [
+        "API SPEC 5CT & 5A5", "API 5CT & 5A5", "API 5CT", "API SPEC 5CT",
+        "API SPEC 5CT / 5A5", "API SPEC 5CT AND 5A5", "API SPEC 5CT & A5A",
+    ],
+    "API RP 7G-2": [
+        "API RP 7G-2", "API 7G-2", "API RP 7G2", "API RP7G-2", "API RP 7G 2",
+    ],
+    "MPT (General)": [
+        "MPT (GENERAL)", "MAGNETIC PARTICLE TESTING (GENERAL)", "MPT GENERAL",
+    ],
+    "MPT (Specific)": [
+        "MPT (SPECIFIC)", "MAGNETIC PARTICLE TESTING (SPECIFIC)", "MPT SPECIFIC",
+    ],
+    "Penetrant Testing (General)": [
+        "PENETRANT TESTING (GENERAL)", "PT (GENERAL)", "PT GENERAL",
+    ],
+    "Penetrant Testing (Specific)": [
+        "PENETRANT TESTING (SPECIFIC)", "PT (SPECIFIC)", "PT SPECIFIC",
+    ],
+    "Ultrasonic": [
+        "ULTRASONIC", "UT", "ULTRASONIC TESTING",
+    ],
+    "Visual Testing": [
+        "VISUAL TESTING", "VT",
+    ],
 }
 
-
-def _is_alias_of(std_in_sheet: str, desired_display_label: str) -> bool:
+def _is_alias_of(std_in_sheet: str, desired_display_label: str, relaxed: bool = False) -> bool:
+    """Check if a sheet value matches a desired label (with aliases), optionally with relaxed substring fallback."""
     s = _norm(std_in_sheet)
     targets = {_norm(a) for a in STD_ALIASES.get(desired_display_label, [desired_display_label])}
-    return s in targets
+    if s in targets:
+        return True
+    if relaxed:
+        for t in targets:
+            if t in s or s in t:
+                return True
+    return False
 
 def get_latest_scores_for(employee_df: pd.DataFrame, display_labels: list[str]) -> dict:
     """
-    Return { display_label: {"Percentage": float, "Criteria": float, "Date": str} } 
+    Return { display_label: {"Percentage": float, "Criteria": float, "Date": str} }
     for the *latest* attempt per label (based on parsed datetime).
     """
     out = {}
     if employee_df.empty:
         return out
-
     df = employee_df.copy()
     df["__DT__"] = df["Date / Time"].apply(_to_dt_general)
     df = df.sort_values("__DT__", ascending=False)
-
     for label in display_labels:
-        row = next((r for _, r in df.iterrows() if _is_alias_of(r["Test Type"], label)), None)
+        row = next((r for _, r in df.iterrows() if _is_alias_of(r["Test Type"], label, relaxed=True)), None)
         if row is not None:
             pct = float(row["Percentage"]) if pd.notna(row["Percentage"]) else 0.0
             crit = str(row["Criteria"])
@@ -246,7 +275,7 @@ def load_questions():
         st.info("Generating sample questions for testing...")
         sample_questions = pd.DataFrame({
             "Qno": [1, 2, 3, 4, 5],
-            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cummulative"],
+            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cumulative"],
             "Question": [
                 "What is 2 + 2?",
                 "Capital of France?",
@@ -265,7 +294,7 @@ def load_questions():
 
 def get_info_for_standard(standards, selected_standard):
     try:
-        if selected_standard == "Cummulative":
+        if selected_standard == "Cumulative":
             return 50, 80, 0, 50, 0
         row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
         if not row.empty:
@@ -287,17 +316,18 @@ def get_info_for_standard(standards, selected_standard):
 # =====================
 def get_template_path(template_type):
     """Return the absolute path to the template or None."""
-    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf") if not template_type.endswith(".pdf") else os.path.join(DB_FOLDER, template_type)
-    # If passed "DS-1_template" we want db/DS-1_template.pdf
-    if not template_type.endswith(".pdf") and os.path.exists(template_path):
-        return template_path
-    # If passed a full file name like "DS-1_template.pdf"
-    direct_path = os.path.join(DB_FOLDER, template_type) if template_type.endswith(".pdf") else None
-    if direct_path and os.path.exists(direct_path):
-        return direct_path
+    # Allow both "DS-1_template" and "DS-1_template.pdf"
+    if template_type.endswith(".pdf"):
+        direct_path = os.path.join(DB_FOLDER, template_type)
+        if os.path.exists(direct_path):
+            return direct_path
+    else:
+        candidate = os.path.join(DB_FOLDER, f"{template_type}.pdf") if template_type.endswith("_template") else os.path.join(DB_FOLDER, f"{template_type}_template.pdf")
+        if os.path.exists(candidate):
+            return candidate
 
-    # Fallback to GitHub raw (optional)
-    fname = f"{template_type}_template.pdf" if not template_type.endswith(".pdf") else template_type
+    # Optional: fallback to GitHub raw
+    fname = template_type if template_type.endswith(".pdf") else (f"{template_type}.pdf" if template_type.endswith("_template") else f"{template_type}_template.pdf")
     github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{fname}"
     try:
         response = requests.get(github_url, timeout=10)
@@ -317,7 +347,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
                          has_validity: bool = False):
     """
     table_rows: dict -> { "DS-1": {"Percentage": 82.5, "Criteria": 80.0, "Date": "..."} , ... }
-    has_validity: set False for new templates without validity.
+    has_validity: set False for templates without validity.
     """
     template_path = get_template_path(template_type)
     if not template_path:
@@ -343,7 +373,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
             "MT_template": "MT", "PT_template": "PT", "UT_template": "UT", "VT_template": "VT",
             "MT": "MT", "PT": "PT", "UT": "UT", "VT": "VT",
             "DS-1_template": "DS-1",
-            "Cumulative_template": "CUMMULATIVE",
+            "Cumulative_template": "CUMULATIVE",
             "API RP 7G-2_template": "API RP 7G-2",
             "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
         }
@@ -478,7 +508,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
         # Save
         safe_name = "".join(c for c in str(emp_name) if c.isalnum() or c in (" ", "-", "_")).rstrip()
         date_str = test_dt.strftime("%d-%m-%Y")
-        # Allow template_type both with and without _template suffix in file name
         base_name = template_type if template_type.endswith("_template") else template_type
         certificate_filename = f"{base_name}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
@@ -541,7 +570,7 @@ def download_individual_test(emp_id, emp_name, test_data):
 # Helpers (quiz)
 # =====================
 def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
-    if standard == "Cummulative":
+    if standard == "Cumulative":
         cand = questions_df.copy()
     else:
         cand = questions_df[
@@ -706,7 +735,6 @@ if st.session_state.admin_logged_in:
         st.rerun()
     results_df = load_all_results()
     if not results_df.empty:
-        # add parsed datetime for consistent sorting/logic
         results_df["__DT__"] = results_df["Date / Time"].apply(_to_dt_general)
 
         st.markdown("---")
@@ -811,7 +839,6 @@ if st.session_state.admin_logged_in:
                 emp_id_display = name_id_mapping.get(selected_emp_name, "Unknown")
             if not emp_filtered.empty:
                 st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}** (ID: {emp_id_display})")
-                # newest last if you prefer; change to False for newest first
                 emp_filtered = emp_filtered.sort_values("__DT__", ascending=True).reset_index(drop=True)
                 for idx, test_row in emp_filtered.iterrows():
                     with st.expander(f"Test {idx+1}: {test_row['Test Type']} - {test_row['Date / Time']} ({test_row['Status']})", expanded=False):
@@ -921,7 +948,7 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
 
-        passed_results = results_df[results_df["Status"].astype(str).str.upper().eq("PASS")].copy()
+        passed_results = results_df[results_df["Status"].astype(str).str.upper().str.strip().eq("PASS")].copy()
         if passed_results.empty:
             st.info("No passed results found.")
         else:
@@ -934,16 +961,53 @@ if st.session_state.admin_logged_in:
                 key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
             )
 
-            def has_core4(passed_df_for_emp):
-                labels_needed = ["DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"]
+            # --- Debug expander: see what's missing for any employee ---
+            with st.expander("🔎 Debug eligibility (see what’s missing)"):
+                relax = st.checkbox("Use relaxed matching (substring fallback)", value=True,
+                                    help="Helps catch near-spellings like RP7G-2 vs RP 7G-2.")
+                who = st.selectbox("Pick an employee", ["(select)"] + sorted(passed_results["Name"].unique().tolist()))
+                if who != "(select)":
+                    emp_df_dbg = passed_results[passed_results["Name"] == who].copy()
+                    st.write("**Detected passed standards (normalized):**")
+                    st.write(sorted({_norm(x) for x in emp_df_dbg["Test Type"].astype(str)}))
+
+                    core_needed = ["DS-1", "Cumulative", "API SPEC 5CT & 5A5", "API RP 7G-2"]
+                    core_found = [lbl for lbl in core_needed if any(_is_alias_of(x, lbl, relaxed=relax) for x in emp_df_dbg["Test Type"])]
+                    core_missing = [lbl for lbl in core_needed if lbl not in core_found]
+
+                    st.markdown("**Core-4 status**")
+                    st.json({"found": core_found, "missing": core_missing, "eligible": len(core_missing)==0})
+
+                    def has_ndt_req(df, which, relaxed=False):
+                        needed_map = {
+                            "MT": ["MPT (General)", "MPT (Specific)"],
+                            "PT": ["Penetrant Testing (General)", "Penetrant Testing (Specific)"],
+                            "UT": ["Ultrasonic"],
+                            "VT": ["Visual Testing"],
+                        }
+                        needed = needed_map[which]
+                        avail = set()
+                        for _, r in df.iterrows():
+                            for label in needed:
+                                if _is_alias_of(r["Test Type"], label, relaxed=relax):
+                                    avail.add(label)
+                        return set(needed).issubset(avail)
+
+                    ndt_status = {k: has_ndt_req(emp_df_dbg, k, relaxed=relax) for k in ["MT","PT","UT","VT"]}
+                    st.markdown("**NDT eligibility**")
+                    st.json(ndt_status)
+
+            # Eligibility helpers with relaxed option (used for generation too)
+            def has_core4(passed_df_for_emp, relaxed=True):
+                labels_needed = ["DS-1", "Cumulative", "API SPEC 5CT & 5A5", "API RP 7G-2"]
                 available = set()
                 for _, r in passed_df_for_emp.iterrows():
                     for label in labels_needed:
-                        if _is_alias_of(r["Test Type"], label):
+                        if _is_alias_of(r["Test Type"], label, relaxed=relaxed):
                             available.add(label)
                 return set(labels_needed).issubset(available)
 
-            def has_ndt_requirements(passed_df_for_emp, which: str) -> bool:
+            def has_ndt_requirements(passed_df_for_emp, which: str, relaxed=True) -> bool:
                 needed_map = {
                     "MT": ["MPT (General)", "MPT (Specific)"],
                     "PT": ["Penetrant Testing (General)", "Penetrant Testing (Specific)"],
@@ -954,9 +1018,12 @@ if st.session_state.admin_logged_in:
                 avail = set()
                 for _, r in passed_df_for_emp.iterrows():
                     for label in needed:
-                        if _is_alias_of(r["Test Type"], label):
+                        if _is_alias_of(r["Test Type"], label, relaxed=relaxed):
                             avail.add(label)
                 return set(needed).issubset(avail)
+
+            # Toggle here; once sheet labels are standardized, set to False
+            RELAXED_MATCH = True
 
             if st.button("Generate Certificates for Qualifying Employees"):
                 to_process = []
@@ -969,18 +1036,19 @@ if st.session_state.admin_logged_in:
                         st.warning("No passed results for the selected employee.")
                     else:
                         to_process.append((selected_cert_name, grp))
+
                 certificate_files = []
-                
+
                 for emp_name, emp_df in to_process:
                     emp_id = str(emp_df.iloc[0]["ID"])
-                
+
                     # ---------- Core-4 (ONLY when all four are passed) ----------
-                    if has_core4(emp_df):
+                    if has_core4(emp_df, relaxed=RELAXED_MATCH):
                         latest_scores_core = get_latest_scores_for(emp_df, STD_LABELS_CORE)
                         rows_core = {k: v for k, v in latest_scores_core.items() if v}
                         dates = [v["Date"] for v in rows_core.values()]
                         cert_date = max(dates, key=_to_dt_general) if dates else emp_df.iloc[0]["Date / Time"]
-                
+
                         for core_template in [
                             "DS-1_template",
                             "Cumulative_template",
@@ -995,15 +1063,14 @@ if st.session_state.admin_logged_in:
                             )
                             if pth:
                                 certificate_files.append((pth, fn))
-                
+
                     # ---------- NDT certificates (independent, one-by-one when met) ----------
-                    # Which NDT templates to generate for THIS employee
                     ndt_templates = []
-                    if has_ndt_requirements(emp_df, "MT"): ndt_templates.append("MT_template")
-                    if has_ndt_requirements(emp_df, "PT"): ndt_templates.append("PT_template")
-                    if has_ndt_requirements(emp_df, "UT"): ndt_templates.append("UT_template")
-                    if has_ndt_requirements(emp_df, "VT"): ndt_templates.append("VT_template")
-                
+                    if has_ndt_requirements(emp_df, "MT", relaxed=RELAXED_MATCH): ndt_templates.append("MT_template")
+                    if has_ndt_requirements(emp_df, "PT", relaxed=RELAXED_MATCH): ndt_templates.append("PT_template")
+                    if has_ndt_requirements(emp_df, "UT", relaxed=RELAXED_MATCH): ndt_templates.append("UT_template")
+                    if has_ndt_requirements(emp_df, "VT", relaxed=RELAXED_MATCH): ndt_templates.append("VT_template")
+
                     if ndt_templates:
                         ndt_labels = STD_LABELS_CORE + [
                             "MPT (General)", "MPT (Specific)",
@@ -1014,42 +1081,13 @@ if st.session_state.admin_logged_in:
                         rows_ndt = {k: v for k, v in latest_scores_ndt.items() if v}
                         dates_ndt = [v["Date"] for v in rows_ndt.values()]
                         cert_date_ndt = max(dates_ndt, key=_to_dt_general) if dates_ndt else emp_df.iloc[0]["Date / Time"]
-                
+
                         for nt in ndt_templates:
                             pth, fn = generate_certificate(
                                 emp_id, emp_name, cert_date_ndt, status="Pass",
                                 template_type=nt,
-                                table_rows=rows_ndt,   # same table structure; your NDT templates include the table too
+                                table_rows=rows_ndt,   # new NDT templates also have the table
                                 has_validity=False
-                            )
-                            if pth:
-                                certificate_files.append((pth, fn))
-
-
-                    # --- NDT templates (only if their own requirements met) ---
-                    ndt_templates = []
-                    if has_ndt_requirements(emp_df, "MT"): ndt_templates.append("MT_template")
-                    if has_ndt_requirements(emp_df, "PT"): ndt_templates.append("PT_template")
-                    if has_ndt_requirements(emp_df, "UT"): ndt_templates.append("UT_template")
-                    if has_ndt_requirements(emp_df, "VT"): ndt_templates.append("VT_template")
-
-                    if ndt_templates:
-                        ndt_labels = STD_LABELS_CORE + [
-                            "MPT (General)", "MPT (Specific)",
-                            "Penetrant Testing (General)", "Penetrant Testing (Specific)",
-                            "Ultrasonic", "Visual Testing"
-                        ]
-                        latest_scores_ndt = get_latest_scores_for(emp_df, ndt_labels)
-                        rows_ndt = {k: v for k, v in latest_scores_ndt.items() if v}
-                        dates_ndt = [v["Date"] for v in rows_ndt.values()]
-                        cert_date_ndt = max(dates_ndt, key=_to_dt_general) if dates_ndt else emp_df.iloc[0]["Date / Time"]
-
-                        for nt in ndt_templates:
-                            pth, fn = generate_certificate(
-                                emp_id, emp_name, cert_date_ndt, status="Pass",
-                                template_type=nt,
-                                table_rows=rows_ndt,
-                                has_validity=False   # the updated NDT templates also use table; no validity
                             )
                             if pth:
                                 certificate_files.append((pth, fn))
@@ -1085,52 +1123,43 @@ if st.session_state.admin_logged_in:
 # Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Employee Login")
-    
-    # Callback function to auto-populate name when Employee ID changes
+
     def auto_populate_name():
-        """Auto-populate employee name based on Employee ID"""
         emp_id_input = st.session_state[f"id_{st.session_state.reset_counter}"]
         if emp_id_input and not employees.empty:
             try:
                 fetched = employees[employees["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
                 if not fetched.empty:
                     fetched_name = str(fetched.iloc[0]["Name"])
-                    # Update the name field in session state
                     st.session_state[f"name_{st.session_state.reset_counter}"] = fetched_name
                 else:
-                    # Clear name field if no matching ID found
                     st.session_state[f"name_{st.session_state.reset_counter}"] = ""
             except Exception:
-                # Clear name field if error occurs
                 st.session_state[f"name_{st.session_state.reset_counter}"] = ""
-    
+
     col1, col2 = st.columns(2)
     with col1:
         emp_id = st.text_input(
-            "Employee ID", 
-            value="", 
+            "Employee ID",
+            value="",
             key=f"id_{st.session_state.reset_counter}",
             help="Enter your employee identification number and press Enter",
             on_change=auto_populate_name
         )
-    
-    # Initialize name field if not exists
     name_key = f"name_{st.session_state.reset_counter}"
     if name_key not in st.session_state:
         st.session_state[name_key] = ""
-    
     with col2:
         name = st.text_input(
-            "Name", 
+            "Name",
             key=name_key,
             help="This will auto-fill when you enter a valid Employee ID"
         )
-    
-    # Rest of the login form remains the same
+
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
-    if "Cummulative" not in options:
-        options = ["Cummulative"] + options
+    if "Cumulative" not in options:
+        options = ["Cumulative"] + options
     selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
     total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
     c1, c2, c3 = st.columns(3)
@@ -1162,6 +1191,7 @@ elif "quiz" in st.session_state:
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
 
+    # Auto submit on timeout
     if total_secs > 0 and len(qstate["queue"]) > 0 and "submitted" not in st.session_state:
         if remaining <= 0:
             st.error("Time is up! Auto-submitting your test...")
@@ -1170,12 +1200,11 @@ elif "quiz" in st.session_state:
                     qstate["wrong"] += 1
             qstate["queue"] = []
             st.session_state.quiz = qstate
-            
+
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
             raw_score = right - (wrong * 0.25)
             final_score = max(0, raw_score)
             pct = (final_score/total_q)*100 if total_q else 0.0
-            
             status = "Pass" if pct >= float(criteria) else "Fail"
             ok, msg = append_result(
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
@@ -1190,28 +1219,15 @@ elif "quiz" in st.session_state:
         rem_s = remaining % 60
 
         if remaining <= 300:
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "🚨"
-            pulse_class = "timer-pulse"
+            bg_color = "#DC2626"; text_color = "white"; icon = "🚨"; pulse_class = "timer-pulse"
         elif remaining <= 900:
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "⚠️"
-            pulse_class = ""
+            bg_color = "#DC2626"; text_color = "white"; icon = "⚠️"; pulse_class = ""
         elif remaining <= 1200:
-            bg_color = "#D97706"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
+            bg_color = "#D97706"; text_color = "white"; icon = "⏰"; pulse_class = ""
         else:
-            bg_color = "#1E3A8A"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
+            bg_color = "#1E3A8A"; text_color = "white"; icon = "⏰"; pulse_class = ""
 
         progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
-
         timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -1219,18 +1235,10 @@ elif "quiz" in st.session_state:
             50% {{ transform: scale(1.05); opacity: 0.8; }}
             100% {{ transform: scale(1); opacity: 1; }}
         }}
-        .timer-pulse {{
-            animation: pulse 1s infinite;
-        }}
+        .timer-pulse {{ animation: pulse 1s infinite; }}
         .timer-container {{
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            font-size: 22px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-            border: 3px solid rgba(255, 255, 255, 0.1);
+            padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold;
+            margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
         <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
@@ -1246,13 +1254,12 @@ elif "quiz" in st.session_state:
             </div>
         </div>
         <script>
-        (function() {{
+        (function(){{
             var remaining = {remaining};
             var total_secs = {total_secs};
             var interval = null;
-
-            function updateTimer() {{
-                if (remaining <= 0) {{
+            function updateTimer(){{
+                if (remaining <= 0){{
                     document.getElementById('timer_display').innerText = '00:00:00';
                     document.getElementById('progress_bar').style.width = '0%';
                     clearInterval(interval);
@@ -1260,13 +1267,8 @@ elif "quiz" in st.session_state:
                     form.method = 'POST';
                     form.action = window.location.href;
                     var input = document.createElement('input');
-                    input.type = 'hidden';
-                    input.name = 'timeout';
-                    input.value = 'true';
-                    form.appendChild(input);
-                    document.body.appendChild(form);
-                    form.submit();
-                    return;
+                    input.type = 'hidden'; input.name = 'timeout'; input.value = 'true';
+                    form.appendChild(input); document.body.appendChild(form); form.submit(); return;
                 }}
                 var h = Math.floor(remaining / 3600);
                 var m = Math.floor((remaining % 3600) / 60);
@@ -1274,43 +1276,10 @@ elif "quiz" in st.session_state:
                 document.getElementById('timer_display').innerText = `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
                 var progress = (remaining / total_secs) * 100;
                 document.getElementById('progress_bar').style.width = progress + '%';
-                var container = document.getElementById('timer_container');
-                var iconElem = document.getElementById('timer_icon');
-                var bg_color, text_color, icon, pulse_class = '';
-                if (remaining <= 300) {{
-                    bg_color = '#DC2626';
-                    text_color = 'white';
-                    icon = '🚨';
-                    pulse_class = 'timer-pulse';
-                }} else if (remaining <= 900) {{
-                    bg_color = '#DC2626';
-                    text_color = 'white';
-                    icon = '⚠️';
-                }} else if (remaining <= 1200) {{
-                    bg_color = '#D97706';
-                    text_color = 'white';
-                    icon = '⏰';
-                }} else {{
-                    bg_color = '#1E3A8A';
-                    text_color = 'white';
-                    icon = '⏰';
-                }}
-                container.style.background = `linear-gradient(135deg, ${bg_color}, ${bg_color}CC)`;
-                container.style.color = text_color;
-                iconElem.innerText = icon;
-                if (pulse_class) {{
-                    container.classList.add(pulse_class);
-                }} else {{
-                    container.classList.remove('timer-pulse');
-                }}
                 remaining--;
             }}
-
-            if (interval) {{
-                clearInterval(interval);
-            }}
-            updateTimer();
-            interval = setInterval(updateTimer, 1000);
+            if (interval) {{ clearInterval(interval); }}
+            updateTimer(); interval = setInterval(updateTimer, 1000);
         }})();
         </script>
         """
@@ -1324,12 +1293,10 @@ elif "quiz" in st.session_state:
                         qstate["wrong"] += 1
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
-                
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
                 raw_score = right - (wrong * 0.25)
                 final_score = max(0, raw_score)
                 pct = (final_score/total_q)*100 if total_q else 0.0
-                
                 status = "Pass" if pct >= float(criteria) else "Fail"
                 ok, msg = append_result(
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
@@ -1353,30 +1320,15 @@ elif "quiz" in st.session_state:
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
         rem_s = remaining % 60
-
         if remaining <= 300:
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "🚨"
-            pulse_class = "timer-pulse"
+            bg_color = "#DC2626"; text_color = "white"; icon = "🚨"; pulse_class = "timer-pulse"
         elif remaining <= 900:
-            bg_color = "#DC2626"
-            text_color = "white"
-            icon = "⚠️"
-            pulse_class = ""
+            bg_color = "#DC2626"; text_color = "white"; icon = "⚠️"; pulse_class = ""
         elif remaining <= 1200:
-            bg_color = "#D97706"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
+            bg_color = "#D97706"; text_color = "white"; icon = "⏰"; pulse_class = ""
         else:
-            bg_color = "#1E3A8A"
-            text_color = "white"
-            icon = "⏰"
-            pulse_class = ""
-
+            bg_color = "#1E3A8A"; text_color = "white"; icon = "⏰"; pulse_class = ""
         progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
-
         stopped_timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -1384,18 +1336,10 @@ elif "quiz" in st.session_state:
             50% {{ transform: scale(1.05); opacity: 0.8; }}
             100% {{ transform: scale(1); opacity: 1; }}
         }}
-        .timer-pulse {{
-            animation: pulse 1s infinite;
-        }}
+        .timer-pulse {{ animation: pulse 1s infinite; }}
         .timer-container {{
-            padding: 20px;
-            border-radius: 15px;
-            text-align: center;
-            font-size: 22px;
-            font-weight: bold;
-            margin-bottom: 20px;
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
-            border: 3px solid rgba(255, 255, 255, 0.1);
+            padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold;
+            margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0,0,0,0.2); border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
         <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
@@ -1435,19 +1379,17 @@ elif "quiz" in st.session_state:
         current_qid = qstate["queue"][0]
         row = qstate["rows"].iloc[current_qid]
         qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
-
         is_previously_skipped = current_qid in qstate["skipped_questions"]
-        
+
         if is_previously_skipped:
             st.markdown("🔄 **This question was skipped earlier**")
             st.subheader(f"Q{current_qid+1}. {question}")
         else:
             st.subheader(f"Q{current_qid+1}. {question}")
-            
+
         choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
 
         col1, col2 = st.columns([1,1])
-
         with col1:
             if st.button("Next", use_container_width=True):
                 if choice is None:
@@ -1484,9 +1426,7 @@ elif "quiz" in st.session_state:
         final_score = max(0, raw_score)
         pct = (final_score/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
-
         st.success("All questions attempted. You can now submit your test.")
-
         submit_clicked = st.button("Submit", use_container_width=True)
         if submit_clicked:
             ok, msg = append_result(
@@ -1498,12 +1438,9 @@ elif "quiz" in st.session_state:
 
     if "submitted" in st.session_state:
         if "submit_result" in st.session_state:
-            result_data = st.session_state["submit_result"]
-            ok, msg, right, wrong, total_q, pct, criteria, status, final_score = result_data
-            
+            ok, msg, right, wrong, total_q, pct, criteria, status, final_score = st.session_state["submit_result"]
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
-
             color = "#10B981" if status == "Pass" else "#DC2626"
             st.markdown(
                 f"""
