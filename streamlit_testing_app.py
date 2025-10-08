@@ -12,11 +12,9 @@ import io
 import requests
 import zipfile
 import traceback
-# from docx import Document  # REMOVE this import (no longer needed)
-# from docx.shared import Pt  # REMOVE
-# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
-# from docx.oxml.ns import qn  # REMOVE
-import fitz
+import fitz  # PyMuPDF
+import re
+from dateutil.relativedelta import relativedelta
 
 # =====================
 # Paths / Files
@@ -34,13 +32,89 @@ client = gspread.authorize(creds)
 GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
 # =====================
+# Utilities (new/updated)
+# =====================
+def _norm(s: str) -> str:
+    """Normalize strings for robust comparisons."""
+    return re.sub(r'\s+', ' ', str(s).strip().upper())
+
+def _to_dt_general(x):
+    """Robust datetime parser for 'Date / Time' values coming from Google Sheets."""
+    for fmt in (
+        "%d-%m-%Y %I:%M:%S %p",
+        "%d-%m-%Y %H:%M:%S",
+        "%d-%m-%Y",
+        "%d/%m/%Y %H:%M:%S",
+        "%d/%m/%Y",
+        "%Y-%m-%d %H:%M:%S",
+    ):
+        try:
+            return pd.to_datetime(x, format=fmt)
+        except Exception:
+            continue
+    return pd.to_datetime(x, errors="coerce")
+
+# Canonical labels for core certificates
+STD_LABELS_CORE = [
+    "DS-1",
+    "Cummulative",  # keep your existing spelling in code and sheets
+    "API SPEC 5CT & 5A5",
+    "API RP 7G-2",
+]
+
+# Aliases mapping (display label on certificate => acceptable sheet labels)
+STD_ALIASES = {
+    "DS-1": ["DS-1", "DS1", "DS- 1"],
+    "Cummulative": ["CUMMULATIVE", "CUMMULATIVE"],  # keep both variants
+    "API SPEC 5CT & 5A5": ["API SPEC 5CT & 5A5", "API 5CT", "API 5CT & 5A5"],
+    "API RP 7G-2": ["API RP 7G-2", "API 7G-2", "API RP 7G2"],
+    "MPT (General)": ["MPT (GENERAL)", "MAGNETIC PARTICLE TESTING (GENERAL)"],
+    "MPT (Specific)": ["MPT (SPECIFIC)", "MAGNETIC PARTICLE TESTING (SPECIFIC)"],
+    "Penetrant Testing (General)": ["PENETRANT TESTING (GENERAL)", "PT (GENERAL)"],
+    "Penetrant Testing (Specific)": ["PENETRANT TESTING (SPECIFIC)", "PT (SPECIFIC)"],
+    "Ultrasonic": ["ULTRASONIC", "UT", "ULTRASONIC TESTING"],
+    "Visual Testing": ["VISUAL TESTING", "VT"],
+}
+
+def _is_alias_of(std_in_sheet: str, desired_display_label: str) -> bool:
+    s = _norm(std_in_sheet)
+    targets = {_norm(a) for a in STD_ALIASES.get(desired_display_label, [desired_display_label])}
+    return s in targets
+
+def get_latest_scores_for(employee_df: pd.DataFrame, display_labels: list[str]) -> dict:
+    """
+    Return { display_label: {"Percentage": float, "Criteria": float, "Date": str} } 
+    for the *latest* attempt per label (based on parsed datetime).
+    """
+    out = {}
+    if employee_df.empty:
+        return out
+
+    df = employee_df.copy()
+    df["__DT__"] = df["Date / Time"].apply(_to_dt_general)
+    df = df.sort_values("__DT__", ascending=False)
+
+    for label in display_labels:
+        row = next((r for _, r in df.iterrows() if _is_alias_of(r["Test Type"], label)), None)
+        if row is not None:
+            pct = float(row["Percentage"]) if pd.notna(row["Percentage"]) else 0.0
+            crit = str(row["Criteria"])
+            crit = float(str(crit).replace("%", "").strip()) if crit not in ("", None) else 0.0
+            out[label] = {
+                "Percentage": pct,
+                "Criteria": crit,
+                "Date": row["Date / Time"]
+            }
+    return out
+
+# =====================
 # Cached Loaders
 # =====================
 @st.cache_data
 def load_employees_and_standards():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        # Load Employees Data
+        # Employees
         try:
             employees_data = sheet.worksheet("Emloyees Data").get_all_records()
             employees = pd.DataFrame(employees_data)
@@ -53,8 +127,7 @@ def load_employees_and_standards():
         except Exception as e:
             st.warning(f"Error loading employees: {str(e)}")
             employees = pd.DataFrame(columns=["ID", "Name"])
-        
-        # Load Standards from Info sheet
+        # Standards (Info)
         try:
             standards_data = sheet.worksheet("Info").get_all_records()
             standards = pd.DataFrame(standards_data)
@@ -71,7 +144,6 @@ def load_employees_and_standards():
         except Exception as e:
             st.error(f"Error loading Info sheet: {str(e)}")
             standards = pd.DataFrame(columns=["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"])
-        
         return employees, standards
     except Exception as e:
         st.error(f"Error in load_employees_and_standards: {str(e)}")
@@ -83,32 +155,25 @@ def load_employees_and_standards():
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
-        
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
                 break
             except Exception:
                 continue
-        
         if worksheet is None:
             st.error("Could not find any results worksheet.")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
-        
         all_values = worksheet.get_all_values()
         if len(all_values) < 2:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
-        
         headers = all_values[0]
         data_rows = all_values[1:]
-        
         df = pd.DataFrame(data_rows, columns=headers)
         df['_original_order'] = range(len(df))
         df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
-        
         column_mapping = {
             'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
             'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
@@ -121,32 +186,25 @@ def load_all_results():
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
             'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
         }
-        
         for standard_name, possible_names in column_mapping.items():
             for col in df.columns:
                 if col in possible_names and col != '_original_order':
                     df = df.rename(columns={col: standard_name})
                     break
-        
         required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
         for col in required_columns:
             if col not in df.columns:
                 df[col] = ""
-        
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
-        
         if "Percentage" in df.columns:
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
-        
         df = df.sort_values('_original_order').drop('_original_order', axis=1)
         df = df.reset_index(drop=True)
-        
         return df[required_columns]
-        
     except Exception as e:
         st.error(f"Error loading results: {str(e)}")
         st.error(f"Detailed error: {traceback.format_exc()}")
@@ -156,33 +214,25 @@ def load_all_results():
 def load_questions():
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
         question_worksheet_names = ["Questions", "Question Bank", "Quiz Questions", "QuestionData"]
         questions_data = None
-        worksheet_used = None
-        
         for name in question_worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
                 questions_data = worksheet.get_all_records()
-                worksheet_used = name
                 break
             except Exception as ws_error:
                 st.warning(f"Worksheet '{name}' not found or inaccessible: {str(ws_error)}")
                 continue
-        
         if questions_data is None or not questions_data:
             raise Exception("No valid questions worksheet found.")
-        
         questions = pd.DataFrame(questions_data)
         if questions.empty:
             raise Exception("Questions worksheet is empty.")
-        
         required_columns = ["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"]
         for col in required_columns:
             if col not in questions.columns:
                 questions[col] = ""
-        
         questions["Standard"] = questions["Standard"].astype(str).str.strip()
         questions["Question"] = questions["Question"].astype(str).str.strip()
         questions["A"] = questions["A"].astype(str).str.strip()
@@ -190,9 +240,7 @@ def load_questions():
         questions["C"] = questions["C"].astype(str).str.strip()
         questions["D"] = questions["D"].astype(str).str.strip()
         questions["Answer"] = questions["Answer"].astype(str).str.strip()
-        
         return questions[required_columns]
-    
     except Exception as e:
         st.error(f"Error loading questions from Google Sheet: {str(e)}")
         st.info("Generating sample questions for testing...")
@@ -235,59 +283,41 @@ def get_info_for_standard(standards, selected_standard):
         return 50, 70, 1, 0, 0
 
 # =====================
-# Certificate Generation
-# =====================
-import streamlit as st
-import pandas as pd
-import numpy as np
-import datetime
-import time
-import os
-import gspread
-from google.oauth2.service_account import Credentials
-import streamlit.components.v1 as components
-import pytz
-import io
-import requests
-import zipfile
-import traceback
-# from docx import Document  # REMOVE this import (no longer needed)
-# from docx.shared import Pt  # REMOVE
-# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
-# from docx.oxml.ns import qn  # REMOVE
-import fitz  # ADD this import for PyMuPDF
-
-# ... (rest of your imports and code unchanged up to Certificate Generation)
-
-# =====================
-# Certificate Generation
+# Certificate Generation (updated)
 # =====================
 def get_template_path(template_type):
-    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")
-    if os.path.exists(template_path):
+    """Return the absolute path to the template or None."""
+    template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf") if not template_type.endswith(".pdf") else os.path.join(DB_FOLDER, template_type)
+    # If passed "DS-1_template" we want db/DS-1_template.pdf
+    if not template_type.endswith(".pdf") and os.path.exists(template_path):
         return template_path
-    
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"
+    # If passed a full file name like "DS-1_template.pdf"
+    direct_path = os.path.join(DB_FOLDER, template_type) if template_type.endswith(".pdf") else None
+    if direct_path and os.path.exists(direct_path):
+        return direct_path
+
+    # Fallback to GitHub raw (optional)
+    fname = f"{template_type}_template.pdf" if not template_type.endswith(".pdf") else template_type
+    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{fname}"
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            temp_path = f"/tmp/{template_type}_template.pdf"
+            temp_path = f"/tmp/{fname}"
             with open(temp_path, "wb") as file:
                 file.write(response.content)
             return temp_path
         else:
             raise Exception(f"HTTP {response.status_code}")
     except Exception as e:
-        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")
-        return None, None
+        st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{fname}' to your repo.")
+        return None
 
-def generate_certificate(emp_id, emp_name, test_date, status, template_type):
+def generate_certificate(emp_id, emp_name, test_date, status, template_type,
+                         table_rows: dict | None = None,
+                         has_validity: bool = False):
     """
-    Generate certificate with tight, inline placement (no extra spacing) for:
-      - Date of Certification: <date>
-      - CERTIFICATE NO: <number>
-      - DATE: <date>  (Examiner block)
-    Preserves nearby template text (address lines, emails, etc.).
+    table_rows: dict -> { "DS-1": {"Percentage": 82.5, "Criteria": 80.0, "Date": "..."} , ... }
+    has_validity: set False for new templates without validity.
     """
     template_path = get_template_path(template_type)
     if not template_path:
@@ -295,39 +325,37 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         return None, None
 
     try:
-        import datetime, os, fitz
-
-        # --- Open PDF ---
         doc = fitz.open(template_path)
         page = doc[0]
 
-        # --- Parse date ---
-        date_str = test_date.split()[0] if " " in test_date else test_date
-        try:
-            test_date_obj = datetime.datetime.strptime(date_str, "%d-%m-%Y")
-        except ValueError:
-            st.error(f"Invalid date format: {test_date} (expected DD-MM-YYYY)")
+        # Parse test date robustly
+        test_dt = _to_dt_general(test_date)
+        if pd.isna(test_dt):
+            st.error(f"Invalid date format: {test_date} (unable to parse)")
             doc.close()
             return None, None
+        if not isinstance(test_dt, datetime.datetime):
+            test_dt = pd.to_datetime(test_dt).to_pydatetime()
+        new_date = test_dt.strftime("%d-%B-%Y")
 
-        validity_date_obj = test_date_obj + datetime.timedelta(days=5 * 365)
-        new_date = test_date_obj.strftime("%d-%B-%Y")
-        new_validity = f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}"
-
-        # --- Cert number + status ---
+        # Certificate number mapping
         template_mapping = {
             "MT_template": "MT", "PT_template": "PT", "UT_template": "UT", "VT_template": "VT",
-            "MT": "MT", "PT": "PT", "UT": "UT", "VT": "VT"
+            "MT": "MT", "PT": "PT", "UT": "UT", "VT": "VT",
+            "DS-1_template": "DS-1",
+            "Cumulative_template": "CUMMULATIVE",
+            "API RP 7G-2_template": "API RP 7G-2",
+            "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
         }
         cert_type = template_mapping.get(template_type, template_type)
-        cert_number = f"{emp_id}/PTIS/{cert_type}/2025"
+        cert_number = f"{emp_id}/PTIS/{cert_type}/{test_dt.year}"
         status_text = "Pass" if status == "Pass" else "Fail"
 
-        # --- Fonts (fallbacks ok) ---
+        # Fonts (fallback)
         corsiva_font = "times-italic"
-        arial_font   = "helv"
+        arial_font = "helv"
         corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
-        arial_fontfile   = os.path.join(DB_FOLDER, "arial.ttf")
+        arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
         try:
             if os.path.exists(corsiva_fontfile):
                 f = fitz.Font(fontfile=corsiva_fontfile)
@@ -345,173 +373,119 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         except Exception:
             pass
 
-        # --- Helpers ---
-        def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
-            fs = base_font_size
-            est = len(text) * (fs * 0.5)
-            while est > max_width and fs > min_font_size:
-                fs -= 1
-                est = len(text) * (fs * 0.5)
-            return fs
-
-        def search_one_of(variants):
-            for v in variants:
+        # Inline write helper
+        def write_inline_after_label(label_variants, inline_text, right_extra=280, fontsize=21, fontname=arial_font, align=fitz.TEXT_ALIGN_LEFT):
+            for v in label_variants:
                 hits = page.search_for(v)
                 if hits:
-                    return hits
-            return []
+                    lab = hits[0]
+                    line_rect = fitz.Rect(lab.x0, lab.y0, lab.x0 + lab.width + right_extra, lab.y1)
+                    if line_rect.height < fontsize:
+                        cy = (line_rect.y0 + line_rect.y1) / 2
+                        line_rect.y0 = cy - fontsize/2
+                        line_rect.y1 = cy + fontsize/2
+                    page.add_redact_annot(
+                        line_rect, text=inline_text, fontname=fontname, fontsize=fontsize,
+                        align=align, text_color=(0,0,0), fill=(1,1,1)
+                    )
+                    return True
+            return False
 
-        def write_inline_after_label(label_variants, inline_text,
-                                     right_extra=320,  # width to the right of label (tight single line)
-                                     padding=3,       # small gap after label
-                                     fontsize=21,
-                                     fontname=arial_font):
-            """
-            Replace the entire line starting at the label with left-aligned text
-            'inline_text' (e.g., "Date of Certification: 17-July-2025").
-            Only covers that single text line's height → won't affect text below.
-            """
-            hits = search_one_of(label_variants)
-            if not hits:
-                return False
-            lab = hits[0]
-            # Build a single-line rectangle from label.x0 to a bit to the right
-            line_rect = fitz.Rect(lab.x0,
-                                  lab.y0,
-                                  lab.x0 + (lab.width + right_extra),
-                                  lab.y1)
-            # Ensure room for the font
-            if line_rect.height < fontsize:
-                cy = (line_rect.y0 + line_rect.y1) / 2
-                line_rect.y0 = cy - fontsize/2
-                line_rect.y1 = cy + fontsize/2
-
-            # Render the new inline text at once (left-aligned) with redact text
-            page.add_redact_annot(
-                line_rect,
-                text=inline_text,
-                fontname=fontname,
-                fontsize=fontsize,
-                align=fitz.TEXT_ALIGN_LEFT,
-                text_color=(0,0,0),
-                fill=(1,1,1)
-            )
-            return True
-
-        # --- Name (centered replacement at existing placeholder) ---
-        old_name = "Usman Waheed"
-        name_hits = page.search_for(old_name)
+        # Name replacement: try placeholder then fallback
+        name_hits = page.search_for("Usman Waheed")
         if name_hits:
-            name_font_size = calculate_font_size(emp_name, 500, 44, 28)
-            for r in name_hits:
-                cy = (r.y0 + r.y1) / 2
-                r.y0 = cy - name_font_size/2
-                r.y1 = cy + name_font_size/2
-                page.add_redact_annot(
-                    r, text=emp_name, fontname=corsiva_font, fontsize=name_font_size,
-                    align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
-                )
+            name_rect = name_hits[0]
+        else:
+            # fallback rect—adjust as needed per template
+            name_rect = fitz.Rect(120, 330, 500, 370)
+        page.add_redact_annot(
+            name_rect, text=str(emp_name), fontname=corsiva_font, fontsize=40,
+            align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
+        )
 
-        # --- Validity (keep on right; replace whole line inline) ---
-        # Find the existing validity line and overwrite it with the new validity text.
-# --- Validity (inline; align per template) ---
-        validity_label_hits = page.search_for("Validity:")
-        if validity_label_hits:
-            vlab = validity_label_hits[0]
-            fs = 21
-        
-            # Build a one-line rectangle starting at the label and extending a bit right
-            # Use a tighter width for PT/UT so it doesn't drift too far right.
-            if template_type in ["PT", "PT_template", "UT", "UT_template"]:
-                right_extra = 240   # tighter width for PT/UT
-                align_mode  = fitz.TEXT_ALIGN_LEFT
-            else:
-                # MT/VT looked fine; you can keep LEFT for consistency too.
-                right_extra = 280
-                align_mode  = fitz.TEXT_ALIGN_LEFT   # use LEFT for consistent spacing
-                # If you really want MT/VT right-aligned, set: align_mode = fitz.TEXT_ALIGN_RIGHT
-        
-            validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + right_extra, vlab.y1)
-        
-            # Ensure the line box is tall enough
-            if validity_line_rect.height < fs:
-                cy = (validity_line_rect.y0 + validity_line_rect.y1) / 2
-                validity_line_rect.y0 = cy - fs/2
-                validity_line_rect.y1 = cy + fs/2
-        
-            # Replace the whole line inline (preserves spacing and nearby text)
-            page.add_redact_annot(
-                validity_line_rect,
-                text=new_validity,             # e.g., "Validity: 16-July-2030"
-                fontname=arial_font,
-                fontsize=fs,
-                align=align_mode,
-                text_color=(0,0,0),
-                fill=(1,1,1)
-            )
-
-
-        # --- Status (left) ---
-        status_text_draw = f"Status: {status_text}"
+        # Status (if present)
         for pat in ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']:
             sth = page.search_for(pat)
             if sth:
+                r = sth[0]
                 fs = 20
-                for r in sth:
-                    cy = (r.y0 + r.y1) / 2
-                    r.y0 = cy - fs/2
-                    r.y1 = cy + fs/2
-                    page.add_redact_annot(
-                        r, text=status_text_draw, fontname=arial_font, fontsize=fs,
-                        align=fitz.TEXT_ALIGN_LEFT, text_color=(0,0,0), fill=(1,1,1)
-                    )
+                cy = (r.y0 + r.y1) / 2
+                r.y0 = cy - fs/2
+                r.y1 = cy + fs/2
+                page.add_redact_annot(
+                    r, text=f"Status: {status_text}", fontname=arial_font, fontsize=fs,
+                    align=fitz.TEXT_ALIGN_LEFT, text_color=(0,0,0), fill=(1,1,1)
+                )
                 break
 
-        # ==================================================
-        # Inline, tight replacements (no extra spacing)
-        # ==================================================
-        # 1) Date of Certification: <date>  (single-line, left aligned)
-        inline_date = f"Date of Certification: {new_date}"
-        ok1 = write_inline_after_label(
-            ["Date of Certification:", "Date of Certification",
-             "Date  of  Certification:", "Date  of  Certification"],
-            inline_date, right_extra=260, padding=3, fontsize=21
-        )
-        if not ok1:
-            st.warning("Could not place the inline 'Date of Certification' line.")
+        # CERTIFICATE NO / DATE
+        write_inline_after_label(["CERTIFICATE NO:", "Certificate No:", "CERTIFICATE NO"], f"CERTIFICATE NO: {cert_number}", right_extra=320)
+        write_inline_after_label(["DATE:", "Date:"], f"DATE: {new_date}", right_extra=240)
 
-        # 2) CERTIFICATE NO: <number> (single-line, left aligned)
-        inline_cert = f"CERTIFICATE NO: {cert_number}"
-        ok2 = write_inline_after_label(
-            ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :",
-             "CERTIFICATE NO", "Certificate No"],
-            inline_cert, right_extra=300, padding=3, fontsize=21
-        )
-        if not ok2:
-            st.warning("Could not place the inline 'CERTIFICATE NO' line.")
+        # Validity (skip unless specified)
+        if has_validity:
+            validity_label_hits = page.search_for("Validity:")
+            if validity_label_hits:
+                vlab = validity_label_hits[0]
+                fs = 21
+                validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + 260, vlab.y1)
+                if validity_line_rect.height < fs:
+                    cy = (validity_line_rect.y0 + validity_line_rect.y1) / 2
+                    validity_line_rect.y0 = cy - fs/2
+                    validity_line_rect.y1 = cy + fs/2
+                validity_date_obj = test_dt + relativedelta(years=5)
+                new_validity = f"Validity: {validity_date_obj.strftime('%d-%B-%Y')}"
+                page.add_redact_annot(
+                    validity_line_rect, text=new_validity, fontname=arial_font,
+                    fontsize=fs, align=fitz.TEXT_ALIGN_LEFT, text_color=(0,0,0), fill=(1,1,1)
+                )
 
-        # 3) Examiner DATE: <date> (single-line, left aligned)
-        inline_exam_date = f"DATE: {new_date}"
-        ok3 = write_inline_after_label(
-            ["DATE:", "DATE :", "Date:", "Date :"],
-            inline_exam_date, right_extra=200, padding=3, fontsize=21
-        )
-        if not ok3:
-            st.warning("Could not place the inline Examiner 'DATE' line.")
+        # TABLE FILL: Standard | Percentage | Criteria (if provided)
+        if table_rows:
+            for display_label, vals in table_rows.items():
+                if not vals:
+                    continue
+                # find row by label text (try multiple casings)
+                row_hits = []
+                for variant in {display_label, display_label.upper(), display_label.title()}:
+                    row_hits = page.search_for(str(variant))
+                    if row_hits:
+                        break
+                if not row_hits:
+                    continue
+                lr = row_hits[0]
+                fs = 16
 
-        # --- Burn everything in ---
+                # Heuristic column offsets: tweak if any template needs
+                pct_rect = fitz.Rect(lr.x0 + 220, lr.y0, lr.x0 + 340, lr.y1)
+                crt_rect = fitz.Rect(lr.x0 + 360, lr.y0, lr.x0 + 480, lr.y1)
+
+                pct_txt = f"{vals['Percentage']:.2f}%"
+                crt_txt = f"{vals['Criteria']:.0f}%"
+
+                page.add_redact_annot(
+                    pct_rect, text=pct_txt, fontname=arial_font, fontsize=fs,
+                    align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
+                )
+                page.add_redact_annot(
+                    crt_rect, text=crt_txt, fontname=arial_font, fontsize=fs,
+                    align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
+                )
+
+        # Burn
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
 
-        # --- Save ---
-        safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
+        # Save
+        safe_name = "".join(c for c in str(emp_name) if c.isalnum() or c in (" ", "-", "_")).rstrip()
+        date_str = test_dt.strftime("%d-%m-%Y")
+        # Allow template_type both with and without _template suffix in file name
+        base_name = template_type if template_type.endswith("_template") else template_type
+        certificate_filename = f"{base_name}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
         doc.save(output_path, garbage=3, deflate=True)
         doc.close()
-
         st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
-
     except Exception as e:
         try:
             doc.close()
@@ -539,7 +513,6 @@ def create_individual_test_report(emp_id, emp_name, test_date, test_type, total,
             ['Status', status]
         ]
     }
-    
     report_df = pd.DataFrame(report_data['Test Information'], columns=['Field', 'Value'])
     return report_df
 
@@ -556,19 +529,16 @@ def download_individual_test(emp_id, emp_name, test_data):
         test_data['Criteria'], 
         test_data['Status']
     )
-    
     csv_buffer = io.StringIO()
     report_df.to_csv(csv_buffer, index=False)
     csv_data = csv_buffer.getvalue()
-    
-    timestamp = test_data['Date / Time'].replace('/', '_').replace(' ', '_').replace(':', '-')
-    safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-    filename = f"Test_Report_{emp_id}_{safe_name}_{test_data['Test Type']}_{timestamp}.csv"
-    
+    timestamp = str(test_data['Date / Time']).replace('/', '_').replace(' ', '_').replace(':', '-')
+    safe_name = "".join(c for c in str(emp_name) if c.isalnum() or c in (' ', '-', '_')).rstrip()
+    filename = f"Test_Report_{test_data['ID']}_{safe_name}_{test_data['Test Type']}_{timestamp}.csv"
     return csv_data, filename
 
 # =====================
-# Helpers
+# Helpers (quiz)
 # =====================
 def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
     if standard == "Cummulative":
@@ -584,7 +554,6 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
     if len(cand) < total:
         total = len(cand)
     sampled = cand.sample(n=min(total, len(cand)), random_state=int(time.time())).reset_index(drop=True)
-
     st.session_state.quiz = {
         "emp_id": str(emp_id),
         "emp_name": str(emp_name),
@@ -603,9 +572,7 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
 
 def format_timer(h, m, s):
     try:
-        hh = int(h)
-        mm = int(m)
-        ss = int(s)
+        hh = int(h); mm = int(m); ss = int(s)
         return hh * 3600 + mm * 60 + ss
     except Exception:
         return 0
@@ -613,10 +580,8 @@ def format_timer(h, m, s):
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
         sheet = client.open_by_url(GSHEET_URL)
-        
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
-        
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
@@ -624,7 +589,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 break
             except Exception:
                 continue
-        
         if worksheet is None:
             try:
                 all_worksheets = sheet.worksheets()
@@ -635,13 +599,12 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                         break
             except:
                 pass
-        
         if worksheet is None:
             return False, "Could not find results worksheet to save data"
 
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = datetime.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
-        
+
         raw_score = right - (wrong * 0.25)
         final_score = max(0, raw_score)
         pct = (final_score / total) * 100 if total else 0.0
@@ -650,7 +613,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
             headers = worksheet.row_values(1)
         except:
             headers = []
-        
+
         if headers:
             data_mapping = {
                 'ID': str(emp_id),
@@ -665,7 +628,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'DATE': now,
                 'DATE / TIME': now
             }
-            
             new_row = []
             for header in headers:
                 header_upper = header.upper()
@@ -702,7 +664,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         worksheet.append_row(new_row)
         st.success("Results saved to Google Sheet.")
         return True, ""
-        
     except Exception as e:
         st.error(f"Error saving results: {str(e)}")
         return False, str(e)
@@ -728,8 +689,8 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Admin Login")
     username = st.text_input("Username", key="admin_username")
     password = st.text_input("Password", type="password", key="admin_password")
-    
     if st.button("Login", key="admin_login_btn"):
+        # Consider moving to st.secrets
         if username == "admin" and password == "AdminPtis-3692":
             st.session_state.admin_logged_in = True
             st.success("Admin login successful!")
@@ -743,85 +704,74 @@ if st.session_state.admin_logged_in:
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
-    
     results_df = load_all_results()
     if not results_df.empty:
+        # add parsed datetime for consistent sorting/logic
+        results_df["__DT__"] = results_df["Date / Time"].apply(_to_dt_general)
+
         st.markdown("---")
         st.subheader("🔍 Filters")
-        
-        # Create mappings for ID-Name relationship
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
-        
-        # Initialize session state keys if they don't exist
+
         id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
         name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
-        
         if id_key not in st.session_state:
             st.session_state[id_key] = "All"
         if name_key not in st.session_state:
             st.session_state[name_key] = "All"
-        
-        # Callback functions for synchronization
+
         def sync_id_to_name():
-            """Sync ID selection to corresponding name"""
             selected_id = st.session_state[id_key]
             if selected_id != "All" and selected_id in id_name_mapping:
                 st.session_state[name_key] = id_name_mapping[selected_id]
             elif selected_id == "All":
                 st.session_state[name_key] = "All"
-        
+
         def sync_name_to_id():
-            """Sync name selection to corresponding ID"""
             selected_name = st.session_state[name_key]
             if selected_name != "All" and selected_name in name_id_mapping:
                 st.session_state[id_key] = name_id_mapping[selected_name]
             elif selected_name == "All":
                 st.session_state[id_key] = "All"
-        
+
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
-        
         with filter_col1:
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
-            
             selected_emp_id = st.selectbox(
-                "Filter by Employee ID", 
-                employee_ids, 
+                "Filter by Employee ID",
+                employee_ids,
                 index=employee_ids.index(st.session_state[id_key]) if st.session_state[id_key] in employee_ids else 0,
                 key=id_key,
                 on_change=sync_id_to_name
             )
-        
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
-            
             selected_emp_name = st.selectbox(
-                "Filter by Employee Name", 
-                employee_names, 
+                "Filter by Employee Name",
+                employee_names,
                 index=employee_names.index(st.session_state[name_key]) if st.session_state[name_key] in employee_names else 0,
                 key=name_key,
                 on_change=sync_name_to_id
             )
-        
         with filter_col3:
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox(
-                "Filter by Status", 
+                "Filter by Status",
                 statuses, 
                 index=0,
                 key=f"status_filter_{st.session_state.filter_reset_counter}"
             )
-        
         with filter_col4:
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox(
-                "Filter by Test Type", 
+                "Filter by Test Type",
                 test_types, 
                 index=0,
                 key=f"test_type_filter_{st.session_state.filter_reset_counter}"
             )
-        
-        filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
+
+        filter_col5, _, _, _ = st.columns(4)
         with filter_col5:
             st.write("")
             if st.button("🗑️ Clear All Filters"):
@@ -831,14 +781,12 @@ if st.session_state.admin_logged_in:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
-        
+
         filtered_df = results_df.copy()
-        
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
         elif selected_emp_name != "All":
             filtered_df = filtered_df[filtered_df["Name"] == selected_emp_name]
-        
         if selected_status != "All":
             filtered_df = filtered_df[filtered_df["Status"] == selected_status]
         if selected_test_type != "All":
@@ -851,7 +799,7 @@ if st.session_state.admin_logged_in:
 
         st.markdown("---")
         st.subheader("📥 Individual Test Download")
-        
+
         if selected_emp_id != "All" or selected_emp_name != "All":
             if selected_emp_id != "All":
                 emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
@@ -861,20 +809,19 @@ if st.session_state.admin_logged_in:
                 emp_filtered = filtered_df[filtered_df["Name"] == selected_emp_name]
                 emp_name_display = selected_emp_name
                 emp_id_display = name_id_mapping.get(selected_emp_name, "Unknown")
-            
             if not emp_filtered.empty:
                 st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}** (ID: {emp_id_display})")
-                emp_filtered = emp_filtered.sort_values("Date / Time", ascending=False).reset_index(drop=True)
-                
+                # newest last if you prefer; change to False for newest first
+                emp_filtered = emp_filtered.sort_values("__DT__", ascending=True).reset_index(drop=True)
                 for idx, test_row in emp_filtered.iterrows():
                     with st.expander(f"Test {idx+1}: {test_row['Test Type']} - {test_row['Date / Time']} ({test_row['Status']})", expanded=False):
-                        col1, col2, col3 = st.columns([2, 1, 1])
-                        with col1:
+                        c1, c2, c3 = st.columns([2, 1, 1])
+                        with c1:
                             st.metric("Score", f"{test_row['Right']}/{test_row['Total']}")
                             st.metric("Percentage", f"{test_row['Percentage']:.1f}%")
-                        with col2:
+                        with c2:
                             st.metric("Status", test_row['Status'])
-                        with col3:
+                        with c3:
                             csv_data, filename = download_individual_test(
                                 test_row['ID'], 
                                 test_row['Name'], 
@@ -902,7 +849,7 @@ if st.session_state.admin_logged_in:
                 st.warning("No test results found for the selected employee.")
         else:
             st.info("👆 **Select an Employee ID or Name** to view and download individual test reports")
-        
+
         st.markdown("---")
         st.subheader("📊 Test Summary")
         col1, col2, col3, col4 = st.columns(4)
@@ -920,10 +867,10 @@ if st.session_state.admin_logged_in:
                 st.metric("Avg Score", f"{avg_score:.1f}%")
             else:
                 st.metric("Avg Score", "N/A")
-        
+
         if len(filtered_df) != len(results_df):
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
-        
+
         st.markdown("---")
         if not filtered_df.empty:
             display_df = filtered_df.copy()
@@ -940,7 +887,7 @@ if st.session_state.admin_logged_in:
             with export_col2:
                 if st.button("⚙️ Column Settings"):
                     st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
-            
+
             if st.session_state.get("show_column_settings", False):
                 st.subheader("Column Visibility")
                 cols_to_show = []
@@ -952,7 +899,7 @@ if st.session_state.admin_logged_in:
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
                 display_df = filtered_df.copy()
                 display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
-            
+
             st.dataframe(
                 display_df,
                 use_container_width=True,
@@ -967,63 +914,121 @@ if st.session_state.admin_logged_in:
                     "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
                 }
             )
-        
-        # Certificate Generation
+
+        # =========================
+        # 📜 Generate Certificates
+        # =========================
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
-        
-        # Simple certificate filter - only employee name
-        passed_results = results_df[results_df["Status"] == "Pass"]
-        cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
-        
-        selected_cert_name = st.selectbox(
-            "Filter Certificates by Employee Name",
-            cert_employee_names,
-            index=0,
-            key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
-        )
-        
-        if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
-            passed_results = results_df[results_df["Status"] == "Pass"]
-            grouped = passed_results.groupby('Name')
-            
-            qualifying_rows = []
-            for name, group in grouped:
-                passed_standards = set(group['Test Type'].str.strip())
-                if required_standards.issubset(passed_standards):
-                    cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
-                    if not cumm_row.empty:
-                        qualifying_rows.append(cumm_row.iloc[0])
-            
-            qualifying_df = pd.DataFrame(qualifying_rows)
-            
-            if selected_cert_name != "All":
-                qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
-            
-            if qualifying_df.empty:
-                st.warning("Candidate is ineligible as not all required standards are passed.")
-            else:
+
+        passed_results = results_df[results_df["Status"].astype(str).str.upper().eq("PASS")].copy()
+        if passed_results.empty:
+            st.info("No passed results found.")
+        else:
+            passed_results["__DT__"] = passed_results["Date / Time"].apply(_to_dt_general)
+            cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
+            selected_cert_name = st.selectbox(
+                "Filter Certificates by Employee Name",
+                cert_employee_names,
+                index=0,
+                key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
+            )
+
+            def has_core4(passed_df_for_emp):
+                labels_needed = ["DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"]
+                available = set()
+                for _, r in passed_df_for_emp.iterrows():
+                    for label in labels_needed:
+                        if _is_alias_of(r["Test Type"], label):
+                            available.add(label)
+                return set(labels_needed).issubset(available)
+
+            def has_ndt_requirements(passed_df_for_emp, which: str) -> bool:
+                needed_map = {
+                    "MT": ["MPT (General)", "MPT (Specific)"],
+                    "PT": ["Penetrant Testing (General)", "Penetrant Testing (Specific)"],
+                    "UT": ["Ultrasonic"],
+                    "VT": ["Visual Testing"],
+                }
+                needed = needed_map[which]
+                avail = set()
+                for _, r in passed_df_for_emp.iterrows():
+                    for label in needed:
+                        if _is_alias_of(r["Test Type"], label):
+                            avail.add(label)
+                return set(needed).issubset(avail)
+
+            if st.button("Generate Certificates for Qualifying Employees"):
+                to_process = []
+                if selected_cert_name == "All":
+                    for name, grp in passed_results.groupby("Name"):
+                        to_process.append((name, grp.copy()))
+                else:
+                    grp = passed_results[passed_results["Name"] == selected_cert_name].copy()
+                    if grp.empty:
+                        st.warning("No passed results for the selected employee.")
+                    else:
+                        to_process.append((selected_cert_name, grp))
+
                 certificate_files = []
-                for _, row in qualifying_df.iterrows():
-                    emp_id = row['ID']
-                    emp_name = row['Name']
-                    test_date = row['Date / Time']
-                    status = row['Status']
-                    for template_type in ['PT', 'UT', 'MT', 'VT']:
-                        certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status, template_type)
-                        if certificate_path:
-                            certificate_files.append((certificate_path, certificate_filename))
+
+                for emp_name, emp_df in to_process:
+                    emp_id = str(emp_df.iloc[0]["ID"])
+
+                    # --- Core 4 templates ---
+                    if has_core4(emp_df):
+                        latest_scores_core = get_latest_scores_for(emp_df, STD_LABELS_CORE)
+                        # Build table rows with whatever is available
+                        rows_core = {k: v for k, v in latest_scores_core.items() if v}
+                        # choose the latest date among the four as certificate date
+                        dates = [v["Date"] for v in rows_core.values()]
+                        cert_date = max(dates, key=_to_dt_general) if dates else emp_df.iloc[0]["Date / Time"]
+
+                        for core_template in ["DS-1_template", "Cumulative_template", "API RP 7G-2_template", "API SPEC 5CT & 5A5_template"]:
+                            pth, fn = generate_certificate(
+                                emp_id, emp_name, cert_date, status="Pass",
+                                template_type=core_template,
+                                table_rows=rows_core,      # fill table (Standard/Percentage/Criteria)
+                                has_validity=False         # no validity on these templates
+                            )
+                            if pth:
+                                certificate_files.append((pth, fn))
+
+                    # --- NDT templates (only if their own requirements met) ---
+                    ndt_templates = []
+                    if has_ndt_requirements(emp_df, "MT"): ndt_templates.append("MT_template")
+                    if has_ndt_requirements(emp_df, "PT"): ndt_templates.append("PT_template")
+                    if has_ndt_requirements(emp_df, "UT"): ndt_templates.append("UT_template")
+                    if has_ndt_requirements(emp_df, "VT"): ndt_templates.append("VT_template")
+
+                    if ndt_templates:
+                        ndt_labels = STD_LABELS_CORE + [
+                            "MPT (General)", "MPT (Specific)",
+                            "Penetrant Testing (General)", "Penetrant Testing (Specific)",
+                            "Ultrasonic", "Visual Testing"
+                        ]
+                        latest_scores_ndt = get_latest_scores_for(emp_df, ndt_labels)
+                        rows_ndt = {k: v for k, v in latest_scores_ndt.items() if v}
+                        dates_ndt = [v["Date"] for v in rows_ndt.values()]
+                        cert_date_ndt = max(dates_ndt, key=_to_dt_general) if dates_ndt else emp_df.iloc[0]["Date / Time"]
+
+                        for nt in ndt_templates:
+                            pth, fn = generate_certificate(
+                                emp_id, emp_name, cert_date_ndt, status="Pass",
+                                template_type=nt,
+                                table_rows=rows_ndt,
+                                has_validity=False   # the updated NDT templates also use table; no validity
+                            )
+                            if pth:
+                                certificate_files.append((pth, fn))
 
                 if certificate_files:
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
                         for cert_path, cert_filename in certificate_files:
                             zipf.write(cert_path, cert_filename)
-
                     zip_buffer.seek(0)
                     filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
-                    
                     st.download_button(
                         label=f"Download Certificates (ZIP) for {filename_suffix}",
                         data=zip_buffer,
@@ -1031,8 +1036,8 @@ if st.session_state.admin_logged_in:
                         mime="application/zip"
                     )
                 else:
-                    st.error("Failed to generate any certificates. Check templates and permissions.")
-        
+                    st.info("No qualifying certificates to generate with the current filter and data.")
+
         st.markdown("---")
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
