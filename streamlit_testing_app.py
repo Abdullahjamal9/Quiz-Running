@@ -54,18 +54,17 @@ def _to_dt_general(x):
             continue
     return pd.to_datetime(x, errors="coerce")
 
-# Canonical labels for core certificates
+# Canonical labels used on the certificates (match your template text)
 STD_LABELS_CORE = [
     "DS-1",
-    "Cummulative",  # keep your existing spelling in code and sheets
+    "Cumulative",                 # canonical spelling
     "API SPEC 5CT & 5A5",
     "API RP 7G-2",
 ]
 
-# Aliases mapping (display label on certificate => acceptable sheet labels)
 STD_ALIASES = {
     "DS-1": ["DS-1", "DS1", "DS- 1"],
-    "Cummulative": ["CUMMULATIVE", "CUMMULATIVE"],  # keep both variants
+    "Cumulative": ["CUMULATIVE", "CUMMULATIVE"],  # accept both spellings
     "API SPEC 5CT & 5A5": ["API SPEC 5CT & 5A5", "API 5CT", "API 5CT & 5A5"],
     "API RP 7G-2": ["API RP 7G-2", "API 7G-2", "API RP 7G2"],
     "MPT (General)": ["MPT (GENERAL)", "MAGNETIC PARTICLE TESTING (GENERAL)"],
@@ -75,6 +74,7 @@ STD_ALIASES = {
     "Ultrasonic": ["ULTRASONIC", "UT", "ULTRASONIC TESTING"],
     "Visual Testing": ["VISUAL TESTING", "VT"],
 }
+
 
 def _is_alias_of(std_in_sheet: str, desired_display_label: str) -> bool:
     s = _norm(std_in_sheet)
@@ -969,30 +969,62 @@ if st.session_state.admin_logged_in:
                         st.warning("No passed results for the selected employee.")
                     else:
                         to_process.append((selected_cert_name, grp))
-
                 certificate_files = []
-
+                
                 for emp_name, emp_df in to_process:
                     emp_id = str(emp_df.iloc[0]["ID"])
-
-                    # --- Core 4 templates ---
+                
+                    # ---------- Core-4 (ONLY when all four are passed) ----------
                     if has_core4(emp_df):
                         latest_scores_core = get_latest_scores_for(emp_df, STD_LABELS_CORE)
-                        # Build table rows with whatever is available
                         rows_core = {k: v for k, v in latest_scores_core.items() if v}
-                        # choose the latest date among the four as certificate date
                         dates = [v["Date"] for v in rows_core.values()]
                         cert_date = max(dates, key=_to_dt_general) if dates else emp_df.iloc[0]["Date / Time"]
-
-                        for core_template in ["DS-1_template", "Cumulative_template", "API RP 7G-2_template", "API SPEC 5CT & 5A5_template"]:
+                
+                        for core_template in [
+                            "DS-1_template",
+                            "Cumulative_template",
+                            "API RP 7G-2_template",
+                            "API SPEC 5CT & 5A5_template"
+                        ]:
                             pth, fn = generate_certificate(
                                 emp_id, emp_name, cert_date, status="Pass",
                                 template_type=core_template,
-                                table_rows=rows_core,      # fill table (Standard/Percentage/Criteria)
-                                has_validity=False         # no validity on these templates
+                                table_rows=rows_core,      # fills Standard | Percentage | Criteria
+                                has_validity=False         # no validity in these templates
                             )
                             if pth:
                                 certificate_files.append((pth, fn))
+                
+                    # ---------- NDT certificates (independent, one-by-one when met) ----------
+                    # Which NDT templates to generate for THIS employee
+                    ndt_templates = []
+                    if has_ndt_requirements(emp_df, "MT"): ndt_templates.append("MT_template")
+                    if has_ndt_requirements(emp_df, "PT"): ndt_templates.append("PT_template")
+                    if has_ndt_requirements(emp_df, "UT"): ndt_templates.append("UT_template")
+                    if has_ndt_requirements(emp_df, "VT"): ndt_templates.append("VT_template")
+                
+                    if ndt_templates:
+                        ndt_labels = STD_LABELS_CORE + [
+                            "MPT (General)", "MPT (Specific)",
+                            "Penetrant Testing (General)", "Penetrant Testing (Specific)",
+                            "Ultrasonic", "Visual Testing"
+                        ]
+                        latest_scores_ndt = get_latest_scores_for(emp_df, ndt_labels)
+                        rows_ndt = {k: v for k, v in latest_scores_ndt.items() if v}
+                        dates_ndt = [v["Date"] for v in rows_ndt.values()]
+                        cert_date_ndt = max(dates_ndt, key=_to_dt_general) if dates_ndt else emp_df.iloc[0]["Date / Time"]
+                
+                        for nt in ndt_templates:
+                            pth, fn = generate_certificate(
+                                emp_id, emp_name, cert_date_ndt, status="Pass",
+                                template_type=nt,
+                                table_rows=rows_ndt,   # same table structure; your NDT templates include the table too
+                                has_validity=False
+                            )
+                            if pth:
+                                certificate_files.append((pth, fn))
+
 
                     # --- NDT templates (only if their own requirements met) ---
                     ndt_templates = []
