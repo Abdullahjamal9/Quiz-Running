@@ -456,8 +456,9 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
         else:
             # overlay if no placeholder in template
             # (overlay won't erase anything; safe)
-            _draw_cell = _draw_cell  # alias to avoid confusion
-            _draw_cell(page, 120, 330, 380, 40, emp_name, fontname=corsiva_font, start_size=40, align=fitz.TEXT_ALIGN_CENTER)
+            _draw_cell(page, 120, 330, 380, 40, emp_name,
+                       fontname=corsiva_font, start_size=40, align=fitz.TEXT_ALIGN_CENTER)
+
 
         # Certificate No (replace just the value area to the right of label)
         # Find label rect; build a small right-side box only as wide as needed
