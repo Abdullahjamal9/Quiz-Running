@@ -1,6 +1,4 @@
-# =====================
-# Imports
-# =====================
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -33,6 +31,23 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
 client = gspread.authorize(creds)
 GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+
+def _cover_and_write(page, rect, text, fontname="helv", fontsize=16, align=fitz.TEXT_ALIGN_LEFT):
+    """Paint a small white patch over rect and write text on top (no redaction)."""
+    pad = 0.8
+    box = fitz.Rect(rect.x0 - pad, rect.y0 - pad, rect.x1 + pad, rect.y1 + pad)
+    page.draw_rect(box, fill=(1, 1, 1), color=None)  # just paint white
+    page.insert_textbox(rect, str(text), fontname=fontname, fontsize=fontsize,
+                        color=(0, 0, 0), align=align)
+
+def _box_right_of_label(page, label_variants, width=260.0):
+    """Find a label and return a small rectangle immediately to its right."""
+    for lbl in label_variants:
+        hits = page.search_for(lbl)
+        if hits:
+            L = hits[0]
+            return fitz.Rect(L.x1 + 6, L.y0 - 1.5, L.x1 + 6 + width, L.y1 + 1.5)
+    return None
 
 # =====================
 # Helpers: Date parsing & font fit for PDF
@@ -349,10 +364,17 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
         # Name (placeholder or overlay)
         name_hit = page.search_for("Usman Waheed")
         if name_hit:
-            _tight_replace("Usman Waheed", emp_name, corsiva_font, 40, align=fitz.TEXT_ALIGN_CENTER)
+            r = name_hit[0]
+            _cover_and_write(
+                page, r, emp_name,
+                fontname=corsiva_font, fontsize=40, align=fitz.TEXT_ALIGN_CENTER
+            )
         else:
-            _draw_cell(page, 120, 330, 380, 40, emp_name, fontname=corsiva_font, start_size=40, align=fitz.TEXT_ALIGN_CENTER)
-
+            # fallback position if template has no placeholder
+            _cover_and_write(
+                page, fitz.Rect(120, 330, 500, 370), emp_name,
+                fontname=corsiva_font, fontsize=40, align=fitz.TEXT_ALIGN_CENTER
+            )
         # Cert No (smaller font = 16) to the right of label
         for lbl in ("CERTIFICATE NO:", "Certificate No:", "CERTIFICATE NO"):
             lab = page.search_for(lbl)
