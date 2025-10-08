@@ -399,13 +399,48 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
 
         # ---- Table overlay (no redactions) ----
         if table_rows:
+            # 1) Try to anchor to headers if they exist…
             hs = page.search_for("Standard") or page.search_for("STANDARD") or page.search_for("Standard:")
             hp = page.search_for("Percentage") or page.search_for("PERCENTAGE") or page.search_for("Percentage:")
             hc = page.search_for("Criteria") or page.search_for("CRITERIA") or page.search_for("Criteria:")
             h_std = hs[0] if hs else None
             h_pct = hp[0] if hp else None
             h_crt = hc[0] if hc else None
-            if h_std and h_pct and h_crt:
+
+            # 2) If headers NOT found, build a **fallback grid** using page geometry
+            use_fallback = not (h_std and h_pct and h_crt)
+            if use_fallback:
+                # Anchor under "EXAMINATION RESULT" (if present), else use a safe Y
+                exam = page.search_for("EXAMINATION RESULT")
+                if exam:
+                    base_anchor_y = exam[0].y1 + 28   # a bit under the heading
+                else:
+                    base_anchor_y = page.rect.height * 0.55  # middle-lower area as a safe default
+
+                # Left / right margins based on page width (looks like your template has wide margins)
+                left_margin  = 65
+                right_margin = 65
+                x_left  = page.rect.x0 + left_margin
+                x_right = page.rect.x1 - right_margin
+                table_width = x_right - x_left
+
+                # Three equal columns
+                col_w = table_width / 3.0
+                x_std = x_left
+                x_pct = x_left + col_w
+                x_crt = x_left + 2*col_w
+                w_std = col_w
+                w_pct = col_w
+                w_crt = col_w
+
+                # Row metrics (tweak if needed)
+                col_gap_y  = 8       # gap below the header rule
+                row_height = 22
+                max_rows   = 12
+                base_y0 = base_anchor_y + col_gap_y
+
+            else:
+                # 3) We DID find headers → derive columns from their boxes
                 col_gap_y  = 6
                 row_height = 20
                 max_rows   = 12
@@ -413,22 +448,37 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type,
                 x_pct = h_pct.x0 + 4;  w_pct = max(80,  h_pct.width)
                 x_crt = h_crt.x0 + 4;  w_crt = max(80,  h_crt.width)
                 base_y0 = h_std.y1 + col_gap_y
-                preferred = ["DS-1","Cumulative","API SPEC 5CT & 5A5","API RP 7G-2"]
-                rest = [k for k in table_rows.keys() if k not in preferred]
-                ordered = [k for k in preferred if k in table_rows] + rest
-                rcount = 0
-                for label in ordered:
-                    if rcount >= max_rows: break
-                    vals = table_rows.get(label)
-                    if not vals: continue
-                    y0 = base_y0 + rcount * row_height
-                    _draw_cell(page, x_std, y0, w_std, row_height, label, fontname=arial_font, start_size=16, align=fitz.TEXT_ALIGN_LEFT)
-                    pct = float(vals.get("Percentage", 0.0))
-                    _draw_cell(page, x_pct, y0, w_pct, row_height, f"{pct:.2f}%", fontname=arial_font, start_size=16, align=fitz.TEXT_ALIGN_CENTER)
-                    crit_raw = vals.get("Criteria", "")
-                    crit = float(str(crit_raw).replace("%","").strip() or 0)
-                    _draw_cell(page, x_crt, y0, w_crt, row_height, f"{crit:.0f}%", fontname=arial_font, start_size=16, align=fitz.TEXT_ALIGN_CENTER)
-                    rcount += 1
+
+            # 4) Deterministic order: core four first, then any extras we passed
+            preferred = ["DS-1","Cumulative","API SPEC 5CT & 5A5","API RP 7G-2"]
+            rest = [k for k in table_rows.keys() if k not in preferred]
+            ordered = [k for k in preferred if k in table_rows] + rest
+
+            # 5) Draw rows (auto-fit font so text never disappears)
+            rcount = 0
+            for label in ordered:
+                if rcount >= max_rows:
+                    break
+                vals = table_rows.get(label)
+                if not vals:
+                    continue
+
+                y0 = base_y0 + rcount * row_height
+
+                _draw_cell(page, x_std, y0, w_std, row_height, label,
+                           fontname=arial_font, start_size=15, align=fitz.TEXT_ALIGN_LEFT)
+
+                pct = float(vals.get("Percentage", 0.0))
+                _draw_cell(page, x_pct, y0, w_pct, row_height, f"{pct:.2f}%",
+                           fontname=arial_font, start_size=15, align=fitz.TEXT_ALIGN_CENTER)
+
+                crit_raw = vals.get("Criteria", "")
+                crit = float(str(crit_raw).replace("%","").strip() or 0)
+                _draw_cell(page, x_crt, y0, w_crt, row_height, f"{crit:.0f}%",
+                           fontname=arial_font, start_size=15, align=fitz.TEXT_ALIGN_CENTER)
+
+                rcount += 1
+
             else:
                 st.warning("Table headers not found in template; skipped table fill.")
 
