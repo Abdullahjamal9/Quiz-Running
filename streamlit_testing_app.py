@@ -998,47 +998,12 @@ if st.session_state.admin_logged_in:
             
             qualifying_df = pd.DataFrame(qualifying_rows)
             
-            # Guard: if nothing qualified yet, don't try to index "Name"
-            if qualifying_df.empty or "Name" not in qualifying_df.columns:
-                st.warning("No qualifying candidates found yet for the selected filters.")
+            if selected_cert_name != "All":
+                qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
+            
+            if qualifying_df.empty:
+                st.warning("Candidate is ineligible as not all required standards are passed.")
             else:
-                # Optional name filter (safe because "Name" exists)
-                if selected_cert_name != "All":
-                    qualifying_df = qualifying_df[qualifying_df["Name"].astype(str) == str(selected_cert_name)]
-            
-                if qualifying_df.empty:
-                    st.warning("Candidate is ineligible as not all required standards are passed.")
-                else:
-                    # proceed to generate certificates
-                    certificate_files = []
-                    for _, row in qualifying_df.iterrows():
-                        emp_id = row['ID']
-                        emp_name = row['Name']
-                        test_date = row['Date / Time']
-                        status = row['Status']
-                        for template_type in ['PT', 'UT', 'MT', 'VT']:
-                            certificate_path, certificate_filename = generate_certificate(
-                                emp_id, emp_name, test_date, status, template_type
-                            )
-                            if certificate_path:
-                                certificate_files.append((certificate_path, certificate_filename))
-            
-                    if certificate_files:
-                        zip_buffer = io.BytesIO()
-                        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                            for cert_path, cert_filename in certificate_files:
-                                zipf.write(cert_path, cert_filename)
-                        zip_buffer.seek(0)
-                        filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
-                        st.download_button(
-                            label=f"Download Certificates (ZIP) for {filename_suffix}",
-                            data=zip_buffer,
-                            file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                            mime="application/zip"
-                        )
-                    else:
-                        st.error("Failed to generate any certificates. Check templates and permissions.")
-
                 certificate_files = []
                 for _, row in qualifying_df.iterrows():
                     emp_id = row['ID']
