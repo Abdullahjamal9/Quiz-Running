@@ -379,7 +379,7 @@ def generate_certificate(
             )
 
         # Add headers
-        headers = ["Standard", "Percentage", "Criteria"]
+        headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
         for i, title in enumerate(headers):
             cell = fitz.Rect(table_left + i * col_w, table_top, table_left + (i + 1) * col_w, table_top + header_h)
             page.insert_textbox(cell, title, fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
