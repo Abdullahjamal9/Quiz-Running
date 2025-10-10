@@ -408,115 +408,90 @@ def generate_certificate(
         }.get(template_type, template_type)
         cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
 
-        # Search for CERTIFICATE NO label
+        # Search for CERTIFICATE NO label and replace the entire line
         cert_label_texts = ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
-        cert_label = None
+        cert_inline_text = f"CERTIFICATE NO: {cert_value}"
+        
+        cert_replaced = False
         for text in cert_label_texts:
             hits = page.search_for(text)
             if hits:
                 cert_label = hits[0]
+                # Create rect that covers the label + value area
+                cert_rect = fitz.Rect(
+                    cert_label.x0,
+                    cert_label.y0,
+                    cert_label.x0 + cert_label.width + 300,  # Extend right to cover old value
+                    cert_label.y1
+                )
+                # Adjust height if needed
+                fs = 11
+                if cert_rect.height < fs:
+                    cy = (cert_rect.y0 + cert_rect.y1) / 2
+                    cert_rect.y0 = cy - fs / 1.5
+                    cert_rect.y1 = cy + fs / 1.5
+                
+                # Apply redaction with new text
+                page.add_redact_annot(
+                    cert_rect,
+                    text=cert_inline_text,
+                    fontname=arial_font,
+                    fontsize=fs,
+                    align=fitz.TEXT_ALIGN_LEFT,
+                    text_color=(0, 0, 0),
+                    fill=(1, 1, 1)
+                )
+                cert_replaced = True
                 break
-
-        # REDACT old certificate number (search for patterns like "25/PTIS/DPT/00411")
-        # Search for text that matches certificate number pattern
-        cert_patterns = [
-            r"\d+/PTIS/\w+/\d+",  # Matches: 25/PTIS/DPT/00411
-        ]
-        # Try to find and redact any existing certificate number
-        import re
-        text_instances = page.get_text("dict")
-        for block in text_instances.get("blocks", []):
-            if "lines" in block:
-                for line in block["lines"]:
-                    for span in line["spans"]:
-                        span_text = span["text"]
-                        # Check if it matches certificate pattern
-                        if any(re.search(pattern, span_text) for pattern in cert_patterns):
-                            # Redact this text
-                            bbox = fitz.Rect(span["bbox"])
-                            page.add_redact_annot(bbox, fill=(1, 1, 1))
         
-        page.apply_redactions()
-
-        if cert_label:
-            # Position certificate number to the right of the label
-            cert_rect = fitz.Rect(
-                cert_label.x1 + 5,  # 5px padding from label
-                cert_label.y0 - 2,  # Slight vertical alignment adjustment
-                cert_label.x1 + 200,  # Give enough width
-                cert_label.y1 + 2
-            )
-        else:
-            # Fallback: bottom left
-            cert_rect = fitz.Rect(pw * 0.15, ph * 0.90, pw * 0.45, ph * 0.92)
-
-        # Cover old certificate number with white rectangle
-        page.draw_rect(cert_rect, fill=(1, 1, 1), color=None, width=0)
-        
-        # Insert new certificate number
-        page.insert_textbox(
-            cert_rect,
-            cert_value,
-            fontname=arial_font,
-            fontsize=11,
-            align=fitz.TEXT_ALIGN_LEFT,
-            color=(0, 0, 0),
-        )
+        if not cert_replaced:
+            st.warning("Could not find CERTIFICATE NO label for replacement")
 
         # ---------- DATE ----------
         nice_date = _nice_date(test_date)
         
-        # Search for DATE label
-        date_label_texts = ["DATE:", "DATE :", "Date:", "Date :", "DATE OF CERTIFICATION:", "Date of Certification:"]
-        date_label = None
+        # Search for DATE label and replace the entire line
+        date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
+        date_inline_text = f"DATE: {nice_date}"
+        
+        date_replaced = False
         for text in date_label_texts:
             hits = page.search_for(text)
             if hits:
                 date_label = hits[0]
+                # Create rect that covers the label + value area
+                date_rect = fitz.Rect(
+                    date_label.x0,
+                    date_label.y0,
+                    date_label.x0 + date_label.width + 200,  # Extend right to cover old value
+                    date_label.y1
+                )
+                # Adjust height if needed
+                fs = 11
+                if date_rect.height < fs:
+                    cy = (date_rect.y0 + date_rect.y1) / 2
+                    date_rect.y0 = cy - fs / 1.5
+                    date_rect.y1 = cy + fs / 1.5
+                
+                # Apply redaction with new text
+                page.add_redact_annot(
+                    date_rect,
+                    text=date_inline_text,
+                    fontname=arial_font,
+                    fontsize=fs,
+                    align=fitz.TEXT_ALIGN_LEFT,
+                    text_color=(0, 0, 0),
+                    fill=(1, 1, 1)
+                )
+                date_replaced = True
                 break
-
-        # REDACT old date (search for patterns like "25-September-2025")
-        date_patterns = [
-            r"\d{1,2}-[A-Za-z]+-\d{4}",  # Matches: 25-September-2025
-            r"\d{1,2}/\d{1,2}/\d{4}",     # Matches: 25/09/2025
-        ]
-        # Try to find and redact any existing date
-        text_instances = page.get_text("dict")
-        for block in text_instances.get("blocks", []):
-            if "lines" in block:
-                for line in block["lines"]:
-                    for span in line["spans"]:
-                        span_text = span["text"]
-                        # Check if it matches date pattern
-                        if any(re.search(pattern, span_text) for pattern in date_patterns):
-                            # Redact this text
-                            bbox = fitz.Rect(span["bbox"])
-                            page.add_redact_annot(bbox, fill=(1, 1, 1))
         
-        page.apply_redactions()
+        if not date_replaced:
+            st.warning("Could not find DATE label for replacement")
 
-        if date_label:
-            # Position date to the right of the label
-            date_rect = fitz.Rect(
-                date_label.x1 + 5,  # 5px padding from label
-                date_label.y0 - 2,  # Slight vertical alignment adjustment
-                date_label.x1 + 150,  # Give enough width
-                date_label.y1 + 2
-            )
-        else:
-            # Fallback: bottom right
-            date_rect = fitz.Rect(pw * 0.70, ph * 0.90, pw * 0.93, ph * 0.92)
-
-        # Insert date (no white rectangle)
-        page.insert_textbox(
-            date_rect,
-            nice_date,
-            fontname=arial_font,
-            fontsize=11,
-            align=fitz.TEXT_ALIGN_LEFT,
-            color=(0, 0, 0),
-        )
-
+        # ---------- APPLY REDACTIONS ----------
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        
         # ---------- SAVE ----------
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
         stamp = nice_date.replace("/", "-").replace(":", "-").replace(" ", "_")
