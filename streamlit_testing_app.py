@@ -323,7 +323,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     return hits
             return []
 
-        def write_inline_after_label(label_variants, inline_text, right_extra=320, padding=3, fontsize=24, fontname=arial_font):
+        def write_inline_after_label(label_variants, inline_text, right_extra=320, padding=3, fontsize=17, fontname=arial_font):
             hits = search_one_of(label_variants)
             if not hits:
                 return False
@@ -362,7 +362,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         validity_label_hits = page.search_for("Validity:")
         if validity_label_hits:
             vlab = validity_label_hits[0]
-            fs = 24
+            fs = 17
             right_extra = 240 if template_type in ["PT", "PT_template", "UT", "UT_template"] else 280
             align_mode = fitz.TEXT_ALIGN_LEFT
             validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + right_extra, vlab.y1)
@@ -385,7 +385,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         for pat in ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']:
             sth = page.search_for(pat)
             if sth:
-                fs = 22
+                fs = 17
                 for r in sth:
                     cy = (r.y0 + r.y1) / 2
                     r.y0 = cy - fs / 1.5
@@ -401,7 +401,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         inline_date = f"Date of Certification: {new_date}"
         ok1 = write_inline_after_label(
             ["Date of Certification:", "Date of Certification", "Date  of  Certification:", "Date  of  Certification"],
-            inline_date, right_extra=260, padding=3, fontsize=24
+            inline_date, right_extra=260, padding=3, fontsize=17
         )
         if not ok1:
             st.error("Could not place the inline 'Date of Certification' line.")
@@ -410,7 +410,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         inline_cert = f"CERTIFICATE NO: {cert_number}"
         ok2 = write_inline_after_label(
             ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :", "CERTIFICATE NO", "Certificate No"],
-            inline_cert, right_extra=300, padding=3, fontsize=24
+            inline_cert, right_extra=300, padding=3, fontsize=17
         )
         if not ok2:
             st.error("Could not place the inline 'CERTIFICATE NO' line.")
@@ -419,7 +419,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         inline_exam_date = f"DATE: {new_date}"
         ok3 = write_inline_after_label(
             ["DATE:", "DATE :", "Date:", "Date :"],
-            inline_exam_date, right_extra=200, padding=3, fontsize=24
+            inline_exam_date, right_extra=200, padding=3, fontsize=17
         )
         if not ok3:
             st.error("Could not place the inline Examiner 'DATE' line.")
