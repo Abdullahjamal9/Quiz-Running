@@ -77,10 +77,10 @@ def _canon(s: str) -> str:
 # =====================
 # New bundle certificates (no Date of Certification / Validity lines)
 NEW_BUNDLE_CERT_TEMPLATES = {
-    "DS-1": "DS-1_template",
-    "Cummulative": "Cummulative_template",
-    "API RP 7G-2": "API RP 7G-2_template",
-    "API SPEC 5CT & 5A5": "API SPEC 5CT & 5A5_template",
+    "DS-1": "DS-1",
+    "Cummulative": "Cummulative",
+    "API RP 7G-2": "API RP 7G-2",
+    "API SPEC 5CT & 5A5": "API SPEC 5CT & 5A5",
 }
 
 # Old NDT templates (generate individually when the specific test is passed)
