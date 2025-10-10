@@ -439,26 +439,29 @@ def generate_certificate(
         page.apply_redactions()
 
         if cert_label:
-            # Position certificate number to the right of the label
-            cert_rect = fitz.Rect(
-                cert_label.x1 + 5,  # 5px padding from label
-                cert_label.y0 - 2,  # Slight vertical alignment adjustment
-                cert_label.x1 + 200,  # Give enough width
-                cert_label.y1 + 2
-            )
-        else:
-            # Fallback: bottom left
-            cert_rect = fitz.Rect(pw * 0.15, ph * 0.90, pw * 0.45, ph * 0.92)
-
-        # Insert certificate number (no white rectangle)
-        page.insert_textbox(
-            cert_rect,
-            cert_value,
-            fontname=arial_font,
-            fontsize=11,
-            align=fitz.TEXT_ALIGN_LEFT,
-            color=(0, 0, 0),
-        )
+                    # Position certificate number to the right of the label
+                    cert_rect = fitz.Rect(
+                        cert_label.x1 + 5,  # 5px padding from label
+                        cert_label.y0 - 2,  # Slight vertical alignment adjustment
+                        cert_label.x1 + 200,  # Give enough width
+                        cert_label.y1 + 2
+                    )
+                else:
+                    # Fallback: bottom left
+                    cert_rect = fitz.Rect(pw * 0.15, ph * 0.90, pw * 0.45, ph * 0.92)
+        
+                # Cover old certificate number with white rectangle
+                page.draw_rect(cert_rect, fill=(1, 1, 1), color=None, width=0)
+                
+                # Insert new certificate number
+                page.insert_textbox(
+                    cert_rect,
+                    cert_value,
+                    fontname=arial_font,
+                    fontsize=11,
+                    align=fitz.TEXT_ALIGN_LEFT,
+                    color=(0, 0, 0),
+                )
 
         # ---------- DATE ----------
         nice_date = _nice_date(test_date)
