@@ -358,7 +358,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     align=fitz.TEXT_ALIGN_CENTER, text_color=(0, 0, 0), fill=(1, 1, 1)
                 )
         else:
-            st.error(f"Placeholder 'Usman Waheed' not found in {template_type} template.")
+            # st.error(f"Placeholder 'Usman Waheed' not found in {template_type} template.")
+            st.error()
 
         # Validity (inline)
         validity_label_hits = page.search_for("Validity:")
@@ -400,7 +401,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     )
                 break
             else:
-                st.error(f"Status placeholder '{pat}' not found in {template_type} template.")
+                # st.error(f"Status placeholder '{pat}' not found in {template_type} template.")
+                st.error()
 
         # Inline replacements
         # 1) Date of Certification
