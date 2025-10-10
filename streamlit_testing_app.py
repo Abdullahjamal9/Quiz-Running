@@ -425,7 +425,7 @@ def generate_certificate(
                     cert_label.y1
                 )
                 # Adjust height if needed
-                fs = 13
+                fs = 11
                 if cert_rect.height < fs:
                     cy = (cert_rect.y0 + cert_rect.y1) / 2
                     cert_rect.y0 = cy - fs / 1.5
@@ -459,15 +459,15 @@ def generate_certificate(
             hits = page.search_for(text)
             if hits:
                 date_label = hits[0]
-                # Create rect that covers the label + value area (moved right by 10px)
+                # Create rect that covers the label + value area
                 date_rect = fitz.Rect(
-                    date_label.x0 + 10,  # Moved 10px to the right
+                    date_label.x0,
                     date_label.y0,
-                    date_label.x0 + date_label.width + 210,  # Extend right to cover old value (adjusted for shift)
+                    date_label.x0 + date_label.width + 200,  # Extend right to cover old value
                     date_label.y1
                 )
                 # Adjust height if needed
-                fs = 13
+                fs = 11
                 if date_rect.height < fs:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs / 1.5
