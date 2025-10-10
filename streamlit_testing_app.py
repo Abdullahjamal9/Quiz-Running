@@ -419,23 +419,27 @@ def generate_certificate(
                 cert_label = hits[0]
                 # Create rect that covers the label + value area
                 cert_rect = fitz.Rect(
-                    cert_label.x0 - 2,
-                    cert_label.y0 - 3,
-                    cert_label.x0 + 400,  # Extended to cover full line
-                    cert_label.y1 + 3
+                    cert_label.x0,
+                    cert_label.y0,
+                    cert_label.x0 + cert_label.width + 300,
+                    cert_label.y1
                 )
+                # Adjust height if needed
+                fs = 12
+                if cert_rect.height < fs:
+                    cy = (cert_rect.y0 + cert_rect.y1) / 2
+                    cert_rect.y0 = cy - fs / 1.5
+                    cert_rect.y1 = cy + fs / 1.5
                 
-                # Draw white rectangle to clear the area
-                page.draw_rect(cert_rect, fill=(1, 1, 1), color=None)
-                
-                # Insert new text with larger font
-                page.insert_textbox(
+                # Apply redaction with new text
+                page.add_redact_annot(
                     cert_rect,
-                    cert_inline_text,
+                    text=cert_inline_text,
                     fontname=arial_font,
-                    fontsize=16,  # Larger font size
+                    fontsize=fs,
                     align=fitz.TEXT_ALIGN_LEFT,
-                    color=(0, 0, 0)
+                    text_color=(0, 0, 0),
+                    fill=(1, 1, 1)
                 )
                 cert_replaced = True
                 break
@@ -457,23 +461,27 @@ def generate_certificate(
                 date_label = hits[0]
                 # Create rect that covers the label + value area
                 date_rect = fitz.Rect(
-                    date_label.x0 - 2,
-                    date_label.y0 - 3,
-                    date_label.x0 + 300,  # Extended to cover full line
-                    date_label.y1 + 3
+                    date_label.x0,
+                    date_label.y0,
+                    date_label.x0 + date_label.width + 200,
+                    date_label.y1
                 )
+                # Adjust height if needed
+                fs = 12
+                if date_rect.height < fs:
+                    cy = (date_rect.y0 + date_rect.y1) / 2
+                    date_rect.y0 = cy - fs / 1.5
+                    date_rect.y1 = cy + fs / 1.5
                 
-                # Draw white rectangle to clear the area
-                page.draw_rect(date_rect, fill=(1, 1, 1), color=None)
-                
-                # Insert new text with larger font
-                page.insert_textbox(
+                # Apply redaction with new text
+                page.add_redact_annot(
                     date_rect,
-                    date_inline_text,
+                    text=date_inline_text,
                     fontname=arial_font,
-                    fontsize=16,  # Larger font size
+                    fontsize=fs,
                     align=fitz.TEXT_ALIGN_LEFT,
-                    color=(0, 0, 0)
+                    text_color=(0, 0, 0),
+                    fill=(1, 1, 1)
                 )
                 date_replaced = True
                 break
