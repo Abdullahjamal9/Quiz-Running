@@ -444,14 +444,15 @@ def generate_certificate(
             hits = page.search_for(text)
             if hits:
                 date_label = hits[0]
+                # Move date a bit more right (+60 px) and slightly down (+1.5 px)
                 date_rect = fitz.Rect(
-                    date_label.x0 + 40,  # Moved 40px right
-                    date_label.y0,
-                    date_label.x0 + 240,
+                    date_label.x0 + 60,
+                    date_label.y0 + 1.5,
+                    date_label.x0 + 260,
                     date_label.y1
                 )
 
-                fs = 16  # Increased font size
+                fs = 13.5  # Balanced size: readable but not oversized
                 if date_rect.height < fs:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs / 1.5
@@ -468,6 +469,7 @@ def generate_certificate(
                 )
                 date_replaced = True
                 break
+
 
         if not date_replaced:
             st.warning("Could not find DATE label for replacement")
