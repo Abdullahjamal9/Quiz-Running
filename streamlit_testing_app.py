@@ -373,7 +373,7 @@ def generate_certificate(
         headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
         for i, title in enumerate(headers):
             cell = fitz.Rect(table_left + i * col_w, table_top, table_left + (i + 1) * col_w, table_top + header_h)
-            page.insert_textbox(cell, title, fontname=arial_font, fontsize=16, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
+            page.insert_textbox(cell, title, fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
         v_standard = (standard_text or "").strip()
         v_pct = str(percentage_text or "").strip()
@@ -387,7 +387,7 @@ def generate_certificate(
         values = [v_standard, v_pct, v_crit]
         for i, val in enumerate(values):
             cell = fitz.Rect(table_left + i * col_w, table_top + header_h, table_left + (i + 1) * col_w, table_top + header_h + data_h)
-            page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=16, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
+            page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
         # ---------- CERTIFICATE NO ----------
         cert_tag = {
@@ -451,7 +451,7 @@ def generate_certificate(
                     date_label.y1
                 )
 
-                fs = 16  # Increased font size
+                fs = 17  # Increased font size
                 if date_rect.height < fs:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs / 1.5
