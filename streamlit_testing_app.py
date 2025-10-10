@@ -1010,11 +1010,16 @@ if st.session_state.admin_logged_in:
                 if required_standards.issubset(passed_standards):
                     cumm_row = group[group['Test Type'].astype(str).str.strip() == 'Cummulative']
                     if not cumm_row.empty:
-                        qualifying_rows.append(cumm_row.iloc[0])
+                        qualifying_rows.append(cumm_row.iloc[0].to_dict())
 
             qualifying_df = pd.DataFrame(qualifying_rows)
+
             if selected_cert_name != "All":
-                qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
+                if not qualifying_df.empty and "Name" in qualifying_df.columns:
+                    qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
+                else:
+                    st.warning("No qualifying candidates found yet for the selected filters.")
+                    qualifying_df = pd.DataFrame() 
 
             if qualifying_df.empty:
                 st.warning("Candidate is ineligible as not all required standards are passed.")
