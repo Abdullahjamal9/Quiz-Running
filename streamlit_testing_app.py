@@ -194,7 +194,7 @@ def load_questions():
         st.info("Generating sample questions for testing...")
         sample_questions = pd.DataFrame({
             "Qno": [1, 2, 3, 4, 5],
-            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cummulative"],
+            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cumulative"],
             "Question": [
                 "What is 2 + 2?",
                 "Capital of France?",
@@ -213,7 +213,7 @@ def load_questions():
 
 def get_info_for_standard(standards, selected_standard):
     try:
-        if selected_standard == "Cummulative":
+        if selected_standard == "Cumulative":
             return 50, 80, 0, 50, 0
         row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
         if not row.empty:
@@ -509,7 +509,7 @@ def download_individual_test(emp_id, emp_name, test_data):
 # Helpers
 # =====================
 def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
-    if standard == "Cummulative":
+    if standard == "Cumulative":
         cand = questions_df.copy()
     else:
         cand = questions_df[
@@ -559,16 +559,6 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 break
             except Exception:
                 continue
-        if worksheet is None:
-            try:
-                all_worksheets = sheet.worksheets()
-                for ws in all_worksheets:
-                    if "result" in ws.title.lower():
-                        worksheet = ws
-                        st.info(f"Saving results to worksheet: '{ws.title}'")
-                        break
-            except:
-                pass
         if worksheet is None:
             return False, "Could not find results worksheet to save data"
         pkt_tz = pytz.timezone('Asia/Karachi')
@@ -873,26 +863,40 @@ if st.session_state.admin_logged_in:
             key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
         )
         if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
+            required_standards = {"DS-1", "Cumulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
             passed_results = results_df[results_df["Status"] == "Pass"]
+            st.info(f"Passed results: {len(passed_results)} records")
+            st.info(f"Unique standards in passed results: {sorted(passed_results['Test Type'].unique())}")
+            
             grouped = passed_results.groupby('Name')
             qualifying_rows = []
             for name, group in grouped:
                 passed_standards = set(group['Test Type'].str.strip())
+                st.info(f"Employee {name}: Passed standards {sorted(passed_standards)}")
                 if required_standards.issubset(passed_standards):
-                    cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
+                    cumm_row = group[group['Test Type'].str.strip() == 'Cumulative']
                     if not cumm_row.empty:
                         qualifying_rows.append(cumm_row.iloc[0])
+                    else:
+                        st.warning(f"Employee {name} passed required standards but no 'Cumulative' test found.")
+            
             qualifying_df = pd.DataFrame(qualifying_rows, columns=results_df.columns) if qualifying_rows else pd.DataFrame(columns=results_df.columns)
+            st.info(f"Qualifying employees: {len(qualifying_df)}")
             st.info(f"qualifying_df columns: {list(qualifying_df.columns)}")
+            
             if selected_cert_name != "All":
                 if "Name" in qualifying_df.columns:
                     qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
+                    st.info(f"Filtered for {selected_cert_name}: {len(qualifying_df)} qualifying employees")
                 else:
                     st.error("Column 'Name' not found in qualifying_df. Check results data for column names.")
                     qualifying_df = pd.DataFrame(columns=results_df.columns)
+            
             if qualifying_df.empty:
-                st.warning("No qualifying employees found for the selected filter.")
+                if selected_cert_name == "All":
+                    st.warning("No employees qualify for certificates. Ensure employees have passed all required standards: DS-1, Cumulative, API SPEC 5CT & 5A5, API RP 7G-2.")
+                else:
+                    st.warning(f"No qualifying employees found for {selected_cert_name}. Try selecting 'All' or check if this employee has passed all required standards.")
             else:
                 certificate_files = []
                 for _, row in qualifying_df.iterrows():
@@ -966,8 +970,8 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
         )
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
-    if "Cummulative" not in options:
-        options = ["Cummulative"] + options
+    if "Cumulative" not in options:
+        options = ["Cumulative"] + options
     selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
     total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
     c1, c2, c3 = st.columns(3)
