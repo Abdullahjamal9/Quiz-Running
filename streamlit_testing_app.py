@@ -289,7 +289,7 @@ def generate_certificate(
         # ---------- Load fonts ----------
         arial_font = "helv"
         name_font = "times-italic"
-        
+
         try:
             arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
             if os.path.exists(arial_fontfile):
@@ -297,7 +297,7 @@ def generate_certificate(
                 arial_font = "Arial"
         except:
             pass
-            
+
         try:
             corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
             if os.path.exists(corsiva_fontfile):
@@ -307,35 +307,30 @@ def generate_certificate(
             pass
 
         # ---------- FIND NAME POSITION ----------
-        # Search for the "Certificate of Accomplishment Awarded to" text
         award_texts = [
             "Certificate of Accomplishment Awarded to",
             "Certificate of Accomplishment  Awarded to",
-            "Awarded to"
+            "Awarded to",
         ]
-        
+
         award_rect = None
         for text in award_texts:
             hits = page.search_for(text)
             if hits:
                 award_rect = hits[0]
                 break
-        
-        # Position name below the award text
+
         if award_rect:
-            # Place name centered, 15px below the award text
             name_y = award_rect.y1 + 15
             name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + 30)
         else:
-            # Fallback: center of upper third
             name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.32)
 
-        # Insert name (DO NOT draw white rectangle first)
         page.insert_textbox(
             name_rect,
             str(emp_name),
             fontname=name_font,
-            fontsize=22,  # Reduced from 28 for better fit
+            fontsize=22,
             align=fitz.TEXT_ALIGN_CENTER,
             color=(0, 0, 0),
         )
@@ -344,7 +339,7 @@ def generate_certificate(
         exam_hits = page.search_for("EXAMINATION RESULT")
         if not exam_hits:
             exam_hits = page.search_for("Examination Result")
-        
+
         exam_rect = exam_hits[0] if exam_hits else fitz.Rect(pw * 0.1, ph * 0.42, pw * 0.9, ph * 0.45)
 
         # ---------- CREATE TABLE ----------
@@ -356,19 +351,16 @@ def generate_certificate(
         data_h = table_height - header_h
         col_w = table_width / 3
 
-        # Clear table area with white rectangle
         table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
         page.draw_rect(table_bbox, fill=(1, 1, 1), color=(0, 0, 0), width=0.7)
-        
-        # Draw horizontal line
+
         page.draw_line(
             fitz.Point(table_left, table_top + header_h),
             fitz.Point(table_left + table_width, table_top + header_h),
             color=(0, 0, 0),
             width=0.7,
         )
-        
-        # Draw vertical lines
+
         for i in range(1, 3):
             x = table_left + i * col_w
             page.draw_line(
@@ -378,22 +370,20 @@ def generate_certificate(
                 width=0.7,
             )
 
-        # Add headers
         headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
         for i, title in enumerate(headers):
             cell = fitz.Rect(table_left + i * col_w, table_top, table_left + (i + 1) * col_w, table_top + header_h)
             page.insert_textbox(cell, title, fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
-        # Add values
         v_standard = (standard_text or "").strip()
         v_pct = str(percentage_text or "").strip()
         v_crit = str(criteria_text or "").strip()
-        
+
         if v_pct and not v_pct.endswith("%"):
             v_pct += "%"
         if v_crit and not v_crit.endswith("%"):
             v_crit += "%"
-            
+
         values = [v_standard, v_pct, v_crit]
         for i, val in enumerate(values):
             cell = fitz.Rect(table_left + i * col_w, table_top + header_h, table_left + (i + 1) * col_w, table_top + header_h + data_h)
@@ -408,30 +398,27 @@ def generate_certificate(
         }.get(template_type, template_type)
         cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
 
-        # Search for CERTIFICATE NO label and replace the entire line
         cert_label_texts = ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
         cert_inline_text = f"CERTIFICATE NO: {cert_value}"
-        
+
         cert_replaced = False
         for text in cert_label_texts:
             hits = page.search_for(text)
             if hits:
                 cert_label = hits[0]
-                # Create rect that covers the label + value area
                 cert_rect = fitz.Rect(
                     cert_label.x0,
                     cert_label.y0,
-                    cert_label.x0 + cert_label.width + 300,  # Extend right to cover old value
+                    cert_label.x0 + cert_label.width + 300,
                     cert_label.y1
                 )
-                # Adjust height if needed
-                fs = 11
+
+                fs = 14  # Increased font size
                 if cert_rect.height < fs:
                     cy = (cert_rect.y0 + cert_rect.y1) / 2
                     cert_rect.y0 = cy - fs / 1.5
                     cert_rect.y1 = cy + fs / 1.5
-                
-                # Apply redaction with new text
+
                 page.add_redact_annot(
                     cert_rect,
                     text=cert_inline_text,
@@ -443,37 +430,33 @@ def generate_certificate(
                 )
                 cert_replaced = True
                 break
-        
+
         if not cert_replaced:
             st.warning("Could not find CERTIFICATE NO label for replacement")
 
         # ---------- DATE ----------
         nice_date = _nice_date(test_date)
-        
-        # Search for DATE label and replace the entire line
         date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
         date_inline_text = f"DATE: {nice_date}"
-        
+
         date_replaced = False
         for text in date_label_texts:
             hits = page.search_for(text)
             if hits:
                 date_label = hits[0]
-                # Create rect that covers the label + value area
                 date_rect = fitz.Rect(
-                    date_label.x0,
+                    date_label.x0 + 40,  # Moved 40px right
                     date_label.y0,
-                    date_label.x0 + date_label.width + 200,  # Extend right to cover old value
+                    date_label.x0 + 240,
                     date_label.y1
                 )
-                # Adjust height if needed
-                fs = 11
+
+                fs = 14  # Increased font size
                 if date_rect.height < fs:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs / 1.5
                     date_rect.y1 = cy + fs / 1.5
-                
-                # Apply redaction with new text
+
                 page.add_redact_annot(
                     date_rect,
                     text=date_inline_text,
@@ -485,19 +468,17 @@ def generate_certificate(
                 )
                 date_replaced = True
                 break
-        
+
         if not date_replaced:
             st.warning("Could not find DATE label for replacement")
 
-        # ---------- APPLY REDACTIONS ----------
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-        
-        # ---------- SAVE ----------
+
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
         stamp = nice_date.replace("/", "-").replace(":", "-").replace(" ", "_")
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{stamp}.pdf"
         output_path = f"/tmp/{certificate_filename}"
-        
+
         doc.save(output_path, garbage=3, deflate=True)
         doc.close()
 
@@ -512,6 +493,7 @@ def generate_certificate(
         st.error(f"❌ Error generating {template_type} certificate: {e}")
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
+
         
 # =====================
 # Individual Test Downloads
