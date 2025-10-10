@@ -413,7 +413,7 @@ def generate_certificate(
                     cert_label.y1
                 )
 
-                fs = 14  # Increased font size
+                fs = 18  # Increased font size
                 if cert_rect.height < fs:
                     cy = (cert_rect.y0 + cert_rect.y1) / 2
                     cert_rect.y0 = cy - fs / 1.5
