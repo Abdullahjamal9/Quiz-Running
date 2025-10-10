@@ -417,6 +417,27 @@ def generate_certificate(
                 cert_label = hits[0]
                 break
 
+        # REDACT old certificate number (search for patterns like "25/PTIS/DPT/00411")
+        # Search for text that matches certificate number pattern
+        cert_patterns = [
+            r"\d+/PTIS/\w+/\d+",  # Matches: 25/PTIS/DPT/00411
+        ]
+        # Try to find and redact any existing certificate number
+        import re
+        text_instances = page.get_text("dict")
+        for block in text_instances.get("blocks", []):
+            if "lines" in block:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        span_text = span["text"]
+                        # Check if it matches certificate pattern
+                        if any(re.search(pattern, span_text) for pattern in cert_patterns):
+                            # Redact this text
+                            bbox = fitz.Rect(span["bbox"])
+                            page.add_redact_annot(bbox, fill=(1, 1, 1))
+        
+        page.apply_redactions()
+
         if cert_label:
             # Position certificate number to the right of the label
             cert_rect = fitz.Rect(
@@ -450,6 +471,26 @@ def generate_certificate(
             if hits:
                 date_label = hits[0]
                 break
+
+        # REDACT old date (search for patterns like "25-September-2025")
+        date_patterns = [
+            r"\d{1,2}-[A-Za-z]+-\d{4}",  # Matches: 25-September-2025
+            r"\d{1,2}/\d{1,2}/\d{4}",     # Matches: 25/09/2025
+        ]
+        # Try to find and redact any existing date
+        text_instances = page.get_text("dict")
+        for block in text_instances.get("blocks", []):
+            if "lines" in block:
+                for line in block["lines"]:
+                    for span in line["spans"]:
+                        span_text = span["text"]
+                        # Check if it matches date pattern
+                        if any(re.search(pattern, span_text) for pattern in date_patterns):
+                            # Redact this text
+                            bbox = fitz.Rect(span["bbox"])
+                            page.add_redact_annot(bbox, fill=(1, 1, 1))
+        
+        page.apply_redactions()
 
         if date_label:
             # Position date to the right of the label
@@ -493,6 +534,7 @@ def generate_certificate(
         st.error(f"❌ Error generating {template_type} certificate: {e}")
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
+        
 # =====================
 # Individual Test Downloads
 # =====================
