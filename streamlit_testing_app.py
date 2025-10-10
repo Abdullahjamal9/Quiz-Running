@@ -12,6 +12,10 @@ import io
 import requests
 import zipfile
 import traceback
+# from docx import Document  # REMOVE this import (no longer needed)
+# from docx.shared import Pt  # REMOVE
+# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
+# from docx.oxml.ns import qn  # REMOVE
 import fitz
 
 # =====================
