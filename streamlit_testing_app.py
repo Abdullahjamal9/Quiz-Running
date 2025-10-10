@@ -12,7 +12,7 @@ import io
 import requests
 import zipfile
 import traceback
-import fitz  # PyMuPDF
+import fitz
 
 # =====================
 # Paths / Files
@@ -28,84 +28,6 @@ scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
 client = gspread.authorize(creds)
 GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
-
-# --- Standard name normalizer (canonicalizes sheet values) ---
-def _canon(s: str) -> str:
-    if s is None:
-        return ""
-    raw = str(s).strip().lower()
-    # remove extra spaces
-    raw = " ".join(raw.split())
-    # quick aliases
-    aliases = {
-        "ds-1": "DS-1",
-        "ds 1": "DS-1",
-        "ds1": "DS-1",
-
-        "cumulative": "Cummulative",   # canonical key your app uses elsewhere
-        "cummulative": "Cummulative",
-
-        "api rp 7g-2": "API RP 7G-2",
-        "api rp 7g2": "API RP 7G-2",
-        "7g-2": "API RP 7G-2",
-        "7g2": "API RP 7G-2",
-
-        "api spec 5ct & 5a5": "API SPEC 5CT & 5A5",
-        "api spec 5ct&5a5": "API SPEC 5CT & 5A5",
-        "api 5ct & 5a5": "API SPEC 5CT & 5A5",
-        "5ct & 5a5": "API SPEC 5CT & 5A5",
-    }
-    # try exact, then compacted (remove spaces and hyphens)
-    if raw in aliases:
-        return aliases[raw]
-    compact = raw.replace(" ", "").replace("-", "")
-    compact_aliases = {
-        "ds1": "DS-1",
-        "apirp7g2": "API RP 7G-2",
-        "apispec5ct&5a5": "API SPEC 5CT & 5A5",
-        "apispec5ct5a5": "API SPEC 5CT & 5A5",
-        "cumulative": "Cummulative",
-        "cummulative": "Cummulative",
-    }
-    if compact in compact_aliases:
-        return compact_aliases[compact]
-    # default: return upper-cased words as-is
-    return str(s).strip()
-
-# =====================
-# NEW: Certificate Template Registry (New vs Old)
-# =====================
-# New bundle certificates (no Date of Certification / Validity lines)
-NEW_BUNDLE_CERT_TEMPLATES = {
-    "DS-1": "DS-1",
-    "Cummulative": "Cummulative",
-    "API RP 7G-2": "API RP 7G-2",
-    "API SPEC 5CT & 5A5": "API SPEC 5CT & 5A5",
-}
-
-# Old NDT templates (generate individually when the specific test is passed)
-OLD_NDT_TRIGGER_MAP = {
-    "MPT (General)": "MPT_template",
-    "MPT (Specific)": "MPT_template",
-    "Dye Penetrant (General)": "PT_template",
-    "Dye Penetrant (Specific)": "PT_template",
-    "Visual Testing": "VT_template",
-    "Ultrasonic Testing": "UT_template",
-}
-
-# Which templates have Date-of-Certification / Validity fields to be populated by code?
-TEMPLATE_HAS_DATES = {
-    # OLD NDT certs DO have these lines
-    "PT_template": True,
-    "UT_template": True,
-    "VT_template": True,
-    "MPT_template": True,
-    # NEW bundle certs DO NOT have these lines
-    "DS-1_template": False,
-    "Cummulative_template": False,
-    "API RP 7G-2_template": False,
-    "API SPEC 5CT & 5A5_template": False,
-}
 
 # =====================
 # Cached Loaders
@@ -127,6 +49,7 @@ def load_employees_and_standards():
         except Exception as e:
             st.warning(f"Error loading employees: {str(e)}")
             employees = pd.DataFrame(columns=["ID", "Name"])
+        
         # Load Standards from Info sheet
         try:
             standards_data = sheet.worksheet("Info").get_all_records()
@@ -144,6 +67,7 @@ def load_employees_and_standards():
         except Exception as e:
             st.error(f"Error loading Info sheet: {str(e)}")
             standards = pd.DataFrame(columns=["ID", "Standard", "Total Questions", "Passing Criteria", "Hours", "Minutes", "Seconds"])
+        
         return employees, standards
     except Exception as e:
         st.error(f"Error in load_employees_and_standards: {str(e)}")
@@ -155,25 +79,32 @@ def load_employees_and_standards():
 def load_all_results():
     try:
         sheet = client.open_by_url(GSHEET_URL)
+        
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
+        
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
                 break
             except Exception:
                 continue
+        
         if worksheet is None:
             st.error("Could not find any results worksheet.")
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+        
         all_values = worksheet.get_all_values()
         if len(all_values) < 2:
             return pd.DataFrame(columns=["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"])
+        
         headers = all_values[0]
         data_rows = all_values[1:]
+        
         df = pd.DataFrame(data_rows, columns=headers)
         df['_original_order'] = range(len(df))
         df = df[~df.apply(lambda x: all(str(val).strip() == '' for val in x[:-1]), axis=1)]
+        
         column_mapping = {
             'ID': ['ID', 'id', 'Id', 'Employee ID', 'EMP ID'],
             'Name': ['NAME', 'Name', 'name', 'Employee Name', 'EMP NAME'],
@@ -186,25 +117,32 @@ def load_all_results():
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
             'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
         }
+        
         for standard_name, possible_names in column_mapping.items():
             for col in df.columns:
                 if col in possible_names and col != '_original_order':
                     df = df.rename(columns={col: standard_name})
                     break
+        
         required_columns = ["ID", "Name", "Total", "Right", "Wrong", "Percentage", "Criteria", "Status", "Test Type", "Date / Time"]
         for col in required_columns:
             if col not in df.columns:
                 df[col] = ""
+        
         numeric_cols = ["Total", "Right", "Wrong"]
         for col in numeric_cols:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
+        
         if "Percentage" in df.columns:
             df["Percentage"] = df["Percentage"].astype(str).str.replace("%", "").str.replace(" ", "")
             df["Percentage"] = pd.to_numeric(df["Percentage"], errors='coerce').fillna(0).astype(float)
+        
         df = df.sort_values('_original_order').drop('_original_order', axis=1)
         df = df.reset_index(drop=True)
+        
         return df[required_columns]
+        
     except Exception as e:
         st.error(f"Error loading results: {str(e)}")
         st.error(f"Detailed error: {traceback.format_exc()}")
@@ -214,25 +152,33 @@ def load_all_results():
 def load_questions():
     try:
         sheet = client.open_by_url(GSHEET_URL)
+        
         question_worksheet_names = ["Questions", "Question Bank", "Quiz Questions", "QuestionData"]
         questions_data = None
+        worksheet_used = None
+        
         for name in question_worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
                 questions_data = worksheet.get_all_records()
+                worksheet_used = name
                 break
             except Exception as ws_error:
                 st.warning(f"Worksheet '{name}' not found or inaccessible: {str(ws_error)}")
                 continue
+        
         if questions_data is None or not questions_data:
             raise Exception("No valid questions worksheet found.")
+        
         questions = pd.DataFrame(questions_data)
         if questions.empty:
             raise Exception("Questions worksheet is empty.")
+        
         required_columns = ["Qno", "Standard", "Question", "A", "B", "C", "D", "Answer"]
         for col in required_columns:
             if col not in questions.columns:
                 questions[col] = ""
+        
         questions["Standard"] = questions["Standard"].astype(str).str.strip()
         questions["Question"] = questions["Question"].astype(str).str.strip()
         questions["A"] = questions["A"].astype(str).str.strip()
@@ -240,7 +186,9 @@ def load_questions():
         questions["C"] = questions["C"].astype(str).str.strip()
         questions["D"] = questions["D"].astype(str).str.strip()
         questions["Answer"] = questions["Answer"].astype(str).str.strip()
+        
         return questions[required_columns]
+    
     except Exception as e:
         st.error(f"Error loading questions from Google Sheet: {str(e)}")
         st.info("Generating sample questions for testing...")
@@ -283,22 +231,38 @@ def get_info_for_standard(standards, selected_standard):
         return 50, 70, 1, 0, 0
 
 # =====================
-# Make results available for certificate table painter
+# Certificate Generation
 # =====================
-_RESULTS_CACHE_FOR_CERTS = None
-def get_results_df_for_certs():
-    global _RESULTS_CACHE_FOR_CERTS
-    if _RESULTS_CACHE_FOR_CERTS is None:
-        _RESULTS_CACHE_FOR_CERTS = load_all_results()
-    return _RESULTS_CACHE_FOR_CERTS
+import streamlit as st
+import pandas as pd
+import numpy as np
+import datetime
+import time
+import os
+import gspread
+from google.oauth2.service_account import Credentials
+import streamlit.components.v1 as components
+import pytz
+import io
+import requests
+import zipfile
+import traceback
+# from docx import Document  # REMOVE this import (no longer needed)
+# from docx.shared import Pt  # REMOVE
+# from docx.enum.text import WD_ALIGN_PARAGRAPH  # REMOVE
+# from docx.oxml.ns import qn  # REMOVE
+import fitz  # ADD this import for PyMuPDF
+
+# ... (rest of your imports and code unchanged up to Certificate Generation)
 
 # =====================
-# Certificate Generation helpers
+# Certificate Generation
 # =====================
 def get_template_path(template_type):
     template_path = os.path.join(DB_FOLDER, f"{template_type}_template.pdf")
     if os.path.exists(template_path):
         return template_path
+    
     github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}_template.pdf"
     try:
         response = requests.get(github_url, timeout=10)
@@ -313,107 +277,23 @@ def get_template_path(template_type):
         st.error(f"Failed to download {template_type} template from GitHub: {str(e)}. Please add 'db/{template_type}_template.pdf' to your repo.")
         return None, None
 
-# --- NEW: lightweight table placement and painting ---
-def _find_table_anchor_rect(page):
-    anchors = [
-        "EXAMINATION RESULT", "EXAMINATION RESULT     ",
-        "Standard Percentage Criteria",
-        "Standard   Percentage   Criteria",
-        "Standard  Percentage  Criteria"
-    ]
-    for a in anchors:
-        hits = page.search_for(a)
-        if hits:
-            lab = hits[0]
-            top = lab.y1 + 6
-            left = max(lab.x0 - 10, 25)
-            right = min(lab.x0 + 520, page.rect.x1 - 25)
-            bottom = top + 140
-            return fitz.Rect(left, top, right, bottom)
-    pr = page.rect
-    return fitz.Rect(pr.x0 + 40, pr.y0 + pr.height * 0.55, pr.x1 - 40, pr.y0 + pr.height * 0.75)
-
-def _draw_simple_table(page, rect, headers, rows, fontname="helv", fontsize=10, linew=0.7, cellpad=3):
-    n_cols = len(headers)
-    n_rows = 1 + len(rows)
-    col_w = rect.width / n_cols
-    row_h = max(16, fontsize + 6)
-    total_h = n_rows * row_h
-    if total_h > rect.height:
-        row_h = rect.height / n_rows
-    # verticals
-    for c in range(n_cols + 1):
-        x = rect.x0 + c * col_w
-        page.draw_line(p1=fitz.Point(x, rect.y0), p2=fitz.Point(x, rect.y0 + n_rows * row_h), width=linew, color=(0,0,0))
-    # horizontals
-    for r in range(n_rows + 1):
-        y = rect.y0 + r * row_h
-        page.draw_line(p1=fitz.Point(rect.x0, y), p2=fitz.Point(rect.x1, y), width=linew, color=(0,0,0))
-    # header
-    for c, h in enumerate(headers):
-        cell = fitz.Rect(rect.x0 + c*col_w, rect.y0, rect.x0 + (c+1)*col_w, rect.y0 + row_h)
-        page.insert_textbox(cell, str(h), fontname=fontname, fontsize=fontsize, align=fitz.TEXT_ALIGN_CENTER)
-    # body
-    for r_idx, row in enumerate(rows):
-        for c, val in enumerate(row):
-            cell = fitz.Rect(rect.x0 + c*col_w, rect.y0 + (r_idx+1)*row_h,
-                             rect.x0 + (c+1)*col_w, rect.y0 + (r_idx+2)*row_h)
-            page.insert_textbox(cell, str(val), fontname=fontname, fontsize=fontsize, align=fitz.TEXT_ALIGN_CENTER)
-
-def draw_exam_result_table(page, template_type, emp_id, emp_name):
-    df = get_results_df_for_certs()
-    if df.empty:
-        return
-    sub = df[df["ID"].astype(str) == str(emp_id)].copy()
-    if sub.empty:
-        sub = df[df["Name"].astype(str).str.strip().str.casefold() == str(emp_name).strip().casefold()].copy()
-    if sub.empty:
-        return
-    def _parse_dt(x):
-        for fmt in ("%d-%m-%Y %I:%M:%S %p", "%d-%m-%Y %H:%M:%S", "%d-%m-%Y", "%d/%m/%Y %H:%M"):
-            try:
-                return datetime.datetime.strptime(str(x), fmt)
-            except Exception:
-                pass
-        return None
-    if "Date / Time" in sub.columns:
-        sub["_dt"] = sub["Date / Time"].apply(_parse_dt)
-        sub = sub.sort_values(by=["_dt"], ascending=True, na_position="last").drop(columns=["_dt"], errors="ignore")
-    headers = ["Standard", "Percentage", "Criteria"]
-    rows = []
-    for _, r in sub.iterrows():
-        std = str(r.get("Test Type", "")).strip()
-        perc = r.get("Percentage", "")
-        crit = r.get("Criteria", "")
-        if isinstance(perc, (int, float)):
-            perc = f"{float(perc):.2f}%"
-        elif isinstance(perc, str) and "%" not in perc:
-            try:
-                f = float(perc)
-                perc = f"{f:.2f}%"
-            except:
-                pass
-        if isinstance(crit, (int, float)):
-            crit = f"{int(crit)}%"
-        elif isinstance(crit, str) and "%" not in crit and crit.strip().isdigit():
-            crit = f"{crit.strip()}%"
-        rows.append([std, perc, crit])
-    rect = _find_table_anchor_rect(page)
-    _draw_simple_table(page, rect, headers, rows, fontname="helv", fontsize=10, linew=0.7, cellpad=3)
-
-# =====================
-# Certificate Generation
-# =====================
 def generate_certificate(emp_id, emp_name, test_date, status, template_type):
     """
-    Generate certificate with tight, inline placement for supported fields.
-    Adds a results table for every certificate.
+    Generate certificate with tight, inline placement (no extra spacing) for:
+      - Date of Certification: <date>
+      - CERTIFICATE NO: <number>
+      - DATE: <date>  (Examiner block)
+    Preserves nearby template text (address lines, emails, etc.).
     """
     template_path = get_template_path(template_type)
     if not template_path:
         st.error(f"No {template_type} template available. Cannot generate certificate.")
         return None, None
+
     try:
+        import datetime, os, fitz
+
+        # --- Open PDF ---
         doc = fitz.open(template_path)
         page = doc[0]
 
@@ -439,7 +319,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         cert_number = f"{emp_id}/PTIS/{cert_type}/2025"
         status_text = "Pass" if status == "Pass" else "Fail"
 
-        # --- Fonts ---
+        # --- Fonts (fallbacks ok) ---
         corsiva_font = "times-italic"
         arial_font   = "helv"
         corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
@@ -461,6 +341,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
         except Exception:
             pass
 
+        # --- Helpers ---
         def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
             fs = base_font_size
             est = len(text) * (fs * 0.5)
@@ -477,17 +358,31 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             return []
 
         def write_inline_after_label(label_variants, inline_text,
-                                     right_extra=320, padding=3,
-                                     fontsize=21, fontname=arial_font):
+                                     right_extra=320,  # width to the right of label (tight single line)
+                                     padding=3,       # small gap after label
+                                     fontsize=21,
+                                     fontname=arial_font):
+            """
+            Replace the entire line starting at the label with left-aligned text
+            'inline_text' (e.g., "Date of Certification: 17-July-2025").
+            Only covers that single text line's height → won't affect text below.
+            """
             hits = search_one_of(label_variants)
             if not hits:
                 return False
             lab = hits[0]
-            line_rect = fitz.Rect(lab.x0, lab.y0, lab.x0 + (lab.width + right_extra), lab.y1)
+            # Build a single-line rectangle from label.x0 to a bit to the right
+            line_rect = fitz.Rect(lab.x0,
+                                  lab.y0,
+                                  lab.x0 + (lab.width + right_extra),
+                                  lab.y1)
+            # Ensure room for the font
             if line_rect.height < fontsize:
                 cy = (line_rect.y0 + line_rect.y1) / 2
                 line_rect.y0 = cy - fontsize/2
                 line_rect.y1 = cy + fontsize/2
+
+            # Render the new inline text at once (left-aligned) with redact text
             page.add_redact_annot(
                 line_rect,
                 text=inline_text,
@@ -500,8 +395,8 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             return True
 
         # --- Name (centered replacement at existing placeholder) ---
-        old_name = "Israr Hussain"  # fallback placeholder in provided templates
-        name_hits = page.search_for(old_name) or page.search_for("Usman Waheed")
+        old_name = "Usman Waheed"
+        name_hits = page.search_for(old_name)
         if name_hits:
             name_font_size = calculate_font_size(emp_name, 500, 44, 28)
             for r in name_hits:
@@ -512,6 +407,45 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     r, text=emp_name, fontname=corsiva_font, fontsize=name_font_size,
                     align=fitz.TEXT_ALIGN_CENTER, text_color=(0,0,0), fill=(1,1,1)
                 )
+
+        # --- Validity (keep on right; replace whole line inline) ---
+        # Find the existing validity line and overwrite it with the new validity text.
+# --- Validity (inline; align per template) ---
+        validity_label_hits = page.search_for("Validity:")
+        if validity_label_hits:
+            vlab = validity_label_hits[0]
+            fs = 21
+        
+            # Build a one-line rectangle starting at the label and extending a bit right
+            # Use a tighter width for PT/UT so it doesn't drift too far right.
+            if template_type in ["PT", "PT_template", "UT", "UT_template"]:
+                right_extra = 240   # tighter width for PT/UT
+                align_mode  = fitz.TEXT_ALIGN_LEFT
+            else:
+                # MT/VT looked fine; you can keep LEFT for consistency too.
+                right_extra = 280
+                align_mode  = fitz.TEXT_ALIGN_LEFT   # use LEFT for consistent spacing
+                # If you really want MT/VT right-aligned, set: align_mode = fitz.TEXT_ALIGN_RIGHT
+        
+            validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + right_extra, vlab.y1)
+        
+            # Ensure the line box is tall enough
+            if validity_line_rect.height < fs:
+                cy = (validity_line_rect.y0 + validity_line_rect.y1) / 2
+                validity_line_rect.y0 = cy - fs/2
+                validity_line_rect.y1 = cy + fs/2
+        
+            # Replace the whole line inline (preserves spacing and nearby text)
+            page.add_redact_annot(
+                validity_line_rect,
+                text=new_validity,             # e.g., "Validity: 16-July-2030"
+                fontname=arial_font,
+                fontsize=fs,
+                align=align_mode,
+                text_color=(0,0,0),
+                fill=(1,1,1)
+            )
+
 
         # --- Status (left) ---
         status_text_draw = f"Status: {status_text}"
@@ -529,76 +463,48 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     )
                 break
 
-        # --- Date / Validity feature flag (skip for new bundle) ---
-        has_dates = TEMPLATE_HAS_DATES.get(template_type, True)
+        # ==================================================
+        # Inline, tight replacements (no extra spacing)
+        # ==================================================
+        # 1) Date of Certification: <date>  (single-line, left aligned)
+        inline_date = f"Date of Certification: {new_date}"
+        ok1 = write_inline_after_label(
+            ["Date of Certification:", "Date of Certification",
+             "Date  of  Certification:", "Date  of  Certification"],
+            inline_date, right_extra=260, padding=3, fontsize=21
+        )
+        if not ok1:
+            st.warning("Could not place the inline 'Date of Certification' line.")
 
-        # Validity (if supported)
-        if has_dates:
-            validity_label_hits = page.search_for("Validity:")
-            if validity_label_hits:
-                vlab = validity_label_hits[0]
-                fs = 21
-                right_extra = 280
-                align_mode  = fitz.TEXT_ALIGN_LEFT
-                validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + right_extra, vlab.y1)
-                if validity_line_rect.height < fs:
-                    cy = (validity_line_rect.y0 + validity_line_rect.y1) / 2
-                    validity_line_rect.y0 = cy - fs/2
-                    validity_line_rect.y1 = cy + fs/2
-                page.add_redact_annot(
-                    validity_line_rect,
-                    text=new_validity,
-                    fontname=arial_font,
-                    fontsize=fs,
-                    align=align_mode,
-                    text_color=(0,0,0),
-                    fill=(1,1,1)
-                )
+        # 2) CERTIFICATE NO: <number> (single-line, left aligned)
+        inline_cert = f"CERTIFICATE NO: {cert_number}"
+        ok2 = write_inline_after_label(
+            ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :",
+             "CERTIFICATE NO", "Certificate No"],
+            inline_cert, right_extra=300, padding=3, fontsize=21
+        )
+        if not ok2:
+            st.warning("Could not place the inline 'CERTIFICATE NO' line.")
 
-        # Inline lines
-        if has_dates:
-            inline_date = f"Date of Certification: {new_date}"
-            _ = write_inline_after_label(
-                ["Date of Certification:", "Date of Certification",
-                 "Date  of  Certification:", "Date  of  Certification"],
-                inline_date, right_extra=260, padding=3, fontsize=21
-            )
-            inline_cert = f"CERTIFICATE NO: {cert_number}"
-            _ = write_inline_after_label(
-                ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :",
-                 "CERTIFICATE NO", "Certificate No"],
-                inline_cert, right_extra=300, padding=3, fontsize=21
-            )
-            inline_exam_date = f"DATE: {new_date}"
-            _ = write_inline_after_label(
-                ["DATE:", "DATE :", "Date:", "Date :"],
-                inline_exam_date, right_extra=200, padding=3, fontsize=21
-            )
-        else:
-            # For new bundle certs, still set CERTIFICATE NO when available
-            inline_cert = f"CERTIFICATE NO: {cert_number}"
-            _ = write_inline_after_label(
-                ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :",
-                 "CERTIFICATE NO", "Certificate No"],
-                inline_cert, right_extra=300, padding=3, fontsize=21
-            )
-
-        # --- NEW: Draw results table on certificate (additive, safe) ---
-        try:
-            draw_exam_result_table(page, template_type, emp_id, emp_name)
-        except Exception as _table_err:
-            st.warning(f"Table rendering skipped: {str(_table_err)}")
+        # 3) Examiner DATE: <date> (single-line, left aligned)
+        inline_exam_date = f"DATE: {new_date}"
+        ok3 = write_inline_after_label(
+            ["DATE:", "DATE :", "Date:", "Date :"],
+            inline_exam_date, right_extra=200, padding=3, fontsize=21
+        )
+        if not ok3:
+            st.warning("Could not place the inline Examiner 'DATE' line.")
 
         # --- Burn everything in ---
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
 
         # --- Save ---
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
-        date_str_save = test_date.split()[0].replace("/", "-").replace(":", "-").replace(" ", "_")
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str_save}.pdf"
+        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{date_str}.pdf"
         output_path = f"/tmp/{certificate_filename}"
         doc.save(output_path, garbage=3, deflate=True)
         doc.close()
+
         st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
 
@@ -609,13 +515,6 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             pass
         st.error(f"Error generating {template_type} certificate: {e}")
         return None, None
-
-# Optional helper (not auto-called): generate old individual NDT certs on pass
-def generate_individual_ndt_if_applicable(emp_id, emp_name, test_date, status, test_type):
-    tpl = OLD_NDT_TRIGGER_MAP.get(str(test_type).strip())
-    if not tpl:
-        return None, None
-    return generate_certificate(emp_id, emp_name, test_date, status, tpl)
 
 # =====================
 # Individual Test Downloads
@@ -636,6 +535,7 @@ def create_individual_test_report(emp_id, emp_name, test_date, test_type, total,
             ['Status', status]
         ]
     }
+    
     report_df = pd.DataFrame(report_data['Test Information'], columns=['Field', 'Value'])
     return report_df
 
@@ -652,12 +552,15 @@ def download_individual_test(emp_id, emp_name, test_data):
         test_data['Criteria'], 
         test_data['Status']
     )
+    
     csv_buffer = io.StringIO()
     report_df.to_csv(csv_buffer, index=False)
     csv_data = csv_buffer.getvalue()
+    
     timestamp = test_data['Date / Time'].replace('/', '_').replace(' ', '_').replace(':', '-')
     safe_name = "".join(c for c in emp_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
     filename = f"Test_Report_{emp_id}_{safe_name}_{test_data['Test Type']}_{timestamp}.csv"
+    
     return csv_data, filename
 
 # =====================
@@ -706,8 +609,10 @@ def format_timer(h, m, s):
 def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
     try:
         sheet = client.open_by_url(GSHEET_URL)
+        
         worksheet_names = ["Result 2", "Result2", "Result", "Results"]
         worksheet = None
+        
         for name in worksheet_names:
             try:
                 worksheet = sheet.worksheet(name)
@@ -715,6 +620,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 break
             except Exception:
                 continue
+        
         if worksheet is None:
             try:
                 all_worksheets = sheet.worksheets()
@@ -725,11 +631,13 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                         break
             except:
                 pass
+        
         if worksheet is None:
             return False, "Could not find results worksheet to save data"
 
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = datetime.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
+        
         raw_score = right - (wrong * 0.25)
         final_score = max(0, raw_score)
         pct = (final_score / total) * 100 if total else 0.0
@@ -738,6 +646,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
             headers = worksheet.row_values(1)
         except:
             headers = []
+        
         if headers:
             data_mapping = {
                 'ID': str(emp_id),
@@ -752,6 +661,7 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'DATE': now,
                 'DATE / TIME': now
             }
+            
             new_row = []
             for header in headers:
                 header_upper = header.upper()
@@ -784,12 +694,11 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 str(emp_id), str(emp_name), int(total), int(right), int(wrong),
                 f"{pct:.2f}%", f"{criteria_pct:.0f}%", str(status), str(test_type), now
             ]
+
         worksheet.append_row(new_row)
         st.success("Results saved to Google Sheet.")
-        # keep cert-table cache fresh
-        global _RESULTS_CACHE_FOR_CERTS
-        _RESULTS_CACHE_FOR_CERTS = None
         return True, ""
+        
     except Exception as e:
         st.error(f"Error saving results: {str(e)}")
         return False, str(e)
@@ -815,6 +724,7 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Admin Login")
     username = st.text_input("Username", key="admin_username")
     password = st.text_input("Password", type="password", key="admin_password")
+    
     if st.button("Login", key="admin_login_btn"):
         if username == "admin" and password == "AdminPtis-3692":
             st.session_state.admin_logged_in = True
@@ -829,33 +739,47 @@ if st.session_state.admin_logged_in:
     if st.button("🔄 Refresh Data"):
         st.cache_data.clear()
         st.rerun()
+    
     results_df = load_all_results()
     if not results_df.empty:
         st.markdown("---")
         st.subheader("🔍 Filters")
+        
+        # Create mappings for ID-Name relationship
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
+        
+        # Initialize session state keys if they don't exist
         id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
         name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
+        
         if id_key not in st.session_state:
             st.session_state[id_key] = "All"
         if name_key not in st.session_state:
             st.session_state[name_key] = "All"
+        
+        # Callback functions for synchronization
         def sync_id_to_name():
+            """Sync ID selection to corresponding name"""
             selected_id = st.session_state[id_key]
             if selected_id != "All" and selected_id in id_name_mapping:
                 st.session_state[name_key] = id_name_mapping[selected_id]
             elif selected_id == "All":
                 st.session_state[name_key] = "All"
+        
         def sync_name_to_id():
+            """Sync name selection to corresponding ID"""
             selected_name = st.session_state[name_key]
             if selected_name != "All" and selected_name in name_id_mapping:
                 st.session_state[id_key] = name_id_mapping[selected_name]
             elif selected_name == "All":
                 st.session_state[id_key] = "All"
+        
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+        
         with filter_col1:
             employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+            
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
@@ -863,8 +787,10 @@ if st.session_state.admin_logged_in:
                 key=id_key,
                 on_change=sync_id_to_name
             )
+        
         with filter_col2:
             employee_names = ["All"] + sorted(results_df["Name"].unique().tolist())
+            
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
@@ -872,6 +798,7 @@ if st.session_state.admin_logged_in:
                 key=name_key,
                 on_change=sync_name_to_id
             )
+        
         with filter_col3:
             statuses = ["All"] + sorted(results_df["Status"].unique().tolist())
             selected_status = st.selectbox(
@@ -880,6 +807,7 @@ if st.session_state.admin_logged_in:
                 index=0,
                 key=f"status_filter_{st.session_state.filter_reset_counter}"
             )
+        
         with filter_col4:
             test_types = ["All"] + sorted(results_df["Test Type"].unique().tolist())
             selected_test_type = st.selectbox(
@@ -888,6 +816,7 @@ if st.session_state.admin_logged_in:
                 index=0,
                 key=f"test_type_filter_{st.session_state.filter_reset_counter}"
             )
+        
         filter_col5, filter_col6, filter_col7, filter_col8 = st.columns(4)
         with filter_col5:
             st.write("")
@@ -898,15 +827,19 @@ if st.session_state.admin_logged_in:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.rerun()
+        
         filtered_df = results_df.copy()
+        
         if selected_emp_id != "All":
             filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
         elif selected_emp_name != "All":
             filtered_df = filtered_df[filtered_df["Name"] == selected_emp_name]
+        
         if selected_status != "All":
             filtered_df = filtered_df[filtered_df["Status"] == selected_status]
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
+
         if selected_emp_id != "All" or selected_emp_name != "All":
             display_name = selected_emp_name if selected_emp_name != "All" else id_name_mapping.get(selected_emp_id, "Unknown")
             display_id = selected_emp_id if selected_emp_id != "All" else name_id_mapping.get(selected_emp_name, "Unknown")
@@ -914,6 +847,7 @@ if st.session_state.admin_logged_in:
 
         st.markdown("---")
         st.subheader("📥 Individual Test Download")
+        
         if selected_emp_id != "All" or selected_emp_name != "All":
             if selected_emp_id != "All":
                 emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
@@ -923,9 +857,11 @@ if st.session_state.admin_logged_in:
                 emp_filtered = filtered_df[filtered_df["Name"] == selected_emp_name]
                 emp_name_display = selected_emp_name
                 emp_id_display = name_id_mapping.get(selected_emp_name, "Unknown")
+            
             if not emp_filtered.empty:
                 st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}** (ID: {emp_id_display})")
                 emp_filtered = emp_filtered.sort_values("Date / Time", ascending=False).reset_index(drop=True)
+                
                 for idx, test_row in emp_filtered.iterrows():
                     with st.expander(f"Test {idx+1}: {test_row['Test Type']} - {test_row['Date / Time']} ({test_row['Status']})", expanded=False):
                         col1, col2, col3 = st.columns([2, 1, 1])
@@ -962,7 +898,7 @@ if st.session_state.admin_logged_in:
                 st.warning("No test results found for the selected employee.")
         else:
             st.info("👆 **Select an Employee ID or Name** to view and download individual test reports")
-
+        
         st.markdown("---")
         st.subheader("📊 Test Summary")
         col1, col2, col3, col4 = st.columns(4)
@@ -980,9 +916,10 @@ if st.session_state.admin_logged_in:
                 st.metric("Avg Score", f"{avg_score:.1f}%")
             else:
                 st.metric("Avg Score", "N/A")
+        
         if len(filtered_df) != len(results_df):
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
-
+        
         st.markdown("---")
         if not filtered_df.empty:
             display_df = filtered_df.copy()
@@ -999,6 +936,7 @@ if st.session_state.admin_logged_in:
             with export_col2:
                 if st.button("⚙️ Column Settings"):
                     st.session_state.show_column_settings = not st.session_state.get("show_column_settings", False)
+            
             if st.session_state.get("show_column_settings", False):
                 st.subheader("Column Visibility")
                 cols_to_show = []
@@ -1010,6 +948,7 @@ if st.session_state.admin_logged_in:
                 filtered_df = filtered_df[cols_to_show] if cols_to_show else filtered_df
                 display_df = filtered_df.copy()
                 display_df.insert(0, 'S.No.', range(1, len(display_df) + 1))
+            
             st.dataframe(
                 display_df,
                 use_container_width=True,
@@ -1024,54 +963,40 @@ if st.session_state.admin_logged_in:
                     "Date / Time": st.column_config.TextColumn("Date / Time", help="Test completion date and time"),
                 }
             )
-
-        # =====================
+        
         # Certificate Generation
-        # =====================
         st.markdown("---")
         st.subheader("📜 Generate Certificates")
-
+        
         # Simple certificate filter - only employee name
         passed_results = results_df[results_df["Status"] == "Pass"]
         cert_employee_names = ["All"] + sorted(passed_results["Name"].unique().tolist())
+        
         selected_cert_name = st.selectbox(
             "Filter Certificates by Employee Name",
             cert_employee_names,
             index=0,
             key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
         )
-
+        
         if st.button("Generate Certificates for Qualifying Employees"):
-            # Canonical set (use the app’s canonical 'Cummulative')
-            required_standards_canon = {"DS-1", "Cummulative", "API RP 7G-2", "API SPEC 5CT & 5A5"}
-        
-            passed_results = results_df[results_df["Status"] == "Pass"].copy()
-            if passed_results.empty:
-                st.warning("No passed results found.")
-                qualifying_df = pd.DataFrame()
-            else:
-                # normalize Test Type in a helper column
-                passed_results["_canon_std"] = passed_results["Test Type"].apply(_canon)
-                # Group by Name (as-is) and detect qualification using normalized labels
-                qualifying_rows = []
-                for name, group in passed_results.groupby("Name"):
-                    group_canon = set(group["_canon_std"].unique().tolist())
-                    if required_standards_canon.issubset(group_canon):
-                        # Pick the 'Cummulative' row (normalized) for the test_date anchor
-                        cumm_row = group[group["_canon_std"] == "Cummulative"]
-                        if not cumm_row.empty:
-                            qualifying_rows.append(cumm_row.iloc[0].to_dict())
-        
-                qualifying_df = pd.DataFrame(qualifying_rows)
-        
-            # Optional filter by selected name (guarded)
+            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
+            passed_results = results_df[results_df["Status"] == "Pass"]
+            grouped = passed_results.groupby('Name')
+            
+            qualifying_rows = []
+            for name, group in grouped:
+                passed_standards = set(group['Test Type'].str.strip())
+                if required_standards.issubset(passed_standards):
+                    cumm_row = group[group['Test Type'].str.strip() == 'Cummulative']
+                    if not cumm_row.empty:
+                        qualifying_rows.append(cumm_row.iloc[0])
+            
+            qualifying_df = pd.DataFrame(qualifying_rows)
+            
             if selected_cert_name != "All":
-                if not qualifying_df.empty and "Name" in qualifying_df.columns:
-                    qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
-                else:
-                    st.warning("No qualifying candidates found yet for the selected filters.")
-                    qualifying_df = pd.DataFrame()
-        
+                qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
+            
             if qualifying_df.empty:
                 st.warning("Candidate is ineligible as not all required standards are passed.")
             else:
@@ -1081,23 +1006,20 @@ if st.session_state.admin_logged_in:
                     emp_name = row['Name']
                     test_date = row['Date / Time']
                     status = row['Status']
-        
-                    # Generate the 4 new certificates
-                    for std in ["DS-1", "Cummulative", "API RP 7G-2", "API SPEC 5CT & 5A5"]:
-                        template_type = NEW_BUNDLE_CERT_TEMPLATES[std]
-                        certificate_path, certificate_filename = generate_certificate(
-                            emp_id, emp_name, test_date, status, template_type
-                        )
+                    for template_type in ['PT', 'UT', 'MT', 'VT']:
+                        certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status, template_type)
                         if certificate_path:
                             certificate_files.append((certificate_path, certificate_filename))
-        
+
                 if certificate_files:
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
                         for cert_path, cert_filename in certificate_files:
                             zipf.write(cert_path, cert_filename)
+
                     zip_buffer.seek(0)
                     filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
+                    
                     st.download_button(
                         label=f"Download Certificates (ZIP) for {filename_suffix}",
                         data=zip_buffer,
@@ -1106,8 +1028,7 @@ if st.session_state.admin_logged_in:
                     )
                 else:
                     st.error("Failed to generate any certificates. Check templates and permissions.")
-
-
+        
         st.markdown("---")
         if st.button("Logout"):
             st.session_state.admin_logged_in = False
@@ -1123,18 +1044,25 @@ if st.session_state.admin_logged_in:
 # Employee login and quiz
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Employee Login")
+    
+    # Callback function to auto-populate name when Employee ID changes
     def auto_populate_name():
+        """Auto-populate employee name based on Employee ID"""
         emp_id_input = st.session_state[f"id_{st.session_state.reset_counter}"]
         if emp_id_input and not employees.empty:
             try:
                 fetched = employees[employees["ID"].astype(str).str.strip() == str(emp_id_input).strip()]
                 if not fetched.empty:
                     fetched_name = str(fetched.iloc[0]["Name"])
+                    # Update the name field in session state
                     st.session_state[f"name_{st.session_state.reset_counter}"] = fetched_name
                 else:
+                    # Clear name field if no matching ID found
                     st.session_state[f"name_{st.session_state.reset_counter}"] = ""
             except Exception:
+                # Clear name field if error occurs
                 st.session_state[f"name_{st.session_state.reset_counter}"] = ""
+    
     col1, col2 = st.columns(2)
     with col1:
         emp_id = st.text_input(
@@ -1144,15 +1072,20 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
             help="Enter your employee identification number and press Enter",
             on_change=auto_populate_name
         )
+    
+    # Initialize name field if not exists
     name_key = f"name_{st.session_state.reset_counter}"
     if name_key not in st.session_state:
         st.session_state[name_key] = ""
+    
     with col2:
         name = st.text_input(
             "Name", 
             key=name_key,
             help="This will auto-fill when you enter a valid Employee ID"
         )
+    
+    # Rest of the login form remains the same
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
     if "Cummulative" not in options:
@@ -1184,6 +1117,7 @@ elif "quiz" in st.session_state:
     qstate = st.session_state.quiz
     total, criteria, h, m, s = get_info_for_standard(standards, qstate["standard"])
     total_secs = format_timer(h, m, s)
+
     elapsed = int(time.time() - qstate["start_ts"])
     remaining = max(0, total_secs - elapsed)
 
@@ -1195,10 +1129,12 @@ elif "quiz" in st.session_state:
                     qstate["wrong"] += 1
             qstate["queue"] = []
             st.session_state.quiz = qstate
+            
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
             raw_score = right - (wrong * 0.25)
             final_score = max(0, raw_score)
             pct = (final_score/total_q)*100 if total_q else 0.0
+            
             status = "Pass" if pct >= float(criteria) else "Fail"
             ok, msg = append_result(
                 qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
@@ -1211,14 +1147,28 @@ elif "quiz" in st.session_state:
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
         rem_s = remaining % 60
+
         if remaining <= 300:
-            bg_color = "#DC2626"; text_color = "white"; icon = "🚨"; pulse_class = "timer-pulse"
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "🚨"
+            pulse_class = "timer-pulse"
         elif remaining <= 900:
-            bg_color = "#DC2626"; text_color = "white"; icon = "⚠️"; pulse_class = ""
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "⚠️"
+            pulse_class = ""
         elif remaining <= 1200:
-            bg_color = "#D97706"; text_color = "white"; icon = "⏰"; pulse_class = ""
+            bg_color = "#D97706"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
         else:
-            bg_color = "#1E3A8A"; text_color = "white"; icon = "⏰"; pulse_class = ""
+            bg_color = "#1E3A8A"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
+
         progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
 
         timer_html = f"""
@@ -1228,10 +1178,18 @@ elif "quiz" in st.session_state:
             50% {{ transform: scale(1.05); opacity: 0.8; }}
             100% {{ transform: scale(1); opacity: 1; }}
         }}
-        .timer-pulse {{ animation: pulse 1s infinite; }}
+        .timer-pulse {{
+            animation: pulse 1s infinite;
+        }}
         .timer-container {{
-            padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold;
-            margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); border: 3px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
         <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
@@ -1251,6 +1209,7 @@ elif "quiz" in st.session_state:
             var remaining = {remaining};
             var total_secs = {total_secs};
             var interval = null;
+
             function updateTimer() {{
                 if (remaining <= 0) {{
                     document.getElementById('timer_display').innerText = '00:00:00';
@@ -1277,23 +1236,45 @@ elif "quiz" in st.session_state:
                 var container = document.getElementById('timer_container');
                 var iconElem = document.getElementById('timer_icon');
                 var bg_color, text_color, icon, pulse_class = '';
-                if (remaining <= 300) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '🚨'; pulse_class = 'timer-pulse'; }}
-                else if (remaining <= 900) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '⚠️'; }}
-                else if (remaining <= 1200) {{ bg_color = '#D97706'; text_color = 'white'; icon = '⏰'; }}
-                else {{ bg_color = '#1E3A8A'; text_color = 'white'; icon = '⏰'; }}
+                if (remaining <= 300) {{
+                    bg_color = '#DC2626';
+                    text_color = 'white';
+                    icon = '🚨';
+                    pulse_class = 'timer-pulse';
+                }} else if (remaining <= 900) {{
+                    bg_color = '#DC2626';
+                    text_color = 'white';
+                    icon = '⚠️';
+                }} else if (remaining <= 1200) {{
+                    bg_color = '#D97706';
+                    text_color = 'white';
+                    icon = '⏰';
+                }} else {{
+                    bg_color = '#1E3A8A';
+                    text_color = 'white';
+                    icon = '⏰';
+                }}
                 container.style.background = `linear-gradient(135deg, ${bg_color}, ${bg_color}CC)`;
                 container.style.color = text_color;
                 iconElem.innerText = icon;
-                if (pulse_class) {{ container.classList.add(pulse_class); }} else {{ container.classList.remove('timer-pulse'); }}
+                if (pulse_class) {{
+                    container.classList.add(pulse_class);
+                }} else {{
+                    container.classList.remove('timer-pulse');
+                }}
                 remaining--;
             }}
-            if (interval) {{ clearInterval(interval); }}
+
+            if (interval) {{
+                clearInterval(interval);
+            }}
             updateTimer();
             interval = setInterval(updateTimer, 1000);
         }})();
         </script>
         """
         components.html(timer_html, height=150)
+
         if st.query_params.get("timeout", ["false"])[0] == "true":
             if len(qstate["queue"]) > 0:
                 st.error("Time is up! Auto-submitting your test...")
@@ -1302,10 +1283,12 @@ elif "quiz" in st.session_state:
                         qstate["wrong"] += 1
                 qstate["queue"] = []
                 st.session_state.quiz = qstate
+                
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
                 raw_score = right - (wrong * 0.25)
                 final_score = max(0, raw_score)
                 pct = (final_score/total_q)*100 if total_q else 0.0
+                
                 status = "Pass" if pct >= float(criteria) else "Fail"
                 ok, msg = append_result(
                     qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
@@ -1314,6 +1297,7 @@ elif "quiz" in st.session_state:
                 st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
                 st.query_params.clear()
                 st.rerun()
+
         if remaining <= 300:
             st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
             st.warning("🚨 URGENT: Less than 5 minutes remaining!")
@@ -1323,19 +1307,35 @@ elif "quiz" in st.session_state:
         elif remaining <= 1200:
             st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
             st.info("⏰ NOTICE: Less than 20 minutes remaining!")
+
     elif total_secs > 0 and "submitted" in st.session_state:
         rem_h = remaining // 3600
         rem_m = (remaining % 3600) // 60
         rem_s = remaining % 60
+
         if remaining <= 300:
-            bg_color = "#DC2626"; text_color = "white"; icon = "🚨"; pulse_class = "timer-pulse"
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "🚨"
+            pulse_class = "timer-pulse"
         elif remaining <= 900:
-            bg_color = "#DC2626"; text_color = "white"; icon = "⚠️"; pulse_class = ""
+            bg_color = "#DC2626"
+            text_color = "white"
+            icon = "⚠️"
+            pulse_class = ""
         elif remaining <= 1200:
-            bg_color = "#D97706"; text_color = "white"; icon = "⏰"; pulse_class = ""
+            bg_color = "#D97706"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
         else:
-            bg_color = "#1E3A8A"; text_color = "white"; icon = "⏰"; pulse_class = ""
+            bg_color = "#1E3A8A"
+            text_color = "white"
+            icon = "⏰"
+            pulse_class = ""
+
         progress_percent = (remaining / total_secs) * 100 if total_secs > 0 else 0
+
         stopped_timer_html = f"""
         <style>
         @keyframes pulse {{
@@ -1343,10 +1343,18 @@ elif "quiz" in st.session_state:
             50% {{ transform: scale(1.05); opacity: 0.8; }}
             100% {{ transform: scale(1); opacity: 1; }}
         }}
-        .timer-pulse {{ animation: pulse 1s infinite; }}
+        .timer-pulse {{
+            animation: pulse 1s infinite;
+        }}
         .timer-container {{
-            padding: 20px; border-radius: 15px; text-align: center; font-size: 22px; font-weight: bold;
-            margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); border: 3px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
         <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
@@ -1370,6 +1378,7 @@ elif "quiz" in st.session_state:
         st.session_state.quiz["skipped_questions"] = set()
 
     answered_count = qstate["total"] - len(qstate["queue"])
+
     st.markdown(
         f"""
         <div style="padding: 12px 15px; border-radius: 8px; background: linear-gradient(135deg, #1E3A8A, #3B82F6); color: white; text-align: center; font-size: 17px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
@@ -1378,20 +1387,26 @@ elif "quiz" in st.session_state:
         """,
         unsafe_allow_html=True
     )
+
     st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
 
     if len(qstate["queue"]) > 0:
         current_qid = qstate["queue"][0]
         row = qstate["rows"].iloc[current_qid]
         qno, question, A, B, C, D, correct = row["Qno"], row["Question"], row["A"], row["B"], row["C"], row["D"], row["Answer"]
+
         is_previously_skipped = current_qid in qstate["skipped_questions"]
+        
         if is_previously_skipped:
             st.markdown("🔄 **This question was skipped earlier**")
             st.subheader(f"Q{current_qid+1}. {question}")
         else:
             st.subheader(f"Q{current_qid+1}. {question}")
+            
         choice = st.radio("Choose your answer:", [A, B, C, D], index=None, key=f"q_{current_qid}")
+
         col1, col2 = st.columns([1,1])
+
         with col1:
             if st.button("Next", use_container_width=True):
                 if choice is None:
@@ -1413,6 +1428,7 @@ elif "quiz" in st.session_state:
                     qstate["queue"].pop(0)
                     st.session_state.quiz = qstate
                     st.rerun()
+
         with col2:
             if len(qstate["queue"]) > 1 and not is_previously_skipped:
                 if st.button("Skip", use_container_width=True):
@@ -1427,7 +1443,9 @@ elif "quiz" in st.session_state:
         final_score = max(0, raw_score)
         pct = (final_score/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
+
         st.success("All questions attempted. You can now submit your test.")
+
         submit_clicked = st.button("Submit", use_container_width=True)
         if submit_clicked:
             ok, msg = append_result(
@@ -1441,8 +1459,10 @@ elif "quiz" in st.session_state:
         if "submit_result" in st.session_state:
             result_data = st.session_state["submit_result"]
             ok, msg, right, wrong, total_q, pct, criteria, status, final_score = result_data
+            
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
+
             color = "#10B981" if status == "Pass" else "#DC2626"
             st.markdown(
                 f"""
