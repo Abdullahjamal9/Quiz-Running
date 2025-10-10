@@ -451,7 +451,7 @@ def generate_certificate(
                     date_label.y1
                 )
 
-                fs = 17  # Increased font size
+                fs = 18  # Increased font size
                 if date_rect.height < fs:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs / 1.5
