@@ -263,10 +263,10 @@ def generate_certificate(
     skip_dates=True,
 ):
     """
-    Clean certificate rendering:
-      - Keeps award line intact while replacing only the name within the original name bbox
-      - Tight, non-intrusive value boxes for CERTIFICATE NO and DATE
-      - Date is taken from result row and formatted DD-MMMM-YYYY
+    Safe certificate rendering:
+      - Name: no redaction; only paint inside the placeholder box and write the name (keeps surrounding text intact)
+      - CERTIFICATE NO / DATE: robust label matching; tight value boxes; reliable fallbacks if labels aren't found
+      - Date comes from results row and is formatted DD-MMMM-YYYY
       - Neat 1-row table (Standard | Percentage | Criteria)
     """
     template_path = get_template_path(template_type)
@@ -274,6 +274,9 @@ def generate_certificate(
         st.error(f"No {template_type} template available. Cannot generate certificate.")
         return None, None
 
+    import math
+
+    # ---------- helpers ----------
     def _nice_date(dt_str):
         try:
             d = pd.to_datetime(str(dt_str), errors="coerce", dayfirst=True)
@@ -285,12 +288,59 @@ def generate_certificate(
         except Exception:
             return str(dt_str).split(" ")[0]
 
+    def _find_label_rect(page, patterns):
+        """
+        Find a label rectangle robustly:
+        - Try search_for with each pattern as-is
+        - Also try collapsing spaces
+        - Also try case-insensitive via words stitching
+        """
+        pats = patterns if isinstance(patterns, (list, tuple)) else [patterns]
+        # 1) direct search
+        for p in pats:
+            hits = page.search_for(p)
+            if hits:
+                return hits[0]
+        # 2) tolerant search over words (case/space insensitive)
+        words = page.get_text("words")  # list of (x0,y0,x1,y1,word,block_no,line_no,word_no)
+        if not words:
+            return None
+        # build a simple text line index (line_no -> [(rect, text)])
+        from collections import defaultdict
+        lines = defaultdict(list)
+        for (x0,y0,x1,y1,txt,_,ln,_) in words:
+            lines[ln].append((fitz.Rect(x0,y0,x1,y1), txt))
+        for ln, items in lines.items():
+            items.sort(key=lambda t: t[0].x0)
+            full = " ".join(t for _, t in items)
+            full_norm = " ".join(full.upper().split())
+            for p in pats:
+                p_norm = " ".join(str(p).upper().split())
+                if p_norm in full_norm:
+                    # approximate rect of the label as the union of matching tokens
+                    acc = None
+                    run = ""
+                    for rect, token in items:
+                        test = (run + (" " if run else "") + token).upper()
+                        run_norm = " ".join(test.split())
+                        if p_norm.startswith(run_norm):
+                            acc = rect if acc is None else acc | rect
+                            run = test
+                            if run_norm == p_norm:
+                                return acc
+                    # fallback just return the whole line bbox
+                    union = None
+                    for rect, _ in items:
+                        union = rect if union is None else union | rect
+                    return union
+        return None
+
     try:
         doc = fitz.open(template_path)
         page = doc[0]
         pw, ph = page.rect.width, page.rect.height
 
-        # -------- Fonts --------
+        # ---------- fonts ----------
         arial_font = "helv"
         name_font = "times-italic"
         try:
@@ -312,47 +362,56 @@ def generate_certificate(
         except:
             pass
 
-        # -------- Candidate name: restrict to original bbox (no vertical expansion) --------
-        for placeholder in ["Usman Waheed", "Candidate Name", "Employee Name", "Israr Hussain"]:
-            hits = page.search_for(placeholder)
+        # ---------- NAME (no redaction; paint + insert) ----------
+        name_placeholders = ["Usman Waheed", "Candidate Name", "Employee Name", "Israr Hussain"]
+        name_rect = None
+        for ph in name_placeholders:
+            hits = page.search_for(ph)
             if hits:
-                r = hits[0]                 # use original rectangle height to avoid erasing text above/below
-                page.add_redact_annot(
-                    r,
-                    text=str(emp_name),
-                    fontname=name_font,
-                    fontsize=min(32, max(16, r.height * 0.8)),  # fit text without growing box
-                    align=fitz.TEXT_ALIGN_CENTER,
-                    text_color=(0, 0, 0),
-                    fill=(1, 1, 1),
-                )
+                name_rect = hits[0]
                 break
 
-        # -------- Anchor for table --------
+        # if placeholder not found, choose a sane central area under the small heading line
+        if name_rect is None:
+            # around top third
+            name_rect = fitz.Rect(pw*0.25, ph*0.18, pw*0.75, ph*0.22)
+
+        # paint only inside the original name box
+        page.draw_rect(name_rect, fill=(1,1,1), color=None)
+        # fixed safe size; small enough to never spill outside the line (tweak if needed)
+        name_fs = min(30, max(22, name_rect.height * 0.7))
+        page.insert_textbox(
+            name_rect,
+            str(emp_name),
+            fontname=name_font,
+            fontsize=name_fs,
+            align=fitz.TEXT_ALIGN_CENTER,
+            color=(0,0,0),
+        )
+
+        # ---------- EXAMINATION RESULT anchor ----------
         exam_hits = page.search_for("EXAMINATION RESULT")
         if exam_hits:
             exam_rect = exam_hits[0]
         else:
             exam_rect = fitz.Rect(pw * 0.1, ph * 0.42, pw * 0.9, ph * 0.45)
 
-        # Table geometry (tight white-out only inside table)
+        # ---------- Clean table ----------
         table_top = exam_rect.y1 + 18
         table_left = pw * 0.07
         table_width = pw * 0.86
         table_height = 50
         header_h = 22
         data_h = table_height - header_h
-        col_count = 3
-        col_w = table_width / col_count
-        table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
+        col_w = table_width / 3
 
-        # Clear only the table area, not the surrounding address/footer
-        page.draw_rect(table_bbox, fill=(1, 1, 1), color=None)
-        page.draw_rect(table_bbox, color=(0, 0, 0), width=0.7)
+        table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
+        page.draw_rect(table_bbox, fill=(1, 1, 1), color=None)              # clear old
+        page.draw_rect(table_bbox, color=(0, 0, 0), width=0.7)              # border
         page.draw_line(fitz.Point(table_left, table_top + header_h),
                        fitz.Point(table_left + table_width, table_top + header_h),
                        color=(0, 0, 0), width=0.7)
-        for i in range(1, col_count):
+        for i in range(1, 3):
             x = table_left + i * col_w
             page.draw_line(fitz.Point(x, table_top),
                            fitz.Point(x, table_top + table_height),
@@ -361,8 +420,8 @@ def generate_certificate(
         headers = ["Standard", "Percentage", "Criteria"]
         values = [
             (standard_text or "").strip(),
-            (str(percentage_text or "").replace(" ", "")),
-            (str(criteria_text or "").replace(" ", "")),
+            (str(percentage_text or "").strip()),
+            (str(criteria_text or "").strip()),
         ]
         if values[1] and not values[1].endswith("%"):
             values[1] = f"{values[1]}%"
@@ -381,7 +440,7 @@ def generate_certificate(
             page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=12,
                                 align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
-        # -------- CERTIFICATE NO (tight value box to the right of label, small font) --------
+        # ---------- CERTIFICATE NO ----------
         cert_tag = {
             "Ds-1_template": "DS-1",
             "Cumulative_template": "CUMULATIVE",
@@ -390,45 +449,49 @@ def generate_certificate(
         }.get(template_type, template_type)
         cert_number_value = f"{emp_id}/PTIS/{cert_tag}/2025"
 
-        cert_label_hits = (
-            page.search_for("CERTIFICATE NO:") or
-            page.search_for("CERTIFICATE NO :") or
-            page.search_for("Certificate No:") or
-            page.search_for("Certificate No :")
+        cert_label_rect = _find_label_rect(
+            page,
+            ["CERTIFICATE NO:", "CERTIFICATE  NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
         )
-        if cert_label_hits:
-            lab = cert_label_hits[0]
-            # value rect: same vertical bounds as label; narrow width so it won't hit address
-            value_rect = fitz.Rect(lab.x1 + 6, lab.y0, min(lab.x1 + 160, pw - 20), lab.y1)
-            page.draw_rect(value_rect, fill=(1, 1, 1), color=None)
-            page.insert_textbox(value_rect, cert_number_value, fontname=arial_font,
-                                fontsize=12, align=fitz.TEXT_ALIGN_LEFT, color=(0, 0, 0))
+        if cert_label_rect:
+            # Tight box right to the label; same height; limited width so it never hits address
+            vrect = fitz.Rect(cert_label_rect.x1 + 6,
+                              cert_label_rect.y0,
+                              min(cert_label_rect.x1 + 170, pw - 20),
+                              cert_label_rect.y1)
+            page.draw_rect(vrect, fill=(1,1,1), color=None)
+            page.insert_textbox(vrect, cert_number_value, fontname=arial_font, fontsize=12,
+                                align=fitz.TEXT_ALIGN_LEFT, color=(0,0,0))
         else:
-            # If label not present, place a neat fallback high enough to avoid the address
-            fallback_rect = fitz.Rect(pw * 0.07, ph * 0.80, pw * 0.55, ph * 0.83)
-            page.insert_textbox(fallback_rect, f"Certificate No: {cert_number_value}",
+            # Fallback: lower-left area above the address
+            vrect = fitz.Rect(pw*0.07, ph*0.80, pw*0.55, ph*0.83)
+            page.draw_rect(vrect, fill=(1,1,1), color=None)
+            page.insert_textbox(vrect, f"Certificate No: {cert_number_value}",
                                 fontname=arial_font, fontsize=12,
-                                align=fitz.TEXT_ALIGN_LEFT, color=(0, 0, 0))
+                                align=fitz.TEXT_ALIGN_LEFT, color=(0,0,0))
 
-        # -------- DATE (tight value box next to the label; small font; from results) --------
+        # ---------- DATE (from results row) ----------
         nice_date = _nice_date(test_date)
-        date_label_hits = (
-            page.search_for("DATE:") or
-            page.search_for("Date:") or
-            page.search_for("DATE OF CERTIFICATION:") or
-            page.search_for("Date of Certification:")
+        date_label_rect = _find_label_rect(
+            page,
+            ["DATE:", "Date:", "DATE :", "DATE OF CERTIFICATION:", "Date of Certification:", "DATE  :"]
         )
-        if date_label_hits:
-            dlab = date_label_hits[0]
-            dval_rect = fitz.Rect(dlab.x1 + 6, dlab.y0, min(dlab.x1 + 140, pw - 20), dlab.y1)
-            page.draw_rect(dval_rect, fill=(1, 1, 1), color=None)
-            page.insert_textbox(dval_rect, nice_date, fontname=arial_font,
-                                fontsize=12, align=fitz.TEXT_ALIGN_LEFT, color=(0, 0, 0))
-        # if label not present on the new templates, we intentionally don't add a new one
+        if date_label_rect:
+            dvrect = fitz.Rect(date_label_rect.x1 + 6,
+                               date_label_rect.y0,
+                               min(date_label_rect.x1 + 150, pw - 20),
+                               date_label_rect.y1)
+            page.draw_rect(dvrect, fill=(1,1,1), color=None)
+            page.insert_textbox(dvrect, nice_date, fontname=arial_font, fontsize=12,
+                                align=fitz.TEXT_ALIGN_LEFT, color=(0,0,0))
+        else:
+            # Fallback: lower-right area above email/phone
+            dvrect = fitz.Rect(pw*0.70, ph*0.80, pw*0.93, ph*0.83)
+            page.draw_rect(dvrect, fill=(1,1,1), color=None)
+            page.insert_textbox(dvrect, f"Date: {nice_date}", fontname=arial_font, fontsize=12,
+                                align=fitz.TEXT_ALIGN_RIGHT, color=(0,0,0))
 
-        # -------- Burn & Save --------
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-
+        # ---------- Save ----------
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
         stamp = _nice_date(test_date).replace("/", "-").replace(":", "-").replace(" ", "_")
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{stamp}.pdf"
@@ -446,6 +509,7 @@ def generate_certificate(
             pass
         st.error(f"Error generating {template_type} certificate: {e}")
         return None, None
+
 
 # =====================
 # Individual Test Downloads
