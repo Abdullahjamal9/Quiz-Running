@@ -437,7 +437,7 @@ def generate_certificate(
         # ---------- DATE ----------
         nice_date = _nice_date(test_date)
         date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
-        date_inline_text = f"DATE: {nice_date}"
+        date_inline_text = f"{nice_date}"
 
         date_replaced = False
         for text in date_label_texts:
