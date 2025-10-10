@@ -29,6 +29,49 @@ creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"],
 client = gspread.authorize(creds)
 GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 
+# --- Standard name normalizer (canonicalizes sheet values) ---
+def _canon(s: str) -> str:
+    if s is None:
+        return ""
+    raw = str(s).strip().lower()
+    # remove extra spaces
+    raw = " ".join(raw.split())
+    # quick aliases
+    aliases = {
+        "ds-1": "DS-1",
+        "ds 1": "DS-1",
+        "ds1": "DS-1",
+
+        "cumulative": "Cummulative",   # canonical key your app uses elsewhere
+        "cummulative": "Cummulative",
+
+        "api rp 7g-2": "API RP 7G-2",
+        "api rp 7g2": "API RP 7G-2",
+        "7g-2": "API RP 7G-2",
+        "7g2": "API RP 7G-2",
+
+        "api spec 5ct & 5a5": "API SPEC 5CT & 5A5",
+        "api spec 5ct&5a5": "API SPEC 5CT & 5A5",
+        "api 5ct & 5a5": "API SPEC 5CT & 5A5",
+        "5ct & 5a5": "API SPEC 5CT & 5A5",
+    }
+    # try exact, then compacted (remove spaces and hyphens)
+    if raw in aliases:
+        return aliases[raw]
+    compact = raw.replace(" ", "").replace("-", "")
+    compact_aliases = {
+        "ds1": "DS-1",
+        "apirp7g2": "API RP 7G-2",
+        "apispec5ct&5a5": "API SPEC 5CT & 5A5",
+        "apispec5ct5a5": "API SPEC 5CT & 5A5",
+        "cumulative": "Cummulative",
+        "cummulative": "Cummulative",
+    }
+    if compact in compact_aliases:
+        return compact_aliases[compact]
+    # default: return upper-cased words as-is
+    return str(s).strip()
+
 # =====================
 # NEW: Certificate Template Registry (New vs Old)
 # =====================
@@ -998,29 +1041,37 @@ if st.session_state.admin_logged_in:
             key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
         )
 
-        # === UPDATED: bundle generation uses new 4 templates ===
         if st.button("Generate Certificates for Qualifying Employees"):
-            required_standards = {"DS-1", "Cummulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
-            passed_results = results_df[results_df["Status"] == "Pass"]
-            grouped = passed_results.groupby('Name')
-
-            qualifying_rows = []
-            for name, group in grouped:
-                passed_standards = set(group['Test Type'].astype(str).str.strip())
-                if required_standards.issubset(passed_standards):
-                    cumm_row = group[group['Test Type'].astype(str).str.strip() == 'Cummulative']
-                    if not cumm_row.empty:
-                        qualifying_rows.append(cumm_row.iloc[0].to_dict())
-
-            qualifying_df = pd.DataFrame(qualifying_rows)
-
+            # Canonical set (use the app’s canonical 'Cummulative')
+            required_standards_canon = {"DS-1", "Cummulative", "API RP 7G-2", "API SPEC 5CT & 5A5"}
+        
+            passed_results = results_df[results_df["Status"] == "Pass"].copy()
+            if passed_results.empty:
+                st.warning("No passed results found.")
+                qualifying_df = pd.DataFrame()
+            else:
+                # normalize Test Type in a helper column
+                passed_results["_canon_std"] = passed_results["Test Type"].apply(_canon)
+                # Group by Name (as-is) and detect qualification using normalized labels
+                qualifying_rows = []
+                for name, group in passed_results.groupby("Name"):
+                    group_canon = set(group["_canon_std"].unique().tolist())
+                    if required_standards_canon.issubset(group_canon):
+                        # Pick the 'Cummulative' row (normalized) for the test_date anchor
+                        cumm_row = group[group["_canon_std"] == "Cummulative"]
+                        if not cumm_row.empty:
+                            qualifying_rows.append(cumm_row.iloc[0].to_dict())
+        
+                qualifying_df = pd.DataFrame(qualifying_rows)
+        
+            # Optional filter by selected name (guarded)
             if selected_cert_name != "All":
                 if not qualifying_df.empty and "Name" in qualifying_df.columns:
                     qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
                 else:
                     st.warning("No qualifying candidates found yet for the selected filters.")
-                    qualifying_df = pd.DataFrame() 
-
+                    qualifying_df = pd.DataFrame()
+        
             if qualifying_df.empty:
                 st.warning("Candidate is ineligible as not all required standards are passed.")
             else:
@@ -1030,12 +1081,16 @@ if st.session_state.admin_logged_in:
                     emp_name = row['Name']
                     test_date = row['Date / Time']
                     status = row['Status']
-                    # Use the 4 new bundle templates
+        
+                    # Generate the 4 new certificates
                     for std in ["DS-1", "Cummulative", "API RP 7G-2", "API SPEC 5CT & 5A5"]:
                         template_type = NEW_BUNDLE_CERT_TEMPLATES[std]
-                        certificate_path, certificate_filename = generate_certificate(emp_id, emp_name, test_date, status, template_type)
+                        certificate_path, certificate_filename = generate_certificate(
+                            emp_id, emp_name, test_date, status, template_type
+                        )
                         if certificate_path:
                             certificate_files.append((certificate_path, certificate_filename))
+        
                 if certificate_files:
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
@@ -1051,6 +1106,7 @@ if st.session_state.admin_logged_in:
                     )
                 else:
                     st.error("Failed to generate any certificates. Check templates and permissions.")
+
 
         st.markdown("---")
         if st.button("Logout"):
