@@ -408,28 +408,30 @@ def generate_certificate(
         }.get(template_type, template_type)
         cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
 
-        # Search for CERTIFICATE NO label
+        # Search for CERTIFICATE NO label and hide it
         cert_label_texts = ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
         cert_label = None
         for text in cert_label_texts:
             hits = page.search_for(text)
             if hits:
                 cert_label = hits[0]
+                # Cover the label with white rectangle
+                page.draw_rect(cert_label, fill=(1, 1, 1), color=None)
                 break
 
         if cert_label:
-            # Position certificate number to the right of the label
+            # Position certificate number where the label was
             cert_rect = fitz.Rect(
-                cert_label.x1 + 5,  # 5px padding from label
-                cert_label.y0 - 2,  # Slight vertical alignment adjustment
-                cert_label.x1 + 200,  # Give enough width
+                cert_label.x0,  # Start from label position
+                cert_label.y0 - 2,
+                cert_label.x1 + 200,
                 cert_label.y1 + 2
             )
         else:
             # Fallback: bottom left
             cert_rect = fitz.Rect(pw * 0.15, ph * 0.90, pw * 0.45, ph * 0.92)
 
-        # Insert certificate number (no white rectangle)
+        # Insert certificate number
         page.insert_textbox(
             cert_rect,
             cert_value,
@@ -442,28 +444,30 @@ def generate_certificate(
         # ---------- DATE ----------
         nice_date = _nice_date(test_date)
         
-        # Search for DATE label
+        # Search for DATE label and hide it
         date_label_texts = ["DATE:", "DATE :", "Date:", "Date :", "DATE OF CERTIFICATION:", "Date of Certification:"]
         date_label = None
         for text in date_label_texts:
             hits = page.search_for(text)
             if hits:
                 date_label = hits[0]
+                # Cover the label with white rectangle
+                page.draw_rect(date_label, fill=(1, 1, 1), color=None)
                 break
 
         if date_label:
-            # Position date to the right of the label
+            # Position date where the label was
             date_rect = fitz.Rect(
-                date_label.x1 + 5,  # 5px padding from label
-                date_label.y0 - 2,  # Slight vertical alignment adjustment
-                date_label.x1 + 150,  # Give enough width
+                date_label.x0,  # Start from label position
+                date_label.y0 - 2,
+                date_label.x1 + 150,
                 date_label.y1 + 2
             )
         else:
             # Fallback: bottom right
             date_rect = fitz.Rect(pw * 0.70, ph * 0.90, pw * 0.93, ph * 0.92)
 
-        # Insert date (no white rectangle)
+        # Insert date
         page.insert_textbox(
             date_rect,
             nice_date,
@@ -493,6 +497,7 @@ def generate_certificate(
         st.error(f"❌ Error generating {template_type} certificate: {e}")
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
+        
 # =====================
 # Individual Test Downloads
 # =====================
