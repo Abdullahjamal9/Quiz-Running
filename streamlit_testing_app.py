@@ -321,7 +321,7 @@ def generate_certificate(
                     r,
                     text=str(emp_name),
                     fontname=name_font,
-                    fontsize=min(32, max(20, r.height * 0.8)),  # fit text without growing box
+                    fontsize=min(32, max(16, r.height * 0.8)),  # fit text without growing box
                     align=fitz.TEXT_ALIGN_CENTER,
                     text_color=(0, 0, 0),
                     fill=(1, 1, 1),
