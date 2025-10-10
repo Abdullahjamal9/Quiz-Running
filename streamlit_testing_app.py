@@ -320,11 +320,11 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
             for v in variants:
                 hits = page.search_for(v)
                 if hits:
-                    st.info(f"Found placeholder '{v}' in {template_type} template: {hits}")
+                    # st.info(f"Found placeholder '{v}' in {template_type} template: {hits}")
                     return hits
             return []
 
-        def write_inline_after_label(label_variants, inline_text, right_extra=320, padding=3, fontsize=19, fontname=arial_font):
+        def write_inline_after_label(label_variants, inline_text, right_extra=320, padding=3, fontsize=17, fontname=arial_font):
             hits = search_one_of(label_variants)
             if not hits:
                 st.warning(f"Could not find placeholders {label_variants} in {template_type} template.")
@@ -359,15 +359,15 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                     r, text=emp_name, fontname=corsiva_font, fontsize=name_font_size,
                     align=fitz.TEXT_ALIGN_CENTER, text_color=(0, 0, 0), fill=(1, 1, 1)
                 )
-            st.info(f"Replaced name '{old_name}' with '{emp_name}' (font size: {name_font_size}pt)")
+            # st.info(f"Replaced name '{old_name}' with '{emp_name}' (font size: {name_font_size}pt)")
         else:
-            st.warning(f"Placeholder 'Usman Waheed' not found in {template_type} template.")
+            # st.warning(f"Placeholder 'Usman Waheed' not found in {template_type} template.")
 
         # Validity (inline)
         validity_label_hits = page.search_for("Validity:")
         if validity_label_hits:
             vlab = validity_label_hits[0]
-            fs = 19
+            fs = 17
             right_extra = 240 if template_type in ["PT", "PT_template", "UT", "UT_template"] else 280
             align_mode = fitz.TEXT_ALIGN_LEFT
             validity_line_rect = fitz.Rect(vlab.x0, vlab.y0, vlab.x0 + vlab.width + right_extra, vlab.y1)
@@ -384,16 +384,14 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 text_color=(0, 0, 0),
                 fill=(1, 1, 1)
             )
-            st.info(f"Replaced validity with '{new_validity}' (font size: {fs}pt)")
-        else:
-            st.warning(f"Placeholder 'Validity:' not found in {template_type} template.")
+            # st.info(f"Replaced validity with '{new_validity}' (font size: {fs}pt)")
 
         # Status (left)
         status_text_draw = f"Status: {status_text}"
         for pat in ['Status: Pass', 'Status: Fail', 'Status:', 'Pass', 'Fail']:
             sth = page.search_for(pat)
             if sth:
-                fs = 19
+                fs = 17
                 for r in sth:
                     cy = (r.y0 + r.y1) / 2
                     r.y0 = cy - fs / 1.5
@@ -402,42 +400,42 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                         r, text=status_text_draw, fontname=arial_font, fontsize=fs,
                         align=fitz.TEXT_ALIGN_LEFT, text_color=(0, 0, 0), fill=(1, 1, 1)
                     )
-                st.info(f"Replaced status '{pat}' with '{status_text_draw}' (font size: {fs}pt)")
+                # st.info(f"Replaced status '{pat}' with '{status_text_draw}' (font size: {fs}pt)")
                 break
             else:
-                st.warning(f"Status placeholder '{pat}' not found in {template_type} template.")
+                # st.warning(f"Status placeholder '{pat}' not found in {template_type} template.")
 
         # Inline replacements
         # 1) Date of Certification
         inline_date = f"Date of Certification: {new_date}"
         ok1 = write_inline_after_label(
             ["Date of Certification:", "Date of Certification", "Date  of  Certification:", "Date  of  Certification"],
-            inline_date, right_extra=260, padding=3, fontsize=19
+            inline_date, right_extra=260, padding=3, fontsize=17
         )
-        if ok1:
-            st.info(f"Replaced 'Date of Certification' with '{inline_date}' (font size: 19pt)")
-        else:
-            st.warning("Could not place the inline 'Date of Certification' line.")
+        # if ok1:
+        #     st.info(f"Replaced 'Date of Certification' with '{inline_date}' (font size: 17pt)")
+        # else:
+        #     st.warning("Could not place the inline 'Date of Certification' line.")
 
         # 2) CERTIFICATE NO
         inline_cert = f"CERTIFICATE NO: {cert_number}"
         ok2 = write_inline_after_label(
             ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :", "CERTIFICATE NO", "Certificate No"],
-            inline_cert, right_extra=300, padding=3, fontsize=19
+            inline_cert, right_extra=300, padding=3, fontsize=17
         )
-        if ok2:
-            st.info(f"Replaced 'CERTIFICATE NO' with '{inline_cert}' (font size: 19pt)")
-        else:
-            st.warning("Could not place the inline 'CERTIFICATE NO' line.")
+        # if ok2:
+        #     st.info(f"Replaced 'CERTIFICATE NO' with '{inline_cert}' (font size: 17pt)")
+        # else:
+        #     st.warning("Could not place the inline 'CERTIFICATE NO' line.")
 
         # 3) Examiner DATE
         inline_exam_date = f"DATE: {new_date}"
         ok3 = write_inline_after_label(
             ["DATE:", "DATE :", "Date:", "Date :"],
-            inline_exam_date, right_extra=200, padding=3, fontsize=19
+            inline_exam_date, right_extra=200, padding=3, fontsize=17
         )
         if ok3:
-            st.info(f"Replaced 'DATE' with '{inline_exam_date}' (font size: 19pt)")
+            st.info(f"Replaced 'DATE' with '{inline_exam_date}' (font size: 17pt)")
         else:
             st.warning("Could not place the inline Examiner 'DATE' line.")
 
@@ -865,8 +863,8 @@ if st.session_state.admin_logged_in:
         if st.button("Generate Certificates for Qualifying Employees"):
             required_standards = {"DS-1", "Cumulative", "API SPEC 5CT & 5A5", "API RP 7G-2"}
             passed_results = results_df[results_df["Status"] == "Pass"]
-            st.info(f"Passed results: {len(passed_results)} records")
-            st.info(f"Unique standards in passed results: {sorted(passed_results['Test Type'].unique())}")
+            # st.info(f"Passed results: {len(passed_results)} records")
+            # st.info(f"Unique standards in passed results: {sorted(passed_results['Test Type'].unique())}")
             
             grouped = passed_results.groupby('Name')
             qualifying_rows = []
@@ -881,13 +879,13 @@ if st.session_state.admin_logged_in:
                         st.warning(f"Employee {name} passed required standards but no 'Cumulative' test found.")
             
             qualifying_df = pd.DataFrame(qualifying_rows, columns=results_df.columns) if qualifying_rows else pd.DataFrame(columns=results_df.columns)
-            st.info(f"Qualifying employees: {len(qualifying_df)}")
-            st.info(f"qualifying_df columns: {list(qualifying_df.columns)}")
+            # st.info(f"Qualifying employees: {len(qualifying_df)}")
+            # st.info(f"qualifying_df columns: {list(qualifying_df.columns)}")
             
             if selected_cert_name != "All":
                 if "Name" in qualifying_df.columns:
                     qualifying_df = qualifying_df[qualifying_df["Name"] == selected_cert_name]
-                    st.info(f"Filtered for {selected_cert_name}: {len(qualifying_df)} qualifying employees")
+                    # st.info(f"Filtered for {selected_cert_name}: {len(qualifying_df)} qualifying employees")
                 else:
                     st.error("Column 'Name' not found in qualifying_df. Check results data for column names.")
                     qualifying_df = pd.DataFrame(columns=results_df.columns)
