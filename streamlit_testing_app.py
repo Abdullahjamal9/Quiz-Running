@@ -403,7 +403,7 @@ def generate_certificate(emp_id, emp_name, test_date, status, template_type):
                 # st.info(f"Replaced status '{pat}' with '{status_text_draw}' (font size: {fs}pt)")
                 break
             else:
-                # st.warning(f"Status placeholder '{pat}' not found in {template_type} template.")
+                st.warning(f"Status placeholder '{pat}' not found in {template_type} template.")
 
         # Inline replacements
         # 1) Date of Certification
