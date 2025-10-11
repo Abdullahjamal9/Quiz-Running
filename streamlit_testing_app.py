@@ -407,7 +407,8 @@ def generate_certificate(
             "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
         }.get(template_type, template_type)
         cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
-        
+
+        # Search for CERTIFICATE NO label and replace the entire line
         cert_label_texts = ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
         cert_inline_text = f"CERTIFICATE NO: {cert_value}"
         
@@ -416,29 +417,25 @@ def generate_certificate(
             hits = page.search_for(text)
             if hits:
                 cert_label = hits[0]
-                # Create a tight rectangle to cover only the label and value area
-                fs = 16  # Increased font size
-                text_width = len(cert_inline_text) * fs * 0.6  # Estimate width (adjust factor as needed)
+                # Create rect that covers the label + value area
                 cert_rect = fitz.Rect(
                     cert_label.x0,
-                    cert_label.y0 - fs * 0.2,  # Slight padding above
-                    cert_label.x0 + max(cert_label.width, text_width) + 10,  # Ensure enough width
-                    cert_label.y1 + fs * 0.2   # Slight padding below
+                    cert_label.y0,
+                    cert_label.x0 + cert_label.width + 400,
+                    cert_label.y1
                 )
-                # Adjust height to fit larger font
-                if cert_rect.height < fs * 1.2:  # Ensure enough height for font
+                # Adjust height if needed
+                fs = 13
+                if cert_rect.height < fs * 1.5:
                     cy = (cert_rect.y0 + cert_rect.y1) / 2
-                    cert_rect.y0 = cy - fs * 0.6
-                    cert_rect.y1 = cy + fs * 0.6
-        
-                # Debugging: Print rectangle and text details
-                print(f"Cert Rect: {cert_rect}, Text: {cert_inline_text}")
-        
+                    cert_rect.y0 = cy - fs / 1.3
+                    cert_rect.y1 = cy + fs / 1.3
+                
                 # Apply redaction with new text
                 page.add_redact_annot(
                     cert_rect,
                     text=cert_inline_text,
-                    fontname="Helvetica",  # Use standard font
+                    fontname=arial_font,
                     fontsize=fs,
                     align=fitz.TEXT_ALIGN_LEFT,
                     text_color=(0, 0, 0),
@@ -449,10 +446,11 @@ def generate_certificate(
         
         if not cert_replaced:
             st.warning("Could not find CERTIFICATE NO label for replacement")
-        
+
         # ---------- DATE ----------
         nice_date = _nice_date(test_date)
         
+        # Search for DATE label and replace the entire line
         date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
         date_inline_text = f"DATE: {nice_date}"
         
@@ -461,29 +459,25 @@ def generate_certificate(
             hits = page.search_for(text)
             if hits:
                 date_label = hits[0]
-                # Create a tight rectangle to cover only the label and value area
-                fs = 16  # Increased font size
-                text_width = len(date_inline_text) * fs * 0.6  # Estimate width
+                # Create rect that covers the label + value area
                 date_rect = fitz.Rect(
                     date_label.x0,
-                    date_label.y0 - fs * 0.2,  # Slight padding above
-                    date_label.x0 + max(date_label.width, text_width) + 10,  # Ensure enough width
-                    date_label.y1 + fs * 0.2   # Slight padding below
+                    date_label.y0,
+                    date_label.x0 + date_label.width + 300,
+                    date_label.y1
                 )
-                # Adjust height to fit larger font
-                if date_rect.height < fs * 1.2:
+                # Adjust height if needed
+                fs = 13
+                if date_rect.height < fs * 1.5:
                     cy = (date_rect.y0 + date_rect.y1) / 2
-                    date_rect.y0 = cy - fs * 0.6
-                    date_rect.y1 = cy + fs * 0.6
-        
-                # Debugging: Print rectangle and text details
-                print(f"Date Rect: {date_rect}, Text: {date_inline_text}")
-        
+                    date_rect.y0 = cy - fs / 1.3
+                    date_rect.y1 = cy + fs / 1.3
+                
                 # Apply redaction with new text
                 page.add_redact_annot(
                     date_rect,
                     text=date_inline_text,
-                    fontname="Helvetica",  # Use standard font
+                    fontname=arial_font,
                     fontsize=fs,
                     align=fitz.TEXT_ALIGN_LEFT,
                     text_color=(0, 0, 0),
