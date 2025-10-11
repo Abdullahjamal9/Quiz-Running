@@ -417,7 +417,7 @@ def generate_certificate(
             if hits:
                 cert_label = hits[0]
                 # Create a tight rectangle to cover only the label and value area
-                fs = 20  # Increased font size
+                fs = 16  # Increased font size
                 text_width = len(cert_inline_text) * fs * 0.6  # Estimate width (adjust factor as needed)
                 cert_rect = fitz.Rect(
                     cert_label.x0,
@@ -462,7 +462,7 @@ def generate_certificate(
             if hits:
                 date_label = hits[0]
                 # Create a tight rectangle to cover only the label and value area
-                fs = 20  # Increased font size
+                fs = 16  # Increased font size
                 text_width = len(date_inline_text) * fs * 0.6  # Estimate width
                 date_rect = fitz.Rect(
                     date_label.x0,
