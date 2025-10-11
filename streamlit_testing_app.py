@@ -452,7 +452,7 @@ def generate_certificate(
         
         # Search for DATE label and replace the entire line
         date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
-        date_inline_text = f"DATE: {nice_date}"
+        date_inline_text = f"Date: {nice_date}"
         
         date_replaced = False
         for text in date_label_texts:
