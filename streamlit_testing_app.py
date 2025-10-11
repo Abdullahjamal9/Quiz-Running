@@ -421,11 +421,11 @@ def generate_certificate(
                 cert_rect = fitz.Rect(
                     cert_label.x0,
                     cert_label.y0,
-                    cert_label.x0 + cert_label.width + 300,
+                    cert_label.x0 + cert_label.width + 400,
                     cert_label.y1
                 )
                 # Adjust height if needed
-                fs = 13
+                fs = 16
                 if cert_rect.height < fs:
                     cy = (cert_rect.y0 + cert_rect.y1) / 2
                     cert_rect.y0 = cy - fs / 1.3
@@ -463,11 +463,11 @@ def generate_certificate(
                 date_rect = fitz.Rect(
                     date_label.x0,
                     date_label.y0,
-                    date_label.x0 + date_label.width + 200,
+                    date_label.x0 + date_label.width + 300,
                     date_label.y1
                 )
                 # Adjust height if needed
-                fs = 13
+                fs = 16
                 if date_rect.height < fs:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs / 1.3
