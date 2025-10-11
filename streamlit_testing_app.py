@@ -425,7 +425,7 @@ def generate_certificate(
                     cert_label.y1
                 )
                 # Adjust height if needed
-                fs = 16
+                fs = 13
                 if cert_rect.height < fs * 1.5:
                     cy = (cert_rect.y0 + cert_rect.y1) / 2
                     cert_rect.y0 = cy - fs * 0.75
@@ -467,7 +467,7 @@ def generate_certificate(
                     date_label.y1
                 )
                 # Adjust height if needed
-                fs = 16
+                fs = 13
                 if date_rect.height < fs * 1.5:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs * 0.75
