@@ -463,7 +463,7 @@ def generate_certificate(
                 date_rect = fitz.Rect(
                     date_label.x0,
                     date_label.y0,
-                    date_label.x0 + date_label.width,
+                    date_label.x0 + date_label.width + 100,
                     date_label.y1
                 )
                 # Adjust height if needed
