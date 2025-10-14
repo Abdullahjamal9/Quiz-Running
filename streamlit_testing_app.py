@@ -402,7 +402,7 @@ def generate_certificate(
         # ---------- CERTIFICATE NO ----------
         cert_tag = {
             "Ds-1_template": "DS-1",
-            "Cumulative_template": "CUMULATIVE",
+            "Cumulative_template": "Cumulative",
             "API RP 7G-2_template": "API RP 7G-2",
             "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
         }.get(template_type, template_type)
