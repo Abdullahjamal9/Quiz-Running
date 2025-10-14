@@ -467,11 +467,11 @@ def generate_certificate(
                     date_label.y1
                 )
                 # Adjust height if needed
-                fs = 14
+                fs = 16
                 if date_rect.height < fs * 1.1:
                     cy = (date_rect.y0 + date_rect.y1) / 2
-                    date_rect.y0 = cy - fs + 1000
-                    date_rect.y1 = cy + fs + 1000
+                    date_rect.y0 = cy - fs * 0.5
+                    date_rect.y1 = cy + fs * 0.5
                 
                 # Apply redaction with new text
                 page.add_redact_annot(
