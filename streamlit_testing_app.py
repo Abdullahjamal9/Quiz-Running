@@ -479,7 +479,7 @@ def generate_certificate(
                     text=date_inline_text,
                     fontname=arial_font,
                     fontsize=fs,
-                    align=fitz.TEXT_ALIGN_CENTRE,
+                    align=fitz.TEXT_ALIGN_CENTER,
                     text_color=(0, 0, 0),
                     fill=(1, 1, 1)
                 )
