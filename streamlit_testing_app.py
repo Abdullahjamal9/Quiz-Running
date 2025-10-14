@@ -467,7 +467,7 @@ def generate_certificate(
                     date_label.y1
                 )
                 # Adjust height if needed
-                fs = 14
+                fs = 16
                 # if date_rect.height < fs * 1.1:
                 #     cy = (date_rect.y0 + date_rect.y1) / 2
                 #     date_rect.y0 = cy - fs
@@ -479,7 +479,7 @@ def generate_certificate(
                     text=date_inline_text,
                     fontname=arial_font,
                     fontsize=fs,
-                    align=fitz.TEXT_ALIGN_LEFT,
+                    align=fitz.TEXT_ALIGN_CENTRE,
                     text_color=(0, 0, 0),
                     fill=(1, 1, 1)
                 )
