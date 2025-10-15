@@ -319,7 +319,7 @@ def generate_certificate(
                 )
                 
                 # Use exact height of the found text
-                fs = 14  # Slightly smaller font to fit better
+                fs = 18  # Slightly smaller font to fit better
                 
                 # Apply redaction with actual employee name
                 page.add_redact_annot(
