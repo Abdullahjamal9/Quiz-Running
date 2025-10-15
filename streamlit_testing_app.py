@@ -288,8 +288,7 @@ def generate_certificate(
 
         # ---------- Load fonts ----------
         arial_font = "helv"
-        arial_bold_font = "helv-bold"  # Add this
-        name_font = "times-bold"
+        name_font = "times-bolditalic"  # Bold + Italic combined
 
         try:
             arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
@@ -300,12 +299,15 @@ def generate_certificate(
             pass
 
         try:
+            # Try to load a bold-italic custom font if available
             corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
             if os.path.exists(corsiva_fontfile):
                 doc.insert_font(fontname="MonotypeCorsiva", fontfile=corsiva_fontfile)
-                name_font = "MonotypeCorsiva"
+                name_font = "MonotypeCorsiva"  # Corsiva is already italic and decorative
+            else:
+                name_font = "times-bolditalic"  # Fallback to Times Bold-Italic
         except:
-            pass
+            name_font = "times-bolditalic"
 
         # ---------- REPLACE TEMPLATE NAME "Israr Hussain" ----------
         template_name_hits = page.search_for("Israr Hussain")
@@ -322,11 +324,11 @@ def generate_certificate(
                 # Use exact height of the found text
                 fs = 18  # Slightly smaller font to fit better
                 
-                # Apply redaction with actual employee name
+                # Apply redaction with actual employee name (bold-italic)
                 page.add_redact_annot(
                     name_replace_rect,
                     text=str(emp_name),
-                    fontname=name_font,
+                    fontname="times-bolditalic",  # Bold + Italic
                     fontsize=fs,
                     align=fitz.TEXT_ALIGN_CENTER,
                     text_color=(0, 0, 0),
@@ -356,11 +358,11 @@ def generate_certificate(
             # Fallback: center of upper third
             name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.32)
 
-        # Insert name (DO NOT draw white rectangle first)
+        # Insert name (bold-italic, DO NOT draw white rectangle first)
         page.insert_textbox(
             name_rect,
             str(emp_name),
-            fontname=name_font,
+            fontname="times-bolditalic",  # Bold + Italic
             fontsize=22,  # Reduced from 28 for better fit
             align=fitz.TEXT_ALIGN_CENTER,
             color=(0, 0, 0),
