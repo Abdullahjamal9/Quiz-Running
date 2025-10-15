@@ -544,7 +544,7 @@ def generate_certificate(
         doc.save(output_path, garbage=3, deflate=True)
         doc.close()
 
-        st.success(f"✅ Generated certificate: {certificate_filename}")
+        st.success(f"Generated certificate: {certificate_filename}")
         return output_path, certificate_filename
 
     except Exception as e:
@@ -552,7 +552,7 @@ def generate_certificate(
             doc.close()
         except:
             pass
-        st.error(f"❌ Error generating {template_type} certificate: {e}")
+        st.error(f"Error generating {template_type} certificate: {e}")
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
         
