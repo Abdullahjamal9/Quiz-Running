@@ -306,37 +306,29 @@ def generate_certificate(
         except:
             pass
 
-        # ---------- HELPER FUNCTIONS ----------
-        def calculate_font_size(text, max_width, base_font_size, min_font_size=8):
-            fs = base_font_size
-            est = len(text) * (fs * 0.5)
-            while est > max_width and fs > min_font_size:
-                fs -= 1
-                est = len(text) * (fs * 0.5)
-            return fs
-
-        # ---------- REPLACE TEMPLATE NAME ----------
-        # Try multiple possible template names
-        template_names = ["Israr Hussain"]
-        name_hits = None
-        for template_name in template_names:
-            name_hits = page.search_for(template_name)
-            if name_hits:
-                break
-        
-        if name_hits:
-            name_font_size = calculate_font_size(emp_name, 500, 44, 28)
-            for r in name_hits:
-                cy = (r.y0 + r.y1) / 2
-                r.y0 = cy - name_font_size/2
-                r.y1 = cy + name_font_size/2
+        # ---------- REPLACE TEMPLATE NAME "Israr Hussain" ----------
+        template_name_hits = page.search_for("Israr Hussain")
+        if template_name_hits:
+            for hit in template_name_hits:
+                # Create rect that covers only the name text with minimal padding
+                name_replace_rect = fitz.Rect(
+                    hit.x0,
+                    hit.y0,
+                    hit.x1,
+                    hit.y1
+                )
+                
+                # Use exact height of the found text
+                fs = 14  # Slightly smaller font to fit better
+                
+                # Apply redaction with actual employee name
                 page.add_redact_annot(
-                    r, 
-                    text=str(emp_name), 
-                    fontname=name_font, 
-                    fontsize=name_font_size,
-                    align=fitz.TEXT_ALIGN_CENTER, 
-                    text_color=(0, 0, 0), 
+                    name_replace_rect,
+                    text=str(emp_name),
+                    fontname=name_font,
+                    fontsize=fs,
+                    align=fitz.TEXT_ALIGN_CENTER,
+                    text_color=(0, 0, 0),
                     fill=(1, 1, 1)
                 )
 
