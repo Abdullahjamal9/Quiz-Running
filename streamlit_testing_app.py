@@ -344,18 +344,18 @@ def generate_certificate(
 
         # Clear ONLY between the award line and the "For" line, with tiny padding
         if award_rect and for_rect:
-            clear_top = award_rect.y1 + 2       # tiny pad below header
-            clear_bot = for_rect.y0 - 2         # tiny pad above "For"
+            clear_top = award_rect.y1      # tiny pad below header
+            clear_bot = for_rect.y0         # tiny pad above "For"
             # Clamp to name_rect just in case
-            clear_top = max(clear_top, name_rect.y0 - 3)
-            clear_bot = min(clear_bot, name_rect.y1 + 3)
+            clear_top = max(clear_top, name_rect.y0)
+            clear_bot = min(clear_bot, name_rect.y1)
             if clear_bot <= clear_top:
-                clear_bot = name_rect.y1 + 3
-                clear_top = name_rect.y0 - 3
+                clear_bot = name_rect.y1
+                clear_top = name_rect.y0
             clear_band = fitz.Rect(name_rect.x0, clear_top, name_rect.x1, clear_bot)
         else:
             # Fallback: a very small band around the intended name area
-            clear_band = fitz.Rect(name_rect.x0, name_rect.y0 - 3, name_rect.x1, name_rect.y1 + 3)
+            clear_band = fitz.Rect(name_rect.x0, name_rect.y0, name_rect.x1, name_rect.y1)
 
         page.add_redact_annot(clear_band, fill=(1, 1, 1))
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)  # apply now so we don't wipe the new name
