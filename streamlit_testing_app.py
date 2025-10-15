@@ -288,7 +288,8 @@ def generate_certificate(
 
         # ---------- Load fonts ----------
         arial_font = "helv"
-        name_font = "times-italic"
+        arial_bold_font = "helv-bold"  # Add this
+        name_font = "times-bold"
 
         try:
             arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
