@@ -313,23 +313,31 @@ def generate_certificate(
         template_name_hits = page.search_for("Israr Hussain")
         if template_name_hits:
             for hit in template_name_hits:
-                # Create rect that covers only the name text with minimal padding
-                name_replace_rect = fitz.Rect(
-                    hit.x0,
-                    hit.y0 + 10,
-                    hit.x1,
-                    hit.y1
-                )
+                # Define desired font size
+                replace_fontsize = 22  # Adjust this as needed
                 
-                # Use exact height of the found text
-                fs = 22  # Slightly smaller font to fit better
+                # Create rect with proper height for the font size
+                # Width is extended to accommodate longer names
+                rect_height = replace_fontsize * 1.5
+                rect_width = hit.width * 2.5  # Wider to accommodate longer names
+                
+                # Center the rect around the original hit position
+                center_x = (hit.x0 + hit.x1) / 2
+                center_y = (hit.y0 + hit.y1) / 2
+                
+                name_replace_rect = fitz.Rect(
+                    center_x - rect_width / 2,
+                    center_y - rect_height / 2,
+                    center_x + rect_width / 2,
+                    center_y + rect_height / 2
+                )
                 
                 # Apply redaction with actual employee name (bold-italic)
                 page.add_redact_annot(
                     name_replace_rect,
                     text=str(emp_name),
                     fontname="times-bolditalic",  # Bold + Italic
-                    fontsize=fs,
+                    fontsize=replace_fontsize,
                     align=fitz.TEXT_ALIGN_CENTER,
                     text_color=(0, 0, 0),
                     fill=(1, 1, 1)
@@ -350,20 +358,22 @@ def generate_certificate(
                 break
 
         # Position name below the award text
+        name_fontsize = 28  # Increased font size
         if award_rect:
             # Place name centered, 15px below the award text
             name_y = award_rect.y1 + 15
-            name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + 30)
+            # Increase height to accommodate larger font (at least 1.5x the font size)
+            name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + (name_fontsize * 1.5))
         else:
-            # Fallback: center of upper third
-            name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.32)
+            # Fallback: center of upper third with proper height
+            name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.28 + (name_fontsize * 1.5))
 
         # Insert name (bold-italic, DO NOT draw white rectangle first)
         page.insert_textbox(
             name_rect,
             str(emp_name),
             fontname="times-bolditalic",  # Bold + Italic
-            fontsize=22,  # Reduced from 28 for better fit
+            fontsize=name_fontsize,  # Now uses variable for easy adjustment
             align=fitz.TEXT_ALIGN_CENTER,
             color=(0, 0, 0),
         )
