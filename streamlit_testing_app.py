@@ -263,8 +263,8 @@ def generate_certificate(
     skip_dates=True,
 ):
     """
-    Fixed certificate generation with guaranteed rendering of name, cert no, and date.
-    Clears any pre-printed name on the template before inserting the new candidate name.
+    Clears only the name line (not the header above), writes candidate name (20pt),
+    fills table, and replaces CERTIFICATE NO / Date.
     """
     template_path = get_template_path(template_type)
     if not template_path:
@@ -315,6 +315,7 @@ def generate_certificate(
         award_texts = [
             "Certificate of Accomplishment Awarded to",
             "Certificate of Accomplishment  Awarded to",
+            "Certificate",
             "Awarded to",
         ]
         award_rect = None
@@ -324,47 +325,52 @@ def generate_certificate(
                 award_rect = hits[0]
                 break
 
-        # If we can also find the "For" line, we’ll use it to bound the clear band
+        # Try to bound by the "For" line below the name
         for_hits = page.search_for("For")
         for_rect = for_hits[0] if for_hits else None
 
-        # Compute the name rectangle (centered)
+        # Name rect (slightly wider for long names)
         if award_rect:
             name_y = award_rect.y1 + 15
-            name_rect = fitz.Rect(pw * 0.20, name_y, pw * 0.80, name_y + 34)  # a bit wider/taller for long names
+            name_rect = fitz.Rect(pw * 0.20, name_y, pw * 0.80, name_y + 34)
         else:
-            # Fallback: center-ish upper third
             name_rect = fitz.Rect(pw * 0.20, ph * 0.27, pw * 0.80, ph * 0.32)
 
-        # ---------- CLEAR EXISTING NAME AREA ----------
-        # 1) If the template already has a printed name (e.g., "Israr Hussain"), search and redact it.
-        #    (Harmless if not found.)
-        preprinted_names = ["Israr Hussain"]  # add more if your masters have other placeholders
-        for old in preprinted_names:
+        # ---------- CLEAR EXISTING NAME AREA (tight band) ----------
+        # Optional: remove any baked-in name text if present
+        for old in ["Israr Hussain"]:
             for hit in page.search_for(old):
                 page.add_redact_annot(hit, fill=(1, 1, 1))
 
-        # 2) Always clear a band where the name sits (between "Awarded to" and "For" if available).
+        # Clear ONLY between the award line and the "For" line, with tiny padding
         if award_rect and for_rect:
-            clear_band = fitz.Rect(pw * 0.15, award_rect.y1 + 5, pw * 0.85, for_rect.y0 - 5)
+            clear_top = award_rect.y1 + 2       # tiny pad below header
+            clear_bot = for_rect.y0 - 2         # tiny pad above "For"
+            # Clamp to name_rect just in case
+            clear_top = max(clear_top, name_rect.y0 - 3)
+            clear_bot = min(clear_bot, name_rect.y1 + 3)
+            if clear_bot <= clear_top:
+                clear_bot = name_rect.y1 + 3
+                clear_top = name_rect.y0 - 3
+            clear_band = fitz.Rect(name_rect.x0, clear_top, name_rect.x1, clear_bot)
         else:
-            # Clear at least the name_rect area (slightly expanded)
-            clear_band = fitz.Rect(name_rect.x0, name_rect.y0 - 6, name_rect.x1, name_rect.y1 + 6)
+            # Fallback: a very small band around the intended name area
+            clear_band = fitz.Rect(name_rect.x0, name_rect.y0 - 3, name_rect.x1, name_rect.y1 + 3)
 
         page.add_redact_annot(clear_band, fill=(1, 1, 1))
-        # Apply now so we don't wipe our newly written name
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)  # apply now so we don't wipe the new name
 
-        # ---------- INSERT CANDIDATE NAME ----------
+        # ---------- INSERT CANDIDATE NAME (reduced by 2pt → 20) ----------
         safe_emp_name = _sanitize_name(emp_name)
         page.insert_textbox(
             name_rect,
             safe_emp_name,
             fontname=name_font,
-            fontsize=22,
+            fontsize=20,  # was 22
             align=fitz.TEXT_ALIGN_CENTER,
             color=(0, 0, 0),
         )
+
 
         # ---------- FIND EXAMINATION RESULT POSITION ----------
         exam_hits = page.search_for("EXAMINATION RESULT")
