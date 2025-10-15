@@ -310,20 +310,16 @@ def generate_certificate(
         template_name_hits = page.search_for("Israr Hussain")
         if template_name_hits:
             for hit in template_name_hits:
-                # Create rect that covers the template name with some padding
+                # Create rect that covers only the name text with minimal padding
                 name_replace_rect = fitz.Rect(
-                    hit.x0 - 5,
-                    hit.y0 - 2,
-                    hit.x1 + 5,
-                    hit.y1 + 2
+                    hit.x0,
+                    hit.y0,
+                    hit.x1,
+                    hit.y1
                 )
                 
-                # Adjust height if needed
-                fs = 22  # Match the font size used for names
-                if name_replace_rect.height < fs * 1.1:
-                    cy = (name_replace_rect.y0 + name_replace_rect.y1) / 2
-                    name_replace_rect.y0 = cy - fs
-                    name_replace_rect.y1 = cy + fs
+                # Use exact height of the found text
+                fs = 18  # Slightly smaller font to fit better
                 
                 # Apply redaction with actual employee name
                 page.add_redact_annot(
@@ -543,6 +539,7 @@ def generate_certificate(
         st.error(f"❌ Error generating {template_type} certificate: {e}")
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
+        
 # =====================
 # Individual Test Downloads
 # =====================
