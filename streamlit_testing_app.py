@@ -263,15 +263,13 @@ def generate_certificate(
     skip_dates=True,
 ):
     """
-    Clears only the name line (not the header above), writes candidate name (20pt),
-    fills table, and replaces CERTIFICATE NO / Date.
+    Fixed certificate generation with guaranteed rendering of name, cert no, and date
     """
     template_path = get_template_path(template_type)
     if not template_path:
         st.error(f"No {template_type} template available. Cannot generate certificate.")
         return None, None
 
-    # ---------------- Helpers ----------------
     def _nice_date(dt_str):
         try:
             d = pd.to_datetime(str(dt_str), errors="coerce", dayfirst=True)
@@ -283,11 +281,6 @@ def generate_certificate(
         except Exception:
             return str(dt_str).split(" ")[0]
 
-    def _sanitize_name(name):
-        name = (name or "").strip()
-        safe = "".join(c for c in name if c.isalnum() or c in (" ", "-", "_")).strip()
-        return safe or "Candidate"
-
     try:
         doc = fitz.open(template_path)
         page = doc[0]
@@ -296,6 +289,7 @@ def generate_certificate(
         # ---------- Load fonts ----------
         arial_font = "helv"
         name_font = "times-italic"
+
         try:
             arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
             if os.path.exists(arial_fontfile):
@@ -303,6 +297,7 @@ def generate_certificate(
                 arial_font = "Arial"
         except:
             pass
+
         try:
             corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
             if os.path.exists(corsiva_fontfile):
@@ -311,12 +306,42 @@ def generate_certificate(
         except:
             pass
 
+        # ---------- REPLACE TEMPLATE NAME "Israr Hussain" ----------
+        template_name_hits = page.search_for("Israr Hussain")
+        if template_name_hits:
+            for hit in template_name_hits:
+                # Create rect that covers the template name with some padding
+                name_replace_rect = fitz.Rect(
+                    hit.x0 - 5,
+                    hit.y0 - 2,
+                    hit.x1 + 5,
+                    hit.y1 + 2
+                )
+                
+                # Adjust height if needed
+                fs = 22  # Match the font size used for names
+                if name_replace_rect.height < fs * 1.1:
+                    cy = (name_replace_rect.y0 + name_replace_rect.y1) / 2
+                    name_replace_rect.y0 = cy - fs
+                    name_replace_rect.y1 = cy + fs
+                
+                # Apply redaction with actual employee name
+                page.add_redact_annot(
+                    name_replace_rect,
+                    text=str(emp_name),
+                    fontname=name_font,
+                    fontsize=fs,
+                    align=fitz.TEXT_ALIGN_CENTER,
+                    text_color=(0, 0, 0),
+                    fill=(1, 1, 1)
+                )
+
         # ---------- FIND NAME POSITION ----------
+        # Search for the "Certificate of Accomplishment Awarded to" text
         award_texts = [
             "Certificate of Accomplishment Awarded to",
-            "Certificate of Accomplishment  Awarded to",
-            "Certificate",
-            "Awarded to",
+            "Certificate of Accomplishment Awarded to",
+            "Awarded to"
         ]
         award_rect = None
         for text in award_texts:
@@ -325,52 +350,24 @@ def generate_certificate(
                 award_rect = hits[0]
                 break
 
-        # Try to bound by the "For" line below the name
-        for_hits = page.search_for("For")
-        for_rect = for_hits[0] if for_hits else None
-
-        # Name rect (slightly wider for long names)
+        # Position name below the award text
         if award_rect:
+            # Place name centered, 15px below the award text
             name_y = award_rect.y1 + 15
-            name_rect = fitz.Rect(pw * 0.20, name_y, pw * 0.80, name_y + 34)
+            name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + 30)
         else:
-            name_rect = fitz.Rect(pw * 0.20, ph * 0.27, pw * 0.80, ph * 0.32)
+            # Fallback: center of upper third
+            name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.32)
 
-        # ---------- CLEAR EXISTING NAME AREA (tight band) ----------
-        # Optional: remove any baked-in name text if present
-        for old in ["Israr Hussain"]:
-            for hit in page.search_for(old):
-                page.add_redact_annot(hit, fill=(1, 1, 1))
-
-        # Clear ONLY between the award line and the "For" line, with tiny padding
-        if award_rect and for_rect:
-            clear_top = award_rect.y1      # tiny pad below header
-            clear_bot = for_rect.y0         # tiny pad above "For"
-            # Clamp to name_rect just in case
-            clear_top = max(clear_top, name_rect.y0)
-            clear_bot = min(clear_bot, name_rect.y1)
-            if clear_bot <= clear_top:
-                clear_bot = name_rect.y1
-                clear_top = name_rect.y0
-            clear_band = fitz.Rect(name_rect.x0, clear_top, name_rect.x1, clear_bot)
-        else:
-            # Fallback: a very small band around the intended name area
-            clear_band = fitz.Rect(name_rect.x0, name_rect.y0, name_rect.x1, name_rect.y1)
-
-        page.add_redact_annot(clear_band, fill=(1, 1, 1))
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)  # apply now so we don't wipe the new name
-
-        # ---------- INSERT CANDIDATE NAME (reduced by 2pt → 20) ----------
-        safe_emp_name = _sanitize_name(emp_name)
+        # Insert name (DO NOT draw white rectangle first)
         page.insert_textbox(
             name_rect,
-            safe_emp_name,
+            str(emp_name),
             fontname=name_font,
-            fontsize=20,  # was 22
+            fontsize=22,  # Reduced from 28 for better fit
             align=fitz.TEXT_ALIGN_CENTER,
             color=(0, 0, 0),
         )
-
 
         # ---------- FIND EXAMINATION RESULT POSITION ----------
         exam_hits = page.search_for("EXAMINATION RESULT")
@@ -378,7 +375,7 @@ def generate_certificate(
             exam_hits = page.search_for("Examination Result")
         exam_rect = exam_hits[0] if exam_hits else fitz.Rect(pw * 0.1, ph * 0.42, pw * 0.9, ph * 0.45)
 
-        # ---------- DRAW/REWRITE TABLE ----------
+        # ---------- CREATE TABLE ----------
         table_top = exam_rect.y1 + 18
         table_left = pw * 0.07
         table_width = pw * 0.86
@@ -391,37 +388,44 @@ def generate_certificate(
         table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
         page.draw_rect(table_bbox, fill=(1, 1, 1), color=(0, 0, 0), width=0.7)
 
-        # Lines
-        page.draw_line(fitz.Point(table_left, table_top + header_h),
-                       fitz.Point(table_left + table_width, table_top + header_h),
-                       color=(0, 0, 0), width=0.7)
+        # Draw horizontal line
+        page.draw_line(
+            fitz.Point(table_left, table_top + header_h),
+            fitz.Point(table_left + table_width, table_top + header_h),
+            color=(0, 0, 0),
+            width=0.7,
+        )
+
+        # Draw vertical lines
         for i in range(1, 3):
             x = table_left + i * col_w
-            page.draw_line(fitz.Point(x, table_top),
-                           fitz.Point(x, table_top + table_height),
-                           color=(0, 0, 0), width=0.7)
+            page.draw_line(
+                fitz.Point(x, table_top),
+                fitz.Point(x, table_top + table_height),
+                color=(0, 0, 0),
+                width=0.7,
+            )
 
-        # Headers
+        # Add headers
         headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
         for i, title in enumerate(headers):
             cell = fitz.Rect(table_left + i * col_w, table_top, table_left + (i + 1) * col_w, table_top + header_h)
-            page.insert_textbox(cell, title, fontname=arial_font, fontsize=11,
-                                align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
+            page.insert_textbox(cell, title, fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
-        # Values (auto-append % to pct/criteria if missing)
+        # Add values
         v_standard = (standard_text or "").strip()
         v_pct = str(percentage_text or "").strip()
         v_crit = str(criteria_text or "").strip()
+
         if v_pct and not v_pct.endswith("%"):
             v_pct += "%"
         if v_crit and not v_crit.endswith("%"):
             v_crit += "%"
+
         values = [v_standard, v_pct, v_crit]
         for i, val in enumerate(values):
-            cell = fitz.Rect(table_left + i * col_w, table_top + header_h,
-                             table_left + (i + 1) * col_w, table_top + header_h + data_h)
-            page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=11,
-                                align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
+            cell = fitz.Rect(table_left + i * col_w, table_top + header_h, table_left + (i + 1) * col_w, table_top + header_h + data_h)
+            page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
         # ---------- CERTIFICATE NO ----------
         cert_tag = {
@@ -430,13 +434,14 @@ def generate_certificate(
             "API RP 7G-2_template": "API RP 7G-2",
             "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
         }.get(template_type, template_type)
+
         cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
 
         # Search for CERTIFICATE NO label and replace the entire line
         cert_label_texts = ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
         cert_inline_text = f"CERTIFICATE NO: {cert_value}"
-        
         cert_replaced = False
+
         for text in cert_label_texts:
             hits = page.search_for(text)
             if hits:
@@ -448,13 +453,14 @@ def generate_certificate(
                     cert_label.x0 + cert_label.width + 400,
                     cert_label.y1
                 )
+
                 # Adjust height if needed
                 fs = 14
                 if cert_rect.height < fs * 1.1:
                     cy = (cert_rect.y0 + cert_rect.y1) / 2
-                    cert_rect.y0 = cy - fs 
-                    cert_rect.y1 = cy + fs 
-                
+                    cert_rect.y0 = cy - fs
+                    cert_rect.y1 = cy + fs
+
                 # Apply redaction with new text
                 page.add_redact_annot(
                     cert_rect,
@@ -467,18 +473,18 @@ def generate_certificate(
                 )
                 cert_replaced = True
                 break
-        
+
         if not cert_replaced:
             st.warning("Could not find CERTIFICATE NO label for replacement")
 
         # ---------- DATE ----------
         nice_date = _nice_date(test_date)
-        
+
         # Search for DATE label and replace the entire line
         date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
         date_inline_text = f"Date: {nice_date}"
-        
         date_replaced = False
+
         for text in date_label_texts:
             hits = page.search_for(text)
             if hits:
@@ -490,13 +496,14 @@ def generate_certificate(
                     date_label.x0 + date_label.width + 110,
                     date_label.y1
                 )
+
                 # Adjust height if needed
                 fs = 14
                 if date_rect.height < fs * 1.1:
                     cy = (date_rect.y0 + date_rect.y1) / 2
                     date_rect.y0 = cy - fs
                     date_rect.y1 = cy + fs
-                
+
                 # Apply redaction with new text
                 page.add_redact_annot(
                     date_rect,
@@ -509,19 +516,19 @@ def generate_certificate(
                 )
                 date_replaced = True
                 break
-        
+
         if not date_replaced:
             st.warning("Could not find DATE label for replacement")
 
         # ---------- APPLY REDACTIONS ----------
         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
-        
+
         # ---------- SAVE ----------
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
         stamp = nice_date.replace("/", "-").replace(":", "-").replace(" ", "_")
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{stamp}.pdf"
         output_path = f"/tmp/{certificate_filename}"
-        
+
         doc.save(output_path, garbage=3, deflate=True)
         doc.close()
 
@@ -536,7 +543,6 @@ def generate_certificate(
         st.error(f"❌ Error generating {template_type} certificate: {e}")
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
-      
 # =====================
 # Individual Test Downloads
 # =====================
