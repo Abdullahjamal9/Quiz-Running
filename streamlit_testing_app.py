@@ -314,7 +314,7 @@ def generate_certificate(
         if template_name_hits:
             for hit in template_name_hits:
                 # Define desired font size
-                replace_fontsize = 22  # Adjust this as needed
+                replace_fontsize = 16  # Adjust this as needed
                 
                 # Create rect with proper height for the font size
                 # Width is extended to accommodate longer names
