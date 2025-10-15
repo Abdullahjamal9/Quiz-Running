@@ -313,7 +313,7 @@ def generate_certificate(
                 # Create rect that covers only the name text with minimal padding
                 name_replace_rect = fitz.Rect(
                     hit.x0,
-                    hit.y0 - 100,
+                    hit.y0 + 10,
                     hit.x1,
                     hit.y1
                 )
