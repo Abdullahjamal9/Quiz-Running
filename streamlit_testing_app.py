@@ -315,14 +315,14 @@ def generate_certificate(
             for hit in template_name_hits:
                 # Create rect that covers only the name text with minimal padding
                 name_replace_rect = fitz.Rect(
-                    hit.x0 + 10,
-                    hit.y0 + 15,
-                    hit.x1 + 10,
-                    hit.y1 + 5
+                    hit.x0,
+                    hit.y0 + 10,
+                    hit.x1,
+                    hit.y1
                 )
                 
                 # Use exact height of the found text
-                fs = 18  # Slightly smaller font to fit better
+                fs = 26  # Slightly smaller font to fit better
                 
                 # Apply redaction with actual employee name (bold-italic)
                 page.add_redact_annot(
