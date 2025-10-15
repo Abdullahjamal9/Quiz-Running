@@ -263,13 +263,15 @@ def generate_certificate(
     skip_dates=True,
 ):
     """
-    Fixed certificate generation with guaranteed rendering of name, cert no, and date
+    Fixed certificate generation with guaranteed rendering of name, cert no, and date.
+    Clears any pre-printed name on the template before inserting the new candidate name.
     """
     template_path = get_template_path(template_type)
     if not template_path:
         st.error(f"No {template_type} template available. Cannot generate certificate.")
         return None, None
 
+    # ---------------- Helpers ----------------
     def _nice_date(dt_str):
         try:
             d = pd.to_datetime(str(dt_str), errors="coerce", dayfirst=True)
@@ -281,6 +283,11 @@ def generate_certificate(
         except Exception:
             return str(dt_str).split(" ")[0]
 
+    def _sanitize_name(name):
+        name = (name or "").strip()
+        safe = "".join(c for c in name if c.isalnum() or c in (" ", "-", "_")).strip()
+        return safe or "Candidate"
+
     try:
         doc = fitz.open(template_path)
         page = doc[0]
@@ -289,7 +296,6 @@ def generate_certificate(
         # ---------- Load fonts ----------
         arial_font = "helv"
         name_font = "times-italic"
-        
         try:
             arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
             if os.path.exists(arial_fontfile):
@@ -297,7 +303,6 @@ def generate_certificate(
                 arial_font = "Arial"
         except:
             pass
-            
         try:
             corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
             if os.path.exists(corsiva_fontfile):
@@ -307,35 +312,56 @@ def generate_certificate(
             pass
 
         # ---------- FIND NAME POSITION ----------
-        # Search for the "Certificate of Accomplishment Awarded to" text
         award_texts = [
             "Certificate of Accomplishment Awarded to",
             "Certificate of Accomplishment  Awarded to",
-            "Awarded to"
+            "Awarded to",
         ]
-        
         award_rect = None
         for text in award_texts:
             hits = page.search_for(text)
             if hits:
                 award_rect = hits[0]
                 break
-        
-        # Position name below the award text
-        if award_rect:
-            # Place name centered, 15px below the award text
-            name_y = award_rect.y1 + 15
-            name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + 30)
-        else:
-            # Fallback: center of upper third
-            name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.32)
 
-        # Insert name (DO NOT draw white rectangle first)
+        # If we can also find the "For" line, we’ll use it to bound the clear band
+        for_hits = page.search_for("For")
+        for_rect = for_hits[0] if for_hits else None
+
+        # Compute the name rectangle (centered)
+        if award_rect:
+            name_y = award_rect.y1 + 15
+            name_rect = fitz.Rect(pw * 0.20, name_y, pw * 0.80, name_y + 34)  # a bit wider/taller for long names
+        else:
+            # Fallback: center-ish upper third
+            name_rect = fitz.Rect(pw * 0.20, ph * 0.27, pw * 0.80, ph * 0.32)
+
+        # ---------- CLEAR EXISTING NAME AREA ----------
+        # 1) If the template already has a printed name (e.g., "Israr Hussain"), search and redact it.
+        #    (Harmless if not found.)
+        preprinted_names = ["Israr Hussain"]  # add more if your masters have other placeholders
+        for old in preprinted_names:
+            for hit in page.search_for(old):
+                page.add_redact_annot(hit, fill=(1, 1, 1))
+
+        # 2) Always clear a band where the name sits (between "Awarded to" and "For" if available).
+        if award_rect and for_rect:
+            clear_band = fitz.Rect(pw * 0.15, award_rect.y1 + 5, pw * 0.85, for_rect.y0 - 5)
+        else:
+            # Clear at least the name_rect area (slightly expanded)
+            clear_band = fitz.Rect(name_rect.x0, name_rect.y0 - 6, name_rect.x1, name_rect.y1 + 6)
+
+        page.add_redact_annot(clear_band, fill=(1, 1, 1))
+        # Apply now so we don't wipe our newly written name
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+
+        # ---------- INSERT CANDIDATE NAME ----------
+        safe_emp_name = _sanitize_name(emp_name)
         page.insert_textbox(
             name_rect,
-            str(emp_name),
+            safe_emp_name,
             fontname=name_font,
-            fontsize=22,  # Reduced from 28 for better fit
+            fontsize=22,
             align=fitz.TEXT_ALIGN_CENTER,
             color=(0, 0, 0),
         )
@@ -344,10 +370,9 @@ def generate_certificate(
         exam_hits = page.search_for("EXAMINATION RESULT")
         if not exam_hits:
             exam_hits = page.search_for("Examination Result")
-        
         exam_rect = exam_hits[0] if exam_hits else fitz.Rect(pw * 0.1, ph * 0.42, pw * 0.9, ph * 0.45)
 
-        # ---------- CREATE TABLE ----------
+        # ---------- DRAW/REWRITE TABLE ----------
         table_top = exam_rect.y1 + 18
         table_left = pw * 0.07
         table_width = pw * 0.86
@@ -359,45 +384,38 @@ def generate_certificate(
         # Clear table area with white rectangle
         table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
         page.draw_rect(table_bbox, fill=(1, 1, 1), color=(0, 0, 0), width=0.7)
-        
-        # Draw horizontal line
-        page.draw_line(
-            fitz.Point(table_left, table_top + header_h),
-            fitz.Point(table_left + table_width, table_top + header_h),
-            color=(0, 0, 0),
-            width=0.7,
-        )
-        
-        # Draw vertical lines
+
+        # Lines
+        page.draw_line(fitz.Point(table_left, table_top + header_h),
+                       fitz.Point(table_left + table_width, table_top + header_h),
+                       color=(0, 0, 0), width=0.7)
         for i in range(1, 3):
             x = table_left + i * col_w
-            page.draw_line(
-                fitz.Point(x, table_top),
-                fitz.Point(x, table_top + table_height),
-                color=(0, 0, 0),
-                width=0.7,
-            )
+            page.draw_line(fitz.Point(x, table_top),
+                           fitz.Point(x, table_top + table_height),
+                           color=(0, 0, 0), width=0.7)
 
-        # Add headers
+        # Headers
         headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
         for i, title in enumerate(headers):
             cell = fitz.Rect(table_left + i * col_w, table_top, table_left + (i + 1) * col_w, table_top + header_h)
-            page.insert_textbox(cell, title, fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
+            page.insert_textbox(cell, title, fontname=arial_font, fontsize=11,
+                                align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
-        # Add values
+        # Values (auto-append % to pct/criteria if missing)
         v_standard = (standard_text or "").strip()
         v_pct = str(percentage_text or "").strip()
         v_crit = str(criteria_text or "").strip()
-        
         if v_pct and not v_pct.endswith("%"):
             v_pct += "%"
         if v_crit and not v_crit.endswith("%"):
             v_crit += "%"
-            
         values = [v_standard, v_pct, v_crit]
         for i, val in enumerate(values):
-            cell = fitz.Rect(table_left + i * col_w, table_top + header_h, table_left + (i + 1) * col_w, table_top + header_h + data_h)
-            page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
+            cell = fitz.Rect(table_left + i * col_w, table_top + header_h,
+                             table_left + (i + 1) * col_w, table_top + header_h + data_h)
+            page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=11,
+                                align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
 
         # ---------- CERTIFICATE NO ----------
         cert_tag = {
