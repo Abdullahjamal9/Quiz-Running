@@ -315,7 +315,7 @@ def generate_certificate(
                     hit.x0,
                     hit.y0 - 100,
                     hit.x1,
-                    hit.y1 - 100
+                    hit.y1
                 )
                 
                 # Use exact height of the found text
