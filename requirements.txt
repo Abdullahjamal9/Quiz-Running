@@ -1,13 +1,9 @@
+pymupdf==1.24.10
 streamlit
-pandas
-numpy
-openpyxl
 gspread
 google-auth
+google-auth-oauthlib
 pytz
-python-docx
 requests
-PYPDF2
-reportlab
-fitz
-pymupdf
+pandas
+numpy
