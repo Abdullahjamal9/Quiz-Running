@@ -1,4 +1,4 @@
-pymupdf==1.24.10
+pymupdf==1.24.12
 streamlit
 gspread
 google-auth
