@@ -1291,10 +1291,15 @@ if st.session_state.admin_logged_in:
                 emp_passed_tests = passed_results[passed_results["Name"] == selected_ind_name].copy()
                 emp_passed_tests = emp_passed_tests.sort_values("Date / Time", ascending=False)
                 
-                # Create options: "All" + Just "Test Type"
+                # Create options: "All" (only if more than 1 test) + Test Types
                 # Get unique test types (take latest for each type)
                 unique_tests = emp_passed_tests.drop_duplicates(subset=["Test Type"], keep="first")
-                test_options = ["Select Test", "All"] + unique_tests["Test Type"].tolist()
+                
+                # Only show "All" if there are multiple passed tests
+                if len(unique_tests) > 1:
+                    test_options = ["Select Test", "All"] + unique_tests["Test Type"].tolist()
+                else:
+                    test_options = ["Select Test"] + unique_tests["Test Type"].tolist()
                 
                 selected_test_option = st.selectbox(
                     "Select Test",
