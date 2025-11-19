@@ -14,6 +14,7 @@ import zipfile
 import traceback
 import fitz
 import re
+import tempfile
 
 # =====================
 # Paths / Files
@@ -26,9 +27,19 @@ QUESTIONS_FOLDER = os.path.join(DB_FOLDER, "Questions")
 # Google Sheets Setup
 # =====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
-client = gspread.authorize(creds)
-GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+
+# Try to load Google Sheets credentials, fallback if not available
+try:
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scope)
+    client = gspread.authorize(creds)
+    GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    GSHEETS_AVAILABLE = True
+except Exception as e:
+    st.warning("⚠️ Google Sheets credentials not configured. App will run in demo mode with sample data.")
+    st.info("To enable Google Sheets: Add your service account credentials to `.streamlit/secrets.toml`")
+    client = None
+    GSHEET_URL = None
+    GSHEETS_AVAILABLE = False
 
 # =====================
 # Cached Loaders
@@ -241,7 +252,7 @@ def get_template_path(template_type):
     try:
         response = requests.get(github_url, timeout=10)
         if response.status_code == 200:
-            temp_path = f"/tmp/{template_type}.pdf"
+            temp_path = os.path.join(tempfile.gettempdir(), f"{template_type}.pdf")
             with open(temp_path, "wb") as file:
                 file.write(response.content)
             return temp_path
@@ -360,16 +371,16 @@ def generate_certificate(
                 award_rect = hits[0]
                 break
 
-        # Position name below the award text
+        # Position name below the award text with REDUCED gap
         name_fontsize = 28  # Increased font size
         if award_rect:
-            # Place name centered, 15px below the award text
-            name_y = award_rect.y1 + 15
-            # Use minimal height (1.3x font size) to avoid covering other content
-            name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + (name_fontsize * 1.3))
+            # Place name centered, 5px below the award text (reduced from 15px)
+            name_y = award_rect.y1 + 5
+            # Use minimal height (1.2x font size) to avoid covering other content
+            name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + (name_fontsize * 1.2))
         else:
             # Fallback: center of upper third with minimal height
-            name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.28 + (name_fontsize * 1.3))
+            name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.28 + (name_fontsize * 1.2))
 
         # Insert name (bold-italic, DO NOT draw white rectangle first)
         page.insert_textbox(
@@ -381,50 +392,101 @@ def generate_certificate(
             color=(0, 0, 0),
         )
 
+        # ---------- FIX "FOR" TEXT GAP ----------
+        # Search for "For" text and move it closer to the name
+        for_hits = page.search_for("For")
+        if for_hits:
+            for hit in for_hits:
+                # Check if this "For" is below the name (y coordinate is larger)
+                if hit.y0 > name_rect.y1:
+                    # Reduce gap between name and "For" - move "For" up by covering with white and redrawing
+                    for_fontsize = 16
+                    # Cover the old "For" text
+                    cover_rect = fitz.Rect(hit.x0 - 5, hit.y0 - 2, hit.x1 + 5, hit.y1 + 2)
+                    page.draw_rect(cover_rect, fill=(1, 1, 1), color=(1, 1, 1))
+                    
+                    # Redraw "For" closer to name (reduced gap from ~20px to ~8px)
+                    new_for_y = name_rect.y1 + 8
+                    new_for_rect = fitz.Rect(pw * 0.35, new_for_y, pw * 0.65, new_for_y + for_fontsize * 1.3)
+                    page.insert_textbox(
+                        new_for_rect,
+                        "For",
+                        fontname=arial_font,
+                        fontsize=for_fontsize,
+                        align=fitz.TEXT_ALIGN_CENTER,
+                        color=(0, 0, 0),
+                    )
+                    break  # Only process first match
+
         # ---------- FIND EXAMINATION RESULT POSITION ----------
         exam_hits = page.search_for("EXAMINATION RESULT")
         if not exam_hits:
             exam_hits = page.search_for("Examination Result")
         exam_rect = exam_hits[0] if exam_hits else fitz.Rect(pw * 0.1, ph * 0.42, pw * 0.9, ph * 0.45)
 
-        # ---------- CREATE TABLE ----------
+        # ---------- CREATE IMPROVED TABLE ----------
         table_top = exam_rect.y1 + 18
-        table_left = pw * 0.07
-        table_width = pw * 0.86
-        table_height = 50
-        header_h = 22
-        data_h = table_height - header_h
-        col_w = table_width / 3
+        table_left = pw * 0.07  # Wider table
+        table_width = pw * 0.86  # Increased width (from 0.8 to 0.86)
+        table_height = 45  # Reduced height (from 55 to 45)
+        header_h = 25  # Taller header
+        data_h = table_height - header_h  # 2nd row height will be 20px (reduced)
+        
+        # Equal width columns (divide by 2 for Standard and Achieved/Passing together)
+        col1_w = table_width * 0.33  # Standard column
+        col2_w = table_width * 0.33  # Achieved Percentage column
+        col3_w = table_width * 0.34  # Passing Criteria column (slightly wider to use remaining space)
 
         # Clear table area with white rectangle
         table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
-        page.draw_rect(table_bbox, fill=(1, 1, 1), color=(0, 0, 0), width=0.7)
+        page.draw_rect(table_bbox, fill=(1, 1, 1), color=(0, 0, 0), width=1.0)
 
-        # Draw horizontal line
+        # Draw horizontal line (thicker)
         page.draw_line(
             fitz.Point(table_left, table_top + header_h),
             fitz.Point(table_left + table_width, table_top + header_h),
             color=(0, 0, 0),
-            width=0.7,
+            width=1.0,
         )
 
-        # Draw vertical lines
-        for i in range(1, 3):
-            x = table_left + i * col_w
-            page.draw_line(
-                fitz.Point(x, table_top),
-                fitz.Point(x, table_top + table_height),
-                color=(0, 0, 0),
-                width=0.7,
+        # Draw vertical lines (thicker)
+        x1 = table_left + col1_w
+        page.draw_line(
+            fitz.Point(x1, table_top),
+            fitz.Point(x1, table_top + table_height),
+            color=(0, 0, 0),
+            width=1.0,
+        )
+        
+        x2 = table_left + col1_w + col2_w
+        page.draw_line(
+            fitz.Point(x2, table_top),
+            fitz.Point(x2, table_top + table_height),
+            color=(0, 0, 0),
+            width=1.0,
+        )
+
+        # Add BOLD headers with better font
+        headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
+        header_positions = [
+            (table_left, col1_w),
+            (table_left + col1_w, col2_w),
+            (table_left + col1_w + col2_w, col3_w)
+        ]
+        
+        for i, (title, (x_pos, width)) in enumerate(zip(headers, header_positions)):
+            cell = fitz.Rect(x_pos, table_top, x_pos + width, table_top + header_h)
+            # Use bold font for headers
+            page.insert_textbox(
+                cell, 
+                title, 
+                fontname="times-bold",  # BOLD font for headers
+                fontsize=12,  # Slightly larger
+                align=fitz.TEXT_ALIGN_CENTER, 
+                color=(0, 0, 0)
             )
 
-        # Add headers
-        headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
-        for i, title in enumerate(headers):
-            cell = fitz.Rect(table_left + i * col_w, table_top, table_left + (i + 1) * col_w, table_top + header_h)
-            page.insert_textbox(cell, title, fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
-
-        # Add values
+        # Add values with proper formatting and CENTERED alignment
         v_standard = (standard_text or "").strip()
         v_pct = str(percentage_text or "").strip()
         v_crit = str(criteria_text or "").strip()
@@ -435,9 +497,16 @@ def generate_certificate(
             v_crit += "%"
 
         values = [v_standard, v_pct, v_crit]
-        for i, val in enumerate(values):
-            cell = fitz.Rect(table_left + i * col_w, table_top + header_h, table_left + (i + 1) * col_w, table_top + header_h + data_h)
-            page.insert_textbox(cell, str(val), fontname=arial_font, fontsize=11, align=fitz.TEXT_ALIGN_CENTER, color=(0, 0, 0))
+        for i, (val, (x_pos, width)) in enumerate(zip(values, header_positions)):
+            cell = fitz.Rect(x_pos, table_top + header_h, x_pos + width, table_top + table_height)
+            page.insert_textbox(
+                cell, 
+                str(val), 
+                fontname=arial_font, 
+                fontsize=11, 
+                align=fitz.TEXT_ALIGN_CENTER,  # Explicitly centered
+                color=(0, 0, 0)
+            )
 
         # ---------- CERTIFICATE NO ----------
         cert_tag = {
@@ -539,7 +608,10 @@ def generate_certificate(
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
         stamp = nice_date.replace("/", "-").replace(":", "-").replace(" ", "_")
         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{stamp}.pdf"
-        output_path = f"/tmp/{certificate_filename}"
+        
+        # Use tempfile module for cross-platform temp directory
+        temp_dir = tempfile.gettempdir()
+        output_path = os.path.join(temp_dir, certificate_filename)
 
         doc.save(output_path, garbage=3, deflate=True)
         doc.close()
@@ -760,16 +832,20 @@ if "filter_reset_counter" not in st.session_state:
 # Admin login section
 if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     st.subheader("Admin Login")
-    username = st.text_input("Username", key="admin_username")
-    password = st.text_input("Password", type="password", key="admin_password")
     
-    if st.button("Login", key="admin_login_btn"):
-        if username == "admin" and password == "AdminPtis-3692":
-            st.session_state.admin_logged_in = True
-            st.success("Admin login successful!")
-            st.rerun()
-        else:
-            st.error("Invalid username or password")
+    # Use form to enable Enter key submission
+    with st.form("admin_login_form", clear_on_submit=False):
+        username = st.text_input("Username", key="admin_username")
+        password = st.text_input("Password", type="password", key="admin_password")
+        submitted = st.form_submit_button("Login", use_container_width=True)
+        
+        if submitted:
+            if username == "admin" and password == "AdminPtis-3692":
+                st.session_state.admin_logged_in = True
+                st.success("Admin login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid username or password")
 
 # Admin dashboard
 if st.session_state.admin_logged_in:
