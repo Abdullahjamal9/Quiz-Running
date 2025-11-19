@@ -1140,109 +1140,110 @@ if st.session_state.admin_logged_in:
         }
         required_in_order = ["DS 1", "CUMULATIVE", "API RP 7G 2", "API SPEC 5CT 5A5"]
 
-        if st.button("Generate Certificates for Qualifying Employees", use_container_width=True):
-            # Normalize helper column
-            passed_results["Test Type (norm)"] = passed_results["Test Type"].map(_norm)
-            # Parse date to pick sensible rows when needed
-            passed_results["_parsed_dt"] = pd.to_datetime(
-                passed_results["Date / Time"], errors="coerce", dayfirst=True
-            )
-
-            grouped = passed_results.groupby("Name", dropna=False)
-            qualifying_rows = []
-            for name, group in grouped:
-                passed_set = set(group["Test Type (norm)"].dropna().tolist())
-                if required_norm.issubset(passed_set):
-                    # Prefer CUMULATIVE row; else latest among required
-                    cum_row = group[group["Test Type (norm)"] == "CUMULATIVE"]
-                    if not cum_row.empty:
-                        pick = cum_row.iloc[0]
-                    else:
-                        req_rows = group[group["Test Type (norm)"].isin(required_norm)].copy()
-                        req_rows = req_rows.sort_values("_parsed_dt", ascending=False)
-                        if req_rows.empty:
-                            continue
-                        pick = req_rows.iloc[0]
-                    qualifying_rows.append(pick)
-
-            qualifying_df = pd.DataFrame(qualifying_rows)
-
-            # Guard before indexing
-            if qualifying_df.empty or "Name" not in qualifying_df.columns:
-                st.warning("No qualifying candidates found yet for the selected filters.")
-            else:
-                # Optional filter by selected name
-                if selected_cert_name != "All":
-                    qualifying_df = qualifying_df[qualifying_df["Name"].astype(str) == str(selected_cert_name)]
-
-                if qualifying_df.empty:
-                    st.warning("Candidate is ineligible as not all required standards are passed.")
-                else:
-                    certificate_files = []
-                    # Generate four certificates per candidate, filling the row values from each standard's own result
-                    for _, row_pick in qualifying_df.iterrows():
-                        emp_id = row_pick["ID"]
-                        emp_name = row_pick["Name"]
-                        person_all = passed_results[passed_results["Name"] == emp_name].copy()
-
-                        # For each required standard, find that row and render with that standard's Percentage/Criteria
-                        for norm_std in required_in_order:
-                            std_row = person_all[person_all["Test Type (norm)"] == norm_std]
-                            if std_row.empty:
-                                continue  # safety
-                            r = std_row.iloc[0]
-
-                            standard_text  = str(r["Test Type"]).strip()
-                            # Normalize % fields
-                            pct_val = r["Percentage"]
-                            try:
-                                pct_val_num = float(str(pct_val).replace("%","").strip())
-                                percentage_text = f"{pct_val_num:.0f}%"
-                            except:
-                                percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
-
-                            crit_val = r["Criteria"]
-                            try:
-                                crit_val_num = float(str(crit_val).replace("%","").strip())
-                                criteria_text = f"{crit_val_num:.0f}%"
-                            except:
-                                criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
-
-                            template_type = template_map.get(norm_std)
-                            if not template_type:
-                                continue
-
-                            certificate_path, certificate_filename = generate_certificate(
-                                emp_id=emp_id,
-                                emp_name=emp_name,
-                                test_date=str(r["Date / Time"]),   # used for filename; also used if "Date of Certification" exists
-                                status=str(r["Status"]),
-                                template_type=template_type,
-                                standard_text=standard_text,
-                                percentage_text=percentage_text,
-                                criteria_text=criteria_text,
-                                skip_dates=True  # your templates don't have validity/date; but date/cert no (if present) are replaced at fs=18
-                            )
-                            if certificate_path:
-                                certificate_files.append((certificate_path, certificate_filename))
-
-                    if certificate_files:
-                        zip_buffer = io.BytesIO()
-                        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
-                            for cert_path, cert_filename in certificate_files:
-                                zipf.write(cert_path, cert_filename)
-
-                        zip_buffer.seek(0)
-                        filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
-                        st.download_button(
-                            label=f"Download Certificates (ZIP) for {filename_suffix}",
-                            data=zip_buffer,
-                            file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                            mime="application/zip",
-                            use_container_width=True
-                        )
-                    else:
-                        st.error("Failed to generate any certificates. Check templates and permissions.")
+        # ===== COMMENTED OUT: Old Certificate Generation (4 required standards) =====
+        # if st.button("Generate Certificates for Qualifying Employees", use_container_width=True):
+        #     # Normalize helper column
+        #     passed_results["Test Type (norm)"] = passed_results["Test Type"].map(_norm)
+        #     # Parse date to pick sensible rows when needed
+        #     passed_results["_parsed_dt"] = pd.to_datetime(
+        #         passed_results["Date / Time"], errors="coerce", dayfirst=True
+        #     )
+        #
+        #     grouped = passed_results.groupby("Name", dropna=False)
+        #     qualifying_rows = []
+        #     for name, group in grouped:
+        #         passed_set = set(group["Test Type (norm)"].dropna().tolist())
+        #         if required_norm.issubset(passed_set):
+        #             # Prefer CUMULATIVE row; else latest among required
+        #             cum_row = group[group["Test Type (norm)"] == "CUMULATIVE"]
+        #             if not cum_row.empty:
+        #                 pick = cum_row.iloc[0]
+        #             else:
+        #                 req_rows = group[group["Test Type (norm)"].isin(required_norm)].copy()
+        #                 req_rows = req_rows.sort_values("_parsed_dt", ascending=False)
+        #                 if req_rows.empty:
+        #                     continue
+        #                 pick = req_rows.iloc[0]
+        #             qualifying_rows.append(pick)
+        #
+        #     qualifying_df = pd.DataFrame(qualifying_rows)
+        #
+        #     # Guard before indexing
+        #     if qualifying_df.empty or "Name" not in qualifying_df.columns:
+        #         st.warning("No qualifying candidates found yet for the selected filters.")
+        #     else:
+        #         # Optional filter by selected name
+        #         if selected_cert_name != "All":
+        #             qualifying_df = qualifying_df[qualifying_df["Name"].astype(str) == str(selected_cert_name)]
+        #
+        #         if qualifying_df.empty:
+        #             st.warning("Candidate is ineligible as not all required standards are passed.")
+        #         else:
+        #             certificate_files = []
+        #             # Generate four certificates per candidate, filling the row values from each standard's own result
+        #             for _, row_pick in qualifying_df.iterrows():
+        #                 emp_id = row_pick["ID"]
+        #                 emp_name = row_pick["Name"]
+        #                 person_all = passed_results[passed_results["Name"] == emp_name].copy()
+        #
+        #                 # For each required standard, find that row and render with that standard's Percentage/Criteria
+        #                 for norm_std in required_in_order:
+        #                     std_row = person_all[person_all["Test Type (norm)"] == norm_std]
+        #                     if std_row.empty:
+        #                         continue  # safety
+        #                     r = std_row.iloc[0]
+        #
+        #                     standard_text  = str(r["Test Type"]).strip()
+        #                     # Normalize % fields
+        #                     pct_val = r["Percentage"]
+        #                     try:
+        #                         pct_val_num = float(str(pct_val).replace("%","").strip())
+        #                         percentage_text = f"{pct_val_num:.0f}%"
+        #                     except:
+        #                         percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
+        #
+        #                     crit_val = r["Criteria"]
+        #                     try:
+        #                         crit_val_num = float(str(crit_val).replace("%","").strip())
+        #                         criteria_text = f"{crit_val_num:.0f}%"
+        #                     except:
+        #                         criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
+        #
+        #                     template_type = template_map.get(norm_std)
+        #                     if not template_type:
+        #                         continue
+        #
+        #                     certificate_path, certificate_filename = generate_certificate(
+        #                         emp_id=emp_id,
+        #                         emp_name=emp_name,
+        #                         test_date=str(r["Date / Time"]),   # used for filename; also used if "Date of Certification" exists
+        #                         status=str(r["Status"]),
+        #                         template_type=template_type,
+        #                         standard_text=standard_text,
+        #                         percentage_text=percentage_text,
+        #                         criteria_text=criteria_text,
+        #                         skip_dates=True  # your templates don't have validity/date; but date/cert no (if present) are replaced at fs=18
+        #                     )
+        #                     if certificate_path:
+        #                         certificate_files.append((certificate_path, certificate_filename))
+        #
+        #             if certificate_files:
+        #                 zip_buffer = io.BytesIO()
+        #                 with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+        #                     for cert_path, cert_filename in certificate_files:
+        #                         zipf.write(cert_path, cert_filename)
+        #
+        #                 zip_buffer.seek(0)
+        #                 filename_suffix = selected_cert_name if selected_cert_name != "All" else "all_qualifying"
+        #                 st.download_button(
+        #                     label=f"Download Certificates (ZIP) for {filename_suffix}",
+        #                     data=zip_buffer,
+        #                     file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+        #                     mime="application/zip",
+        #                     use_container_width=True
+        #                 )
+        #             else:
+        #                 st.error("Failed to generate any certificates. Check templates and permissions.")
         
         # ======================
         # Individual Certificate Generation (for any passed test)
