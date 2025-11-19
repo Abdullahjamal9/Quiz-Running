@@ -1140,7 +1140,7 @@ if st.session_state.admin_logged_in:
         }
         required_in_order = ["DS 1", "CUMULATIVE", "API RP 7G 2", "API SPEC 5CT 5A5"]
 
-        if st.button("Generate Certificates for Qualifying Employees"):
+        if st.button("Generate Certificates for Qualifying Employees", use_container_width=True):
             # Normalize helper column
             passed_results["Test Type (norm)"] = passed_results["Test Type"].map(_norm)
             # Parse date to pick sensible rows when needed
@@ -1238,7 +1238,8 @@ if st.session_state.admin_logged_in:
                             label=f"Download Certificates (ZIP) for {filename_suffix}",
                             data=zip_buffer,
                             file_name=f"certificates_{filename_suffix}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
-                            mime="application/zip"
+                            mime="application/zip",
+                            use_container_width=True
                         )
                     else:
                         st.error("Failed to generate any certificates. Check templates and permissions.")
@@ -1247,8 +1248,8 @@ if st.session_state.admin_logged_in:
         # Individual Certificate Generation (for any passed test)
         # ======================
         st.markdown("---")
-        st.subheader("📜 Generate Individual Certificate")
-        st.info("💡 Generate certificate for any single passed test, even if the employee hasn't completed all 4 required standards.")
+        st.subheader("� Generate Individual Certificate")
+        st.info("Generate certificate for any single passed test, even if the employee hasn't completed all 4 required standards.")
         
         # Filter for individual certificate
         ind_cert_col1, ind_cert_col2 = st.columns(2)
@@ -1285,7 +1286,7 @@ if st.session_state.admin_logged_in:
         
         # Generate individual certificate button
         if selected_ind_name != "Select Employee" and selected_test_option != "Select Test":
-            if st.button(" Generate Certificate for Selected Test", use_container_width=True):
+            if st.button("🎓 Generate Certificate for Selected Test", use_container_width=True):
                 # Find the selected test row (latest one for this test type)
                 selected_test_row = emp_passed_tests[emp_passed_tests["Test Type"] == selected_test_option]
                 selected_test_row = selected_test_row.sort_values("Date / Time", ascending=False)
@@ -1343,7 +1344,7 @@ if st.session_state.admin_logged_in:
                         
                         st.success(f"✅ Certificate generated successfully for {emp_name}!")
                         st.download_button(
-                            label=f" Download Certificate For {emp_name}",
+                            label=f"Download Certificate {emp_name}",
                             data=cert_data,
                             file_name=certificate_filename,
                             mime="application/pdf",
