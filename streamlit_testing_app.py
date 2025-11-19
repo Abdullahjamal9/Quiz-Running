@@ -1295,22 +1295,22 @@ if st.session_state.admin_logged_in:
                 
                 # Only show "All" if there are multiple passed tests
                 if len(unique_tests) > 1:
-                    test_options = ["Select Test", "All"] + unique_tests["Test Type"].tolist()
+                    test_options = ["Select Standard", "All"] + unique_tests["Test Type"].tolist()
                 else:
-                    test_options = ["Select Test"] + unique_tests["Test Type"].tolist()
+                    test_options = ["Select Standard"] + unique_tests["Test Type"].tolist()
                 
                 selected_test_option = st.selectbox(
-                    "Select Test",
+                    "Select Standard",
                     test_options,
                     index=0,
                     key=f"ind_cert_test_{st.session_state.filter_reset_counter}"
                 )
             else:
-                selected_test_option = "Select Test"
-                st.selectbox("Select Test", ["Select Employee First"], index=0, disabled=True)
+                selected_test_option = "Select Standard"
+                st.selectbox("Select Standard", ["Select Employee First"], index=0, disabled=True)
         
         # Generate individual certificate button
-        if selected_ind_name != "Select Employee" and selected_test_option not in ["Select Test", "Select Employee First"]:
+        if selected_ind_name != "Select Employee" and selected_test_option not in ["Select Standard", "Select Employee First"]:
             # Change button text based on selection
             button_text = "Generate All Certificates (ZIP)" if selected_test_option == "All" else "Generate Certificate for Selected Test"
             
