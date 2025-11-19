@@ -1268,11 +1268,10 @@ if st.session_state.admin_logged_in:
                 emp_passed_tests = passed_results[passed_results["Name"] == selected_ind_name].copy()
                 emp_passed_tests = emp_passed_tests.sort_values("Date / Time", ascending=False)
                 
-                # Create options: "Test Type - Date"
-                test_options = ["Select Test"] + [
-                    f"{row['Test Type']} - {row['Date / Time']}"
-                    for _, row in emp_passed_tests.iterrows()
-                ]
+                # Create options: Just "Test Type"
+                # Get unique test types (take latest for each type)
+                unique_tests = emp_passed_tests.drop_duplicates(subset=["Test Type"], keep="first")
+                test_options = ["Select Test"] + unique_tests["Test Type"].tolist()
                 
                 selected_test_option = st.selectbox(
                     "Select Test",
@@ -1287,14 +1286,9 @@ if st.session_state.admin_logged_in:
         # Generate individual certificate button
         if selected_ind_name != "Select Employee" and selected_test_option != "Select Test":
             if st.button("🎓 Generate Certificate for Selected Test", use_container_width=True):
-                # Find the selected test row
-                test_type_from_option = selected_test_option.split(" - ")[0]
-                date_from_option = " - ".join(selected_test_option.split(" - ")[1:])
-                
-                selected_test_row = emp_passed_tests[
-                    (emp_passed_tests["Test Type"] == test_type_from_option) &
-                    (emp_passed_tests["Date / Time"] == date_from_option)
-                ]
+                # Find the selected test row (latest one for this test type)
+                selected_test_row = emp_passed_tests[emp_passed_tests["Test Type"] == selected_test_option]
+                selected_test_row = selected_test_row.sort_values("Date / Time", ascending=False)
                 
                 if not selected_test_row.empty:
                     r = selected_test_row.iloc[0]
