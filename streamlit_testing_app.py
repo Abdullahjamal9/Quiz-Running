@@ -509,12 +509,30 @@ def generate_certificate(
             )
 
         # ---------- CERTIFICATE NO ----------
+        # Extract short code for certificate number (e.g., "DS-1" from "DS-1 3rd Volume 5th Edition")
         cert_tag = {
             "Ds-1_template": "DS-1",
             "Cumulative_template": "Cumulative",
             "API RP 7G-2_template": "API RP 7G-2",
             "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
         }.get(template_type, template_type)
+        
+        # If cert_tag is still template_type, try to extract from standard_text
+        # This handles cases like "DS-1 3rd Volume 5th Edition" -> "DS-1"
+        if cert_tag == template_type and standard_text:
+            # Extract first meaningful part before space/volume/edition keywords
+            parts = str(standard_text).strip().split()
+            if parts:
+                # Look for patterns like "DS-1", "API", etc.
+                first_part = parts[0]
+                # If it's a compound like "DS-1", use it directly
+                if "-" in first_part or len(parts) == 1:
+                    cert_tag = first_part
+                # If multiple parts, check if first 2-3 form a standard code
+                elif len(parts) >= 2 and parts[1].replace("-", "").replace(".", "").isalnum():
+                    cert_tag = f"{parts[0]}-{parts[1]}".replace("--", "-")
+                else:
+                    cert_tag = first_part
 
         cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
 
@@ -863,14 +881,9 @@ if st.session_state.admin_logged_in:
         id_name_mapping = dict(zip(results_df["ID"].astype(str), results_df["Name"]))
         name_id_mapping = dict(zip(results_df["Name"], results_df["ID"].astype(str)))
         
-        # Initialize session state keys if they don't exist
+        # Create unique keys for filters
         id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
         name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
-        
-        if id_key not in st.session_state:
-            st.session_state[id_key] = "All"
-        if name_key not in st.session_state:
-            st.session_state[name_key] = "All"
         
         # Callback functions for synchronization
         def sync_id_to_name():
@@ -887,6 +900,10 @@ if st.session_state.admin_logged_in:
             elif selected_name == "All":
                 st.session_state[id_key] = "All"
         
+        # Get current values (if they exist) or default to "All"
+        current_id = st.session_state.get(id_key, "All")
+        current_name = st.session_state.get(name_key, "All")
+        
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
@@ -894,7 +911,7 @@ if st.session_state.admin_logged_in:
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=employee_ids.index(st.session_state[id_key]) if st.session_state[id_key] in employee_ids else 0,
+                index=employee_ids.index(current_id) if current_id in employee_ids else 0,
                 key=id_key,
                 on_change=sync_id_to_name
             )
@@ -904,7 +921,7 @@ if st.session_state.admin_logged_in:
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
-                index=employee_names.index(st.session_state[name_key]) if st.session_state[name_key] in employee_names else 0,
+                index=employee_names.index(current_name) if current_name in employee_names else 0,
                 key=name_key,
                 on_change=sync_name_to_id
             )
@@ -1093,11 +1110,15 @@ if st.session_state.admin_logged_in:
         # ---- Normalizer for standard names ----
         def _norm(s: str) -> str:
             s = str(s or "").upper().strip()
+            # Remove edition/volume information to match core standard name
+            # e.g., "DS-1 3rd Volume 5th Edition" -> "DS 1"
+            s = re.sub(r'\d+(ST|ND|RD|TH)\s+(VOLUME|EDITION)', '', s, flags=re.IGNORECASE)
+            s = re.sub(r'(VOLUME|EDITION)\s+\d+', '', s, flags=re.IGNORECASE)
             s = s.replace("&", " ")
             s = s.replace("-", " ")
             s = re.sub(r"\s+", " ", s)
             s = s.replace("CUMMULATIVE", "CUMULATIVE")
-            return s
+            return s.strip()
 
         required_norm = {"DS 1", "CUMULATIVE", "API RP 7G 2", "API SPEC 5CT 5A5"}
         template_map = {
