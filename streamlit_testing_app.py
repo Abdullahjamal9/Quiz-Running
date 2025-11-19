@@ -218,7 +218,7 @@ def load_questions():
 def get_info_for_standard(standards, selected_standard):
     try:
         if selected_standard == "Cumulative":
-            return 50, 80, 0, 50, 0
+            return 50, 75, 0, 50, 0
         row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
         if not row.empty:
             total = int(row.iloc[0].get("Total Questions", 50))
