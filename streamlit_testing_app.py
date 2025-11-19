@@ -1102,44 +1102,44 @@ if st.session_state.admin_logged_in:
             )
         
         # ======================
-        # Certificate Generation
+        # Certificate Generation - OLD (COMMENTED OUT)
         # ======================
-        st.markdown("---")
-        st.subheader("📜 Generate Certificates")
-        
-        passed_results = results_df[results_df["Status"].astype(str).str.upper().eq("PASS")].copy()
-
-        # Name filter list based on passed results
-        cert_employee_names = ["All"] + sorted(passed_results["Name"].dropna().unique().tolist())
-        selected_cert_name = st.selectbox(
-            "Filter Certificates by Employee Name",
-            cert_employee_names,
-            index=0,
-            key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
-        )
-
-        # ---- Normalizer for standard names ----
-        def _norm(s: str) -> str:
-            s = str(s or "").upper().strip()
-            # Remove edition/volume information to match core standard name
-            # e.g., "DS-1 3rd Volume 5th Edition" -> "DS 1"
-            s = re.sub(r'\d+(ST|ND|RD|TH)\s+(VOLUME|EDITION)', '', s, flags=re.IGNORECASE)
-            s = re.sub(r'(VOLUME|EDITION)\s+\d+', '', s, flags=re.IGNORECASE)
-            s = s.replace("&", " ")
-            s = s.replace("-", " ")
-            s = re.sub(r"\s+", " ", s)
-            s = s.replace("CUMMULATIVE", "CUMULATIVE")
-            return s.strip()
-
-        required_norm = {"DS 1", "CUMULATIVE", "API RP 7G 2", "API SPEC 5CT 5A5"}
-        template_map = {
-            "DS 1": "Ds-1_template",
-            "CUMULATIVE": "Cumulative_template",
-            "API RP 7G 2": "API RP 7G-2_template",
-            "API SPEC 5CT 5A5": "API SPEC 5CT & 5A5_template",
-        }
-        required_in_order = ["DS 1", "CUMULATIVE", "API RP 7G 2", "API SPEC 5CT 5A5"]
-
+        # st.markdown("---")
+        # st.subheader("📜 Generate Certificates")
+        # 
+        # passed_results = results_df[results_df["Status"].astype(str).str.upper().eq("PASS")].copy()
+        #
+        # # Name filter list based on passed results
+        # cert_employee_names = ["All"] + sorted(passed_results["Name"].dropna().unique().tolist())
+        # selected_cert_name = st.selectbox(
+        #     "Filter Certificates by Employee Name",
+        #     cert_employee_names,
+        #     index=0,
+        #     key=f"cert_name_filter_{st.session_state.filter_reset_counter}"
+        # )
+        #
+        # # ---- Normalizer for standard names ----
+        # def _norm(s: str) -> str:
+        #     s = str(s or "").upper().strip()
+        #     # Remove edition/volume information to match core standard name
+        #     # e.g., "DS-1 3rd Volume 5th Edition" -> "DS 1"
+        #     s = re.sub(r'\d+(ST|ND|RD|TH)\s+(VOLUME|EDITION)', '', s, flags=re.IGNORECASE)
+        #     s = re.sub(r'(VOLUME|EDITION)\s+\d+', '', s, flags=re.IGNORECASE)
+        #     s = s.replace("&", " ")
+        #     s = s.replace("-", " ")
+        #     s = re.sub(r"\s+", " ", s)
+        #     s = s.replace("CUMMULATIVE", "CUMULATIVE")
+        #     return s.strip()
+        #
+        # required_norm = {"DS 1", "CUMULATIVE", "API RP 7G 2", "API SPEC 5CT 5A5"}
+        # template_map = {
+        #     "DS 1": "Ds-1_template",
+        #     "CUMULATIVE": "Cumulative_template",
+        #     "API RP 7G 2": "API RP 7G-2_template",
+        #     "API SPEC 5CT 5A5": "API SPEC 5CT & 5A5_template",
+        # }
+        # required_in_order = ["DS 1", "CUMULATIVE", "API RP 7G 2", "API SPEC 5CT 5A5"]
+        #
         # ===== COMMENTED OUT: Old Certificate Generation (4 required standards) =====
         # if st.button("Generate Certificates for Qualifying Employees", use_container_width=True):
         #     # Normalize helper column
@@ -1251,6 +1251,27 @@ if st.session_state.admin_logged_in:
         st.markdown("---")
         st.subheader("📜 Generate Certificate")
         # st.info("Generate certificate for any single passed test, even if the employee hasn't completed all 4 required standards.")
+        
+        # Required data for certificate generation
+        passed_results = results_df[results_df["Status"].astype(str).str.upper().eq("PASS")].copy()
+        
+        # Normalizer for standard names
+        def _norm(s: str) -> str:
+            s = str(s or "").upper().strip()
+            s = re.sub(r'\d+(ST|ND|RD|TH)\s+(VOLUME|EDITION)', '', s, flags=re.IGNORECASE)
+            s = re.sub(r'(VOLUME|EDITION)\s+\d+', '', s, flags=re.IGNORECASE)
+            s = s.replace("&", " ")
+            s = s.replace("-", " ")
+            s = re.sub(r"\s+", " ", s)
+            s = s.replace("CUMMULATIVE", "CUMULATIVE")
+            return s.strip()
+        
+        template_map = {
+            "DS 1": "Ds-1_template",
+            "CUMULATIVE": "Cumulative_template",
+            "API RP 7G 2": "API RP 7G-2_template",
+            "API SPEC 5CT 5A5": "API SPEC 5CT & 5A5_template",
+        }
         
         # Filter for individual certificate
         ind_cert_col1, ind_cert_col2 = st.columns(2)
