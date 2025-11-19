@@ -198,7 +198,7 @@ def load_questions():
         st.info("Generating sample questions for testing...")
         sample_questions = pd.DataFrame({
             "Qno": [1, 2, 3, 4, 5],
-            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cummulative"],
+            "Standard": ["Basic", "Basic", "Advanced", "Advanced", "Cumulative"],
             "Question": [
                 "What is 2 + 2?",
                 "Capital of France?",
@@ -217,7 +217,7 @@ def load_questions():
 
 def get_info_for_standard(standards, selected_standard):
     try:
-        if selected_standard == "Cummulative":
+        if selected_standard == "Cumulative":
             return 50, 80, 0, 50, 0
         row = standards[standards["Standard"].str.strip().str.upper() == str(selected_standard).strip().upper()]
         if not row.empty:
@@ -708,7 +708,7 @@ def download_individual_test(emp_id, emp_name, test_data):
 # Helpers
 # =====================
 def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
-    if standard == "Cummulative":
+    if standard == "Cumulative":
         cand = questions_df.copy()
     else:
         cand = questions_df[
@@ -1407,8 +1407,8 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     
     options = standards["Standard"].dropna().unique().tolist()
     options = sorted(options)
-    if "Cummulative" not in options:
-        options = ["Cummulative"] + options
+    if "Cumulative" not in options:
+        options = ["Cumulative"] + options
     selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
     total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
     c1, c2, c3 = st.columns(3)
