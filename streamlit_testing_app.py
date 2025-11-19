@@ -262,400 +262,400 @@ def get_template_path(template_type):
         st.error(f"Failed to load template '{template_type}': {str(e)}. Please add 'db/{template_type}.pdf' to your repo.")
         return None
 
-def generate_certificate(
-    emp_id,
-    emp_name,
-    test_date,
-    status,
-    template_type,
-    standard_text=None,
-    percentage_text=None,
-    criteria_text=None,
-    skip_dates=True,
-):
-    """
-    Fixed certificate generation with guaranteed rendering of name, cert no, and date
-    Supports fallback to generic template if specific template not found
-    """
-    template_path = get_template_path(template_type)
+# def generate_certificate(
+#     emp_id,
+#     emp_name,
+#     test_date,
+#     status,
+#     template_type,
+#     standard_text=None,
+#     percentage_text=None,
+#     criteria_text=None,
+#     skip_dates=True,
+# ):
+#     """
+#     Fixed certificate generation with guaranteed rendering of name, cert no, and date
+#     Supports fallback to generic template if specific template not found
+#     """
+#     template_path = get_template_path(template_type)
     
-    # If specific template not found, try fallback templates
-    if not template_path:
-        fallback_templates = ["Ds-1_template", "Cumulative_template"]
-        for fallback in fallback_templates:
-            template_path = get_template_path(fallback)
-            if template_path:
-                st.warning(f"⚠️ Using fallback template '{fallback}' for '{template_type}'")
-                break
+#     # If specific template not found, try fallback templates
+#     if not template_path:
+#         fallback_templates = ["Ds-1_template", "Cumulative_template"]
+#         for fallback in fallback_templates:
+#             template_path = get_template_path(fallback)
+#             if template_path:
+#                 st.warning(f"⚠️ Using fallback template '{fallback}' for '{template_type}'")
+#                 break
     
-    if not template_path:
-        st.error(f"No template available for '{template_type}'. Cannot generate certificate.")
-        return None, None
+#     if not template_path:
+#         st.error(f"No template available for '{template_type}'. Cannot generate certificate.")
+#         return None, None
 
-    def _nice_date(dt_str):
-        try:
-            d = pd.to_datetime(str(dt_str), errors="coerce", dayfirst=True)
-            if pd.isna(d):
-                d = pd.to_datetime(str(dt_str), errors="coerce", utc=True)
-            if pd.isna(d):
-                return str(dt_str).split(" ")[0]
-            return d.strftime("%d-%B-%Y")
-        except Exception:
-            return str(dt_str).split(" ")[0]
+#     def _nice_date(dt_str):
+#         try:
+#             d = pd.to_datetime(str(dt_str), errors="coerce", dayfirst=True)
+#             if pd.isna(d):
+#                 d = pd.to_datetime(str(dt_str), errors="coerce", utc=True)
+#             if pd.isna(d):
+#                 return str(dt_str).split(" ")[0]
+#             return d.strftime("%d-%B-%Y")
+#         except Exception:
+#             return str(dt_str).split(" ")[0]
 
-    try:
-        doc = fitz.open(template_path)
-        page = doc[0]
-        pw, ph = page.rect.width, page.rect.height
+#     try:
+#         doc = fitz.open(template_path)
+#         page = doc[0]
+#         pw, ph = page.rect.width, page.rect.height
 
-        # ---------- Load fonts ----------
-        arial_font = "helv"
-        name_font = "times-bolditalic"  # Bold + Italic combined
+#         # ---------- Load fonts ----------
+#         arial_font = "helv"
+#         name_font = "times-bolditalic"  # Bold + Italic combined
 
-        try:
-            arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
-            if os.path.exists(arial_fontfile):
-                doc.insert_font(fontname="Arial", fontfile=arial_fontfile)
-                arial_font = "Arial"
-        except:
-            pass
+#         try:
+#             arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
+#             if os.path.exists(arial_fontfile):
+#                 doc.insert_font(fontname="Arial", fontfile=arial_fontfile)
+#                 arial_font = "Arial"
+#         except:
+#             pass
 
-        try:
-            # Try to load a bold-italic custom font if available
-            corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
-            if os.path.exists(corsiva_fontfile):
-                doc.insert_font(fontname="MonotypeCorsiva", fontfile=corsiva_fontfile)
-                name_font = "MonotypeCorsiva"  # Corsiva is already italic and decorative
-            else:
-                name_font = "times-bolditalic"  # Fallback to Times Bold-Italic
-        except:
-            name_font = "times-bolditalic"
+#         try:
+#             # Try to load a bold-italic custom font if available
+#             corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
+#             if os.path.exists(corsiva_fontfile):
+#                 doc.insert_font(fontname="MonotypeCorsiva", fontfile=corsiva_fontfile)
+#                 name_font = "MonotypeCorsiva"  # Corsiva is already italic and decorative
+#             else:
+#                 name_font = "times-bolditalic"  # Fallback to Times Bold-Italic
+#         except:
+#             name_font = "times-bolditalic"
 
-        # ---------- REPLACE TEMPLATE NAME "Israr Hussain" ----------
-        template_name_hits = page.search_for("Israr Hussain")
-        if template_name_hits:
-            for hit in template_name_hits:
-                # Define desired font size
-                replace_fontsize = 22  # Adjust this as needed
+#         # ---------- REPLACE TEMPLATE NAME "Israr Hussain" ----------
+#         template_name_hits = page.search_for("Israr Hussain")
+#         if template_name_hits:
+#             for hit in template_name_hits:
+#                 # Define desired font size
+#                 replace_fontsize = 22  # Adjust this as needed
                 
-                # Calculate text width for the new name to minimize white space
-                # Estimate: each character is roughly 60% of font size in width
-                estimated_width = len(str(emp_name)) * replace_fontsize * 0.6
+#                 # Calculate text width for the new name to minimize white space
+#                 # Estimate: each character is roughly 60% of font size in width
+#                 estimated_width = len(str(emp_name)) * replace_fontsize * 0.6
                 
-                # Use minimal height - just enough for the text (1.2x font size)
-                rect_height = replace_fontsize * 1.2
+#                 # Use minimal height - just enough for the text (1.2x font size)
+#                 rect_height = replace_fontsize * 1.2
                 
-                # Center the rect around the original hit position
-                center_x = (hit.x0 + hit.x1) / 2
-                center_y = (hit.y0 + hit.y1) / 2
+#                 # Center the rect around the original hit position
+#                 center_x = (hit.x0 + hit.x1) / 2
+#                 center_y = (hit.y0 + hit.y1) / 2
                 
-                # Create tight-fitting rectangle
-                name_replace_rect = fitz.Rect(
-                    center_x - estimated_width / 2,
-                    center_y - rect_height / 2,
-                    center_x + estimated_width / 2,
-                    center_y + rect_height / 2
-                )
+#                 # Create tight-fitting rectangle
+#                 name_replace_rect = fitz.Rect(
+#                     center_x - estimated_width / 2,
+#                     center_y - rect_height / 2,
+#                     center_x + estimated_width / 2,
+#                     center_y + rect_height / 2
+#                 )
                 
-                # Apply redaction with actual employee name (bold-italic)
-                page.add_redact_annot(
-                    name_replace_rect,
-                    text=str(emp_name),
-                    fontname="times-bolditalic",  # Bold + Italic
-                    fontsize=replace_fontsize,
-                    align=fitz.TEXT_ALIGN_CENTER,
-                    text_color=(0, 0, 0),
-                    fill=(1, 1, 1)
-                )
+#                 # Apply redaction with actual employee name (bold-italic)
+#                 page.add_redact_annot(
+#                     name_replace_rect,
+#                     text=str(emp_name),
+#                     fontname="times-bolditalic",  # Bold + Italic
+#                     fontsize=replace_fontsize,
+#                     align=fitz.TEXT_ALIGN_CENTER,
+#                     text_color=(0, 0, 0),
+#                     fill=(1, 1, 1)
+#                 )
 
-        # ---------- FIND NAME POSITION ----------
-        # Search for the "Certificate of Accomplishment Awarded to" text
-        award_texts = [
-            "Certificate of Accomplishment Awarded to",
-            "Certificate of Accomplishment Awarded to",
-            "Awarded to"
-        ]
-        award_rect = None
-        for text in award_texts:
-            hits = page.search_for(text)
-            if hits:
-                award_rect = hits[0]
-                break
+#         # ---------- FIND NAME POSITION ----------
+#         # Search for the "Certificate of Accomplishment Awarded to" text
+#         award_texts = [
+#             "Certificate of Accomplishment Awarded to",
+#             "Certificate of Accomplishment Awarded to",
+#             "Awarded to"
+#         ]
+#         award_rect = None
+#         for text in award_texts:
+#             hits = page.search_for(text)
+#             if hits:
+#                 award_rect = hits[0]
+#                 break
 
-        # Position name below the award text with REDUCED gap
-        name_fontsize = 28  # Increased font size
-        if award_rect:
-            # Place name centered, 5px below the award text (reduced from 15px)
-            name_y = award_rect.y1 + 5
-            # Use minimal height (1.2x font size) to avoid covering other content
-            name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + (name_fontsize * 1.2))
-        else:
-            # Fallback: center of upper third with minimal height
-            name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.28 + (name_fontsize * 1.2))
+#         # Position name below the award text with REDUCED gap
+#         name_fontsize = 28  # Increased font size
+#         if award_rect:
+#             # Place name centered, 5px below the award text (reduced from 15px)
+#             name_y = award_rect.y1 + 5
+#             # Use minimal height (1.2x font size) to avoid covering other content
+#             name_rect = fitz.Rect(pw * 0.25, name_y, pw * 0.75, name_y + (name_fontsize * 1.2))
+#         else:
+#             # Fallback: center of upper third with minimal height
+#             name_rect = fitz.Rect(pw * 0.25, ph * 0.28, pw * 0.75, ph * 0.28 + (name_fontsize * 1.2))
 
-        # Insert name (bold-italic, DO NOT draw white rectangle first)
-        page.insert_textbox(
-            name_rect,
-            str(emp_name),
-            fontname="times-bolditalic",  # Bold + Italic
-            fontsize=name_fontsize,  # Now uses variable for easy adjustment
-            align=fitz.TEXT_ALIGN_CENTER,
-            color=(0, 0, 0),
-        )
+#         # Insert name (bold-italic, DO NOT draw white rectangle first)
+#         page.insert_textbox(
+#             name_rect,
+#             str(emp_name),
+#             fontname="times-bolditalic",  # Bold + Italic
+#             fontsize=name_fontsize,  # Now uses variable for easy adjustment
+#             align=fitz.TEXT_ALIGN_CENTER,
+#             color=(0, 0, 0),
+#         )
 
-        # ---------- FIX "FOR" TEXT GAP ----------
-        # Search for "For" text and move it closer to the name
-        for_hits = page.search_for("For")
-        if for_hits:
-            for hit in for_hits:
-                # Check if this "For" is below the name (y coordinate is larger)
-                if hit.y0 > name_rect.y1:
-                    # Reduce gap between name and "For" - move "For" up by covering with white and redrawing
-                    for_fontsize = 16
-                    # Cover the old "For" text
-                    cover_rect = fitz.Rect(hit.x0 - 5, hit.y0 - 2, hit.x1 + 5, hit.y1 + 2)
-                    page.draw_rect(cover_rect, fill=(1, 1, 1), color=(1, 1, 1))
+#         # ---------- FIX "FOR" TEXT GAP ----------
+#         # Search for "For" text and move it closer to the name
+#         for_hits = page.search_for("For")
+#         if for_hits:
+#             for hit in for_hits:
+#                 # Check if this "For" is below the name (y coordinate is larger)
+#                 if hit.y0 > name_rect.y1:
+#                     # Reduce gap between name and "For" - move "For" up by covering with white and redrawing
+#                     for_fontsize = 16
+#                     # Cover the old "For" text
+#                     cover_rect = fitz.Rect(hit.x0 - 5, hit.y0 - 2, hit.x1 + 5, hit.y1 + 2)
+#                     page.draw_rect(cover_rect, fill=(1, 1, 1), color=(1, 1, 1))
                     
-                    # Redraw "For" closer to name (reduced gap from ~20px to ~8px)
-                    new_for_y = name_rect.y1 + 8
-                    new_for_rect = fitz.Rect(pw * 0.35, new_for_y, pw * 0.65, new_for_y + for_fontsize * 1.3)
-                    page.insert_textbox(
-                        new_for_rect,
-                        "For",
-                        fontname=arial_font,
-                        fontsize=for_fontsize,
-                        align=fitz.TEXT_ALIGN_CENTER,
-                        color=(0, 0, 0),
-                    )
-                    break  # Only process first match
+#                     # Redraw "For" closer to name (reduced gap from ~20px to ~8px)
+#                     new_for_y = name_rect.y1 + 8
+#                     new_for_rect = fitz.Rect(pw * 0.35, new_for_y, pw * 0.65, new_for_y + for_fontsize * 1.3)
+#                     page.insert_textbox(
+#                         new_for_rect,
+#                         "For",
+#                         fontname=arial_font,
+#                         fontsize=for_fontsize,
+#                         align=fitz.TEXT_ALIGN_CENTER,
+#                         color=(0, 0, 0),
+#                     )
+#                     break  # Only process first match
 
-        # ---------- FIND EXAMINATION RESULT POSITION ----------
-        exam_hits = page.search_for("EXAMINATION RESULT")
-        if not exam_hits:
-            exam_hits = page.search_for("Examination Result")
-        exam_rect = exam_hits[0] if exam_hits else fitz.Rect(pw * 0.1, ph * 0.42, pw * 0.9, ph * 0.45)
+#         # ---------- FIND EXAMINATION RESULT POSITION ----------
+#         exam_hits = page.search_for("EXAMINATION RESULT")
+#         if not exam_hits:
+#             exam_hits = page.search_for("Examination Result")
+#         exam_rect = exam_hits[0] if exam_hits else fitz.Rect(pw * 0.1, ph * 0.42, pw * 0.9, ph * 0.45)
 
-        # ---------- CREATE IMPROVED TABLE ----------
-        table_top = exam_rect.y1 + 18
-        table_left = pw * 0.07  # Wider table
-        table_width = pw * 0.86  # Increased width (from 0.8 to 0.86)
-        table_height = 45  # Reduced height (from 55 to 45)
-        header_h = 25  # Taller header
-        data_h = table_height - header_h  # 2nd row height will be 20px (reduced)
+#         # ---------- CREATE IMPROVED TABLE ----------
+#         table_top = exam_rect.y1 + 18
+#         table_left = pw * 0.07  # Wider table
+#         table_width = pw * 0.86  # Increased width (from 0.8 to 0.86)
+#         table_height = 45  # Reduced height (from 55 to 45)
+#         header_h = 25  # Taller header
+#         data_h = table_height - header_h  # 2nd row height will be 20px (reduced)
         
-        # Equal width columns (divide by 2 for Standard and Achieved/Passing together)
-        col1_w = table_width * 0.33  # Standard column
-        col2_w = table_width * 0.33  # Achieved Percentage column
-        col3_w = table_width * 0.34  # Passing Criteria column (slightly wider to use remaining space)
+#         # Equal width columns (divide by 2 for Standard and Achieved/Passing together)
+#         col1_w = table_width * 0.33  # Standard column
+#         col2_w = table_width * 0.33  # Achieved Percentage column
+#         col3_w = table_width * 0.34  # Passing Criteria column (slightly wider to use remaining space)
 
-        # Clear table area with white rectangle
-        table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
-        page.draw_rect(table_bbox, fill=(1, 1, 1), color=(0, 0, 0), width=1.0)
+#         # Clear table area with white rectangle
+#         table_bbox = fitz.Rect(table_left, table_top, table_left + table_width, table_top + table_height)
+#         page.draw_rect(table_bbox, fill=(1, 1, 1), color=(0, 0, 0), width=1.0)
 
-        # Draw horizontal line (thicker)
-        page.draw_line(
-            fitz.Point(table_left, table_top + header_h),
-            fitz.Point(table_left + table_width, table_top + header_h),
-            color=(0, 0, 0),
-            width=1.0,
-        )
+#         # Draw horizontal line (thicker)
+#         page.draw_line(
+#             fitz.Point(table_left, table_top + header_h),
+#             fitz.Point(table_left + table_width, table_top + header_h),
+#             color=(0, 0, 0),
+#             width=1.0,
+#         )
 
-        # Draw vertical lines (thicker)
-        x1 = table_left + col1_w
-        page.draw_line(
-            fitz.Point(x1, table_top),
-            fitz.Point(x1, table_top + table_height),
-            color=(0, 0, 0),
-            width=1.0,
-        )
+#         # Draw vertical lines (thicker)
+#         x1 = table_left + col1_w
+#         page.draw_line(
+#             fitz.Point(x1, table_top),
+#             fitz.Point(x1, table_top + table_height),
+#             color=(0, 0, 0),
+#             width=1.0,
+#         )
         
-        x2 = table_left + col1_w + col2_w
-        page.draw_line(
-            fitz.Point(x2, table_top),
-            fitz.Point(x2, table_top + table_height),
-            color=(0, 0, 0),
-            width=1.0,
-        )
+#         x2 = table_left + col1_w + col2_w
+#         page.draw_line(
+#             fitz.Point(x2, table_top),
+#             fitz.Point(x2, table_top + table_height),
+#             color=(0, 0, 0),
+#             width=1.0,
+#         )
 
-        # Add BOLD headers with better font
-        headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
-        header_positions = [
-            (table_left, col1_w),
-            (table_left + col1_w, col2_w),
-            (table_left + col1_w + col2_w, col3_w)
-        ]
+#         # Add BOLD headers with better font
+#         headers = ["Standard", "Achieved Percentage", "Passing Criteria"]
+#         header_positions = [
+#             (table_left, col1_w),
+#             (table_left + col1_w, col2_w),
+#             (table_left + col1_w + col2_w, col3_w)
+#         ]
         
-        for i, (title, (x_pos, width)) in enumerate(zip(headers, header_positions)):
-            cell = fitz.Rect(x_pos, table_top, x_pos + width, table_top + header_h)
-            # Use bold font for headers
-            page.insert_textbox(
-                cell, 
-                title, 
-                fontname="times-bold",  # BOLD font for headers
-                fontsize=12,  # Slightly larger
-                align=fitz.TEXT_ALIGN_CENTER, 
-                color=(0, 0, 0)
-            )
+#         for i, (title, (x_pos, width)) in enumerate(zip(headers, header_positions)):
+#             cell = fitz.Rect(x_pos, table_top, x_pos + width, table_top + header_h)
+#             # Use bold font for headers
+#             page.insert_textbox(
+#                 cell, 
+#                 title, 
+#                 fontname="times-bold",  # BOLD font for headers
+#                 fontsize=12,  # Slightly larger
+#                 align=fitz.TEXT_ALIGN_CENTER, 
+#                 color=(0, 0, 0)
+#             )
 
-        # Add values with proper formatting and CENTERED alignment
-        v_standard = (standard_text or "").strip()
-        v_pct = str(percentage_text or "").strip()
-        v_crit = str(criteria_text or "").strip()
+#         # Add values with proper formatting and CENTERED alignment
+#         v_standard = (standard_text or "").strip()
+#         v_pct = str(percentage_text or "").strip()
+#         v_crit = str(criteria_text or "").strip()
 
-        if v_pct and not v_pct.endswith("%"):
-            v_pct += "%"
-        if v_crit and not v_crit.endswith("%"):
-            v_crit += "%"
+#         if v_pct and not v_pct.endswith("%"):
+#             v_pct += "%"
+#         if v_crit and not v_crit.endswith("%"):
+#             v_crit += "%"
 
-        values = [v_standard, v_pct, v_crit]
-        for i, (val, (x_pos, width)) in enumerate(zip(values, header_positions)):
-            cell = fitz.Rect(x_pos, table_top + header_h, x_pos + width, table_top + table_height)
-            page.insert_textbox(
-                cell, 
-                str(val), 
-                fontname=arial_font, 
-                fontsize=11, 
-                align=fitz.TEXT_ALIGN_CENTER,  # Explicitly centered
-                color=(0, 0, 0)
-            )
+#         values = [v_standard, v_pct, v_crit]
+#         for i, (val, (x_pos, width)) in enumerate(zip(values, header_positions)):
+#             cell = fitz.Rect(x_pos, table_top + header_h, x_pos + width, table_top + table_height)
+#             page.insert_textbox(
+#                 cell, 
+#                 str(val), 
+#                 fontname=arial_font, 
+#                 fontsize=11, 
+#                 align=fitz.TEXT_ALIGN_CENTER,  # Explicitly centered
+#                 color=(0, 0, 0)
+#             )
 
-        # ---------- CERTIFICATE NO ----------
-        # Extract short code for certificate number (e.g., "DS-1" from "DS-1 3rd Volume 5th Edition")
-        cert_tag = {
-            "Ds-1_template": "DS-1",
-            "Cumulative_template": "Cumulative",
-            "API RP 7G-2_template": "API RP 7G-2",
-            "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
-        }.get(template_type, template_type)
+#         # ---------- CERTIFICATE NO ----------
+#         # Extract short code for certificate number (e.g., "DS-1" from "DS-1 3rd Volume 5th Edition")
+#         cert_tag = {
+#             "Ds-1_template": "DS-1",
+#             "Cumulative_template": "Cumulative",
+#             "API RP 7G-2_template": "API RP 7G-2",
+#             "API SPEC 5CT & 5A5_template": "API SPEC 5CT & 5A5",
+#         }.get(template_type, template_type)
         
-        # If cert_tag is still template_type, try to extract from standard_text
-        # This handles cases like "DS-1 3rd Volume 5th Edition" -> "DS-1"
-        if cert_tag == template_type and standard_text:
-            # Extract first meaningful part before space/volume/edition keywords
-            parts = str(standard_text).strip().split()
-            if parts:
-                # Look for patterns like "DS-1", "API", etc.
-                first_part = parts[0]
-                # If it's a compound like "DS-1", use it directly
-                if "-" in first_part or len(parts) == 1:
-                    cert_tag = first_part
-                # If multiple parts, check if first 2-3 form a standard code
-                elif len(parts) >= 2 and parts[1].replace("-", "").replace(".", "").isalnum():
-                    cert_tag = f"{parts[0]}-{parts[1]}".replace("--", "-")
-                else:
-                    cert_tag = first_part
+#         # If cert_tag is still template_type, try to extract from standard_text
+#         # This handles cases like "DS-1 3rd Volume 5th Edition" -> "DS-1"
+#         if cert_tag == template_type and standard_text:
+#             # Extract first meaningful part before space/volume/edition keywords
+#             parts = str(standard_text).strip().split()
+#             if parts:
+#                 # Look for patterns like "DS-1", "API", etc.
+#                 first_part = parts[0]
+#                 # If it's a compound like "DS-1", use it directly
+#                 if "-" in first_part or len(parts) == 1:
+#                     cert_tag = first_part
+#                 # If multiple parts, check if first 2-3 form a standard code
+#                 elif len(parts) >= 2 and parts[1].replace("-", "").replace(".", "").isalnum():
+#                     cert_tag = f"{parts[0]}-{parts[1]}".replace("--", "-")
+#                 else:
+#                     cert_tag = first_part
 
-        cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
+#         cert_value = f"{emp_id}/PTIS/{cert_tag}/2025"
 
-        # Search for CERTIFICATE NO label and replace the entire line
-        cert_label_texts = ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
-        cert_inline_text = f"CERTIFICATE NO: {cert_value}"
-        cert_replaced = False
+#         # Search for CERTIFICATE NO label and replace the entire line
+#         cert_label_texts = ["CERTIFICATE NO:", "CERTIFICATE NO :", "Certificate No:", "Certificate No :"]
+#         cert_inline_text = f"CERTIFICATE NO: {cert_value}"
+#         cert_replaced = False
 
-        for text in cert_label_texts:
-            hits = page.search_for(text)
-            if hits:
-                cert_label = hits[0]
-                # Create rect that covers the label + value area
-                cert_rect = fitz.Rect(
-                    cert_label.x0,
-                    cert_label.y0,
-                    cert_label.x0 + cert_label.width + 400,
-                    cert_label.y1
-                )
+#         for text in cert_label_texts:
+#             hits = page.search_for(text)
+#             if hits:
+#                 cert_label = hits[0]
+#                 # Create rect that covers the label + value area
+#                 cert_rect = fitz.Rect(
+#                     cert_label.x0,
+#                     cert_label.y0,
+#                     cert_label.x0 + cert_label.width + 400,
+#                     cert_label.y1
+#                 )
 
-                # Adjust height if needed
-                fs = 14
-                if cert_rect.height < fs * 1.1:
-                    cy = (cert_rect.y0 + cert_rect.y1) / 2
-                    cert_rect.y0 = cy - fs
-                    cert_rect.y1 = cy + fs
+#                 # Adjust height if needed
+#                 fs = 14
+#                 if cert_rect.height < fs * 1.1:
+#                     cy = (cert_rect.y0 + cert_rect.y1) / 2
+#                     cert_rect.y0 = cy - fs
+#                     cert_rect.y1 = cy + fs
 
-                # Apply redaction with new text
-                page.add_redact_annot(
-                    cert_rect,
-                    text=cert_inline_text,
-                    fontname=arial_font,
-                    fontsize=fs,
-                    align=fitz.TEXT_ALIGN_LEFT,
-                    text_color=(0, 0, 0),
-                    fill=(1, 1, 1)
-                )
-                cert_replaced = True
-                break
+#                 # Apply redaction with new text
+#                 page.add_redact_annot(
+#                     cert_rect,
+#                     text=cert_inline_text,
+#                     fontname=arial_font,
+#                     fontsize=fs,
+#                     align=fitz.TEXT_ALIGN_LEFT,
+#                     text_color=(0, 0, 0),
+#                     fill=(1, 1, 1)
+#                 )
+#                 cert_replaced = True
+#                 break
 
-        if not cert_replaced:
-            st.warning("Could not find CERTIFICATE NO label for replacement")
+#         if not cert_replaced:
+#             st.warning("Could not find CERTIFICATE NO label for replacement")
 
-        # ---------- DATE ----------
-        nice_date = _nice_date(test_date)
+#         # ---------- DATE ----------
+#         nice_date = _nice_date(test_date)
 
-        # Search for DATE label and replace the entire line
-        date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
-        date_inline_text = f"Date: {nice_date}"
-        date_replaced = False
+#         # Search for DATE label and replace the entire line
+#         date_label_texts = ["DATE:", "DATE :", "Date:", "Date :"]
+#         date_inline_text = f"Date: {nice_date}"
+#         date_replaced = False
 
-        for text in date_label_texts:
-            hits = page.search_for(text)
-            if hits:
-                date_label = hits[0]
-                # Create rect that covers the label + value area
-                date_rect = fitz.Rect(
-                    date_label.x0,
-                    date_label.y0,
-                    date_label.x0 + date_label.width + 110,
-                    date_label.y1
-                )
+#         for text in date_label_texts:
+#             hits = page.search_for(text)
+#             if hits:
+#                 date_label = hits[0]
+#                 # Create rect that covers the label + value area
+#                 date_rect = fitz.Rect(
+#                     date_label.x0,
+#                     date_label.y0,
+#                     date_label.x0 + date_label.width + 110,
+#                     date_label.y1
+#                 )
 
-                # Adjust height if needed
-                fs = 14
-                if date_rect.height < fs * 1.1:
-                    cy = (date_rect.y0 + date_rect.y1) / 2
-                    date_rect.y0 = cy - fs
-                    date_rect.y1 = cy + fs
+#                 # Adjust height if needed
+#                 fs = 14
+#                 if date_rect.height < fs * 1.1:
+#                     cy = (date_rect.y0 + date_rect.y1) / 2
+#                     date_rect.y0 = cy - fs
+#                     date_rect.y1 = cy + fs
 
-                # Apply redaction with new text
-                page.add_redact_annot(
-                    date_rect,
-                    text=date_inline_text,
-                    fontname=arial_font,
-                    fontsize=fs,
-                    align=fitz.TEXT_ALIGN_CENTER,
-                    text_color=(0, 0, 0),
-                    fill=(1, 1, 1)
-                )
-                date_replaced = True
-                break
+#                 # Apply redaction with new text
+#                 page.add_redact_annot(
+#                     date_rect,
+#                     text=date_inline_text,
+#                     fontname=arial_font,
+#                     fontsize=fs,
+#                     align=fitz.TEXT_ALIGN_CENTER,
+#                     text_color=(0, 0, 0),
+#                     fill=(1, 1, 1)
+#                 )
+#                 date_replaced = True
+#                 break
 
-        if not date_replaced:
-            st.warning("Could not find DATE label for replacement")
+#         if not date_replaced:
+#             st.warning("Could not find DATE label for replacement")
 
-        # ---------- APPLY REDACTIONS ----------
-        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+#         # ---------- APPLY REDACTIONS ----------
+#         page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
 
-        # ---------- SAVE ----------
-        safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
-        stamp = nice_date.replace("/", "-").replace(":", "-").replace(" ", "_")
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{stamp}.pdf"
+#         # ---------- SAVE ----------
+#         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
+#         stamp = nice_date.replace("/", "-").replace(":", "-").replace(" ", "_")
+#         certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{stamp}.pdf"
         
-        # Use tempfile module for cross-platform temp directory
-        temp_dir = tempfile.gettempdir()
-        output_path = os.path.join(temp_dir, certificate_filename)
+#         # Use tempfile module for cross-platform temp directory
+#         temp_dir = tempfile.gettempdir()
+#         output_path = os.path.join(temp_dir, certificate_filename)
 
-        doc.save(output_path, garbage=3, deflate=True)
-        doc.close()
+#         doc.save(output_path, garbage=3, deflate=True)
+#         doc.close()
 
-        st.success(f"Generated certificate: {certificate_filename}")
-        return output_path, certificate_filename
+#         st.success(f"Generated certificate: {certificate_filename}")
+#         return output_path, certificate_filename
 
-    except Exception as e:
-        try:
-            doc.close()
-        except:
-            pass
-        st.error(f"Error generating {template_type} certificate: {e}")
-        st.error(f"Traceback: {traceback.format_exc()}")
-        return None, None
+#     except Exception as e:
+#         try:
+#             doc.close()
+#         except:
+#             pass
+#         st.error(f"Error generating {template_type} certificate: {e}")
+#         st.error(f"Traceback: {traceback.format_exc()}")
+#         return None, None
         
 # =====================
 # Individual Test Downloads
@@ -1248,8 +1248,8 @@ if st.session_state.admin_logged_in:
         # Individual Certificate Generation (for any passed test)
         # ======================
         st.markdown("---")
-        st.subheader("📜 Generate Individual Certificate")
-        st.info("Generate certificate for any single passed test, even if the employee hasn't completed all 4 required standards.")
+        st.subheader("📜 Generate Certificate")
+        # st.info("Generate certificate for any single passed test, even if the employee hasn't completed all 4 required standards.")
         
         # Filter for individual certificate
         ind_cert_col1, ind_cert_col2 = st.columns(2)
