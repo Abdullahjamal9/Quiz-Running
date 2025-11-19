@@ -896,6 +896,12 @@ if st.session_state.admin_logged_in:
         id_key = f"emp_id_filter_{st.session_state.filter_reset_counter}"
         name_key = f"emp_name_filter_{st.session_state.filter_reset_counter}"
         
+        # Initialize session state if not exists
+        if id_key not in st.session_state:
+            st.session_state[id_key] = "All"
+        if name_key not in st.session_state:
+            st.session_state[name_key] = "All"
+        
         # Callback functions for synchronization
         def sync_id_to_name():
             selected_id = st.session_state[id_key]
@@ -911,10 +917,6 @@ if st.session_state.admin_logged_in:
             elif selected_name == "All":
                 st.session_state[id_key] = "All"
         
-        # Get current values (if they exist) or default to "All"
-        current_id = st.session_state.get(id_key, "All")
-        current_name = st.session_state.get(name_key, "All")
-        
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
@@ -922,7 +924,6 @@ if st.session_state.admin_logged_in:
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
-                index=employee_ids.index(current_id) if current_id in employee_ids else 0,
                 key=id_key,
                 on_change=sync_id_to_name
             )
@@ -932,7 +933,6 @@ if st.session_state.admin_logged_in:
             selected_emp_name = st.selectbox(
                 "Filter by Employee Name", 
                 employee_names, 
-                index=employee_names.index(current_name) if current_name in employee_names else 0,
                 key=name_key,
                 on_change=sync_name_to_id
             )
