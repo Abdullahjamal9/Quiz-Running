@@ -1269,10 +1269,10 @@ if st.session_state.admin_logged_in:
                 emp_passed_tests = passed_results[passed_results["Name"] == selected_ind_name].copy()
                 emp_passed_tests = emp_passed_tests.sort_values("Date / Time", ascending=False)
                 
-                # Create options: Just "Test Type"
+                # Create options: "All" + Just "Test Type"
                 # Get unique test types (take latest for each type)
                 unique_tests = emp_passed_tests.drop_duplicates(subset=["Test Type"], keep="first")
-                test_options = ["Select Test"] + unique_tests["Test Type"].tolist()
+                test_options = ["Select Test", "All"] + unique_tests["Test Type"].tolist()
                 
                 selected_test_option = st.selectbox(
                     "Select Test",
@@ -1285,75 +1285,148 @@ if st.session_state.admin_logged_in:
                 st.selectbox("Select Test", ["Select Employee First"], index=0, disabled=True)
         
         # Generate individual certificate button
-        if selected_ind_name != "Select Employee" and selected_test_option != "Select Test":
-            if st.button("Generate Certificate for Selected Test", use_container_width=True):
-                # Find the selected test row (latest one for this test type)
-                selected_test_row = emp_passed_tests[emp_passed_tests["Test Type"] == selected_test_option]
-                selected_test_row = selected_test_row.sort_values("Date / Time", ascending=False)
-                
-                if not selected_test_row.empty:
-                    r = selected_test_row.iloc[0]
+        if selected_ind_name != "Select Employee" and selected_test_option not in ["Select Test", "Select Employee First"]:
+            # Change button text based on selection
+            button_text = "Generate All Certificates (ZIP)" if selected_test_option == "All" else "Generate Certificate for Selected Test"
+            
+            if st.button(button_text, use_container_width=True):
+                if selected_test_option == "All":
+                    # Generate certificates for all passed tests of this employee
+                    certificate_files = []
                     
-                    # Normalize test type to find template
-                    norm_test_type = _norm(r["Test Type"])
-                    template_type = template_map.get(norm_test_type)
-                    
-                    # If no template in map, use a generic template name
-                    # generate_certificate function will handle fallback automatically
-                    if not template_type:
-                        template_type = "Generic_template"  # Will fallback to available template
-                    
-                    # Prepare data
-                    emp_id = r["ID"]
-                    emp_name = r["Name"]
-                    standard_text = str(r["Test Type"]).strip()
-                    
-                    # Normalize percentage
-                    pct_val = r["Percentage"]
-                    try:
-                        pct_val_num = float(str(pct_val).replace("%","").strip())
-                        percentage_text = f"{pct_val_num:.0f}%"
-                    except:
-                        percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
-                    
-                    # Normalize criteria
-                    crit_val = r["Criteria"]
-                    try:
-                        crit_val_num = float(str(crit_val).replace("%","").strip())
-                        criteria_text = f"{crit_val_num:.0f}%"
-                    except:
-                        criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
-                    
-                    # Generate certificate
-                    certificate_path, certificate_filename = generate_certificate(
-                        emp_id=emp_id,
-                        emp_name=emp_name,
-                        test_date=str(r["Date / Time"]),
-                        status=str(r["Status"]),
-                        template_type=template_type,
-                        standard_text=standard_text,
-                        percentage_text=percentage_text,
-                        criteria_text=criteria_text,
-                        skip_dates=True
-                    )
-                    
-                    if certificate_path:
-                        # Read the file and provide download
-                        with open(certificate_path, "rb") as f:
-                            cert_data = f.read()
+                    for _, r in emp_passed_tests.iterrows():
+                        # Normalize test type to find template
+                        norm_test_type = _norm(r["Test Type"])
+                        template_type = template_map.get(norm_test_type)
                         
-                        st.success(f"✅ Certificate generated successfully for {emp_name}!")
+                        if not template_type:
+                            template_type = "Generic_template"
+                        
+                        # Prepare data
+                        emp_id = r["ID"]
+                        emp_name = r["Name"]
+                        standard_text = str(r["Test Type"]).strip()
+                        
+                        # Normalize percentage
+                        pct_val = r["Percentage"]
+                        try:
+                            pct_val_num = float(str(pct_val).replace("%","").strip())
+                            percentage_text = f"{pct_val_num:.0f}%"
+                        except:
+                            percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
+                        
+                        # Normalize criteria
+                        crit_val = r["Criteria"]
+                        try:
+                            crit_val_num = float(str(crit_val).replace("%","").strip())
+                            criteria_text = f"{crit_val_num:.0f}%"
+                        except:
+                            criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
+                        
+                        # Generate certificate
+                        certificate_path, certificate_filename = generate_certificate(
+                            emp_id=emp_id,
+                            emp_name=emp_name,
+                            test_date=str(r["Date / Time"]),
+                            status=str(r["Status"]),
+                            template_type=template_type,
+                            standard_text=standard_text,
+                            percentage_text=percentage_text,
+                            criteria_text=criteria_text,
+                            skip_dates=True
+                        )
+                        
+                        if certificate_path:
+                            certificate_files.append((certificate_path, certificate_filename))
+                    
+                    if certificate_files:
+                        # Create ZIP file
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zipf:
+                            for cert_path, cert_filename in certificate_files:
+                                zipf.write(cert_path, cert_filename)
+                        
+                        zip_buffer.seek(0)
+                        st.success(f"✅ Generated {len(certificate_files)} certificate(s) for {selected_ind_name}!")
                         st.download_button(
-                            label=f"Download Certificate {emp_name}",
-                            data=cert_data,
-                            file_name=certificate_filename,
-                            mime="application/pdf",
+                            label=f"Download All Certificates (ZIP) - {selected_ind_name}",
+                            data=zip_buffer,
+                            file_name=f"certificates_{selected_ind_name}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.zip",
+                            mime="application/zip",
                             use_container_width=True
                         )
                     else:
-                        st.error("❌ Failed to generate certificate. Please check template availability.")
+                        st.error("❌ Failed to generate any certificates. Please check template availability.")
+                
                 else:
-                    st.error("Selected test not found.")
+                    # Single certificate generation
+                    # Find the selected test row (latest one for this test type)
+                    selected_test_row = emp_passed_tests[emp_passed_tests["Test Type"] == selected_test_option]
+                    selected_test_row = selected_test_row.sort_values("Date / Time", ascending=False)
+                    
+                    if not selected_test_row.empty:
+                        r = selected_test_row.iloc[0]
+                        
+                        # Normalize test type to find template
+                        norm_test_type = _norm(r["Test Type"])
+                        template_type = template_map.get(norm_test_type)
+                        
+                        # If no template in map, use a generic template name
+                        # generate_certificate function will handle fallback automatically
+                        if not template_type:
+                            template_type = "Generic_template"  # Will fallback to available template
+                        
+                        # Prepare data
+                        emp_id = r["ID"]
+                        emp_name = r["Name"]
+                        standard_text = str(r["Test Type"]).strip()
+                        
+                        # Normalize percentage
+                        pct_val = r["Percentage"]
+                        try:
+                            pct_val_num = float(str(pct_val).replace("%","").strip())
+                            percentage_text = f"{pct_val_num:.0f}%"
+                        except:
+                            percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
+                        
+                        # Normalize criteria
+                        crit_val = r["Criteria"]
+                        try:
+                            crit_val_num = float(str(crit_val).replace("%","").strip())
+                            criteria_text = f"{crit_val_num:.0f}%"
+                        except:
+                            criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
+                        
+                        # Generate certificate
+                        certificate_path, certificate_filename = generate_certificate(
+                            emp_id=emp_id,
+                            emp_name=emp_name,
+                            test_date=str(r["Date / Time"]),
+                            status=str(r["Status"]),
+                            template_type=template_type,
+                            standard_text=standard_text,
+                            percentage_text=percentage_text,
+                            criteria_text=criteria_text,
+                            skip_dates=True
+                        )
+                        
+                        if certificate_path:
+                            # Read the file and provide download
+                            with open(certificate_path, "rb") as f:
+                                cert_data = f.read()
+                            
+                            st.success(f"✅ Certificate generated successfully for {emp_name}!")
+                            st.download_button(
+                                label=f"📥 Download Certificate - {certificate_filename}",
+                                data=cert_data,
+                                file_name=certificate_filename,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                        else:
+                            st.error("❌ Failed to generate certificate. Please check template availability.")
+                    else:
+                        st.error("Selected test not found.")
         
         st.markdown("---")
         if st.button("Logout"):
