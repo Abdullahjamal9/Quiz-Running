@@ -1417,7 +1417,7 @@ if st.session_state.admin_logged_in:
                             
                             st.success(f"✅ Certificate generated successfully for {emp_name}!")
                             st.download_button(
-                                label=f"📥 Download Certificate - {certificate_filename}",
+                                label=f"Download Certificate {emp_name}",
                                 data=cert_data,
                                 file_name=certificate_filename,
                                 mime="application/pdf",
