@@ -275,10 +275,21 @@ def generate_certificate(
 ):
     """
     Fixed certificate generation with guaranteed rendering of name, cert no, and date
+    Supports fallback to generic template if specific template not found
     """
     template_path = get_template_path(template_type)
+    
+    # If specific template not found, try fallback templates
     if not template_path:
-        st.error(f"No {template_type} template available. Cannot generate certificate.")
+        fallback_templates = ["Ds-1_template", "Cumulative_template"]
+        for fallback in fallback_templates:
+            template_path = get_template_path(fallback)
+            if template_path:
+                st.warning(f"⚠️ Using fallback template '{fallback}' for '{template_type}'")
+                break
+    
+    if not template_path:
+        st.error(f"No template available for '{template_type}'. Cannot generate certificate.")
         return None, None
 
     def _nice_date(dt_str):
@@ -1231,6 +1242,123 @@ if st.session_state.admin_logged_in:
                         )
                     else:
                         st.error("Failed to generate any certificates. Check templates and permissions.")
+        
+        # ======================
+        # Individual Certificate Generation (for any passed test)
+        # ======================
+        st.markdown("---")
+        st.subheader("📄 Generate Individual Certificate")
+        st.info("💡 Generate certificate for any single passed test, even if the employee hasn't completed all 4 required standards.")
+        
+        # Filter for individual certificate
+        ind_cert_col1, ind_cert_col2 = st.columns(2)
+        
+        with ind_cert_col1:
+            ind_cert_names = ["Select Employee"] + sorted(passed_results["Name"].dropna().unique().tolist())
+            selected_ind_name = st.selectbox(
+                "Select Employee Name",
+                ind_cert_names,
+                index=0,
+                key=f"ind_cert_name_{st.session_state.filter_reset_counter}"
+            )
+        
+        with ind_cert_col2:
+            if selected_ind_name != "Select Employee":
+                # Get all passed tests for this employee
+                emp_passed_tests = passed_results[passed_results["Name"] == selected_ind_name].copy()
+                emp_passed_tests = emp_passed_tests.sort_values("Date / Time", ascending=False)
+                
+                # Create options: "Test Type - Date"
+                test_options = ["Select Test"] + [
+                    f"{row['Test Type']} - {row['Date / Time']}"
+                    for _, row in emp_passed_tests.iterrows()
+                ]
+                
+                selected_test_option = st.selectbox(
+                    "Select Test",
+                    test_options,
+                    index=0,
+                    key=f"ind_cert_test_{st.session_state.filter_reset_counter}"
+                )
+            else:
+                selected_test_option = "Select Test"
+                st.selectbox("Select Test", ["Select Employee First"], index=0, disabled=True)
+        
+        # Generate individual certificate button
+        if selected_ind_name != "Select Employee" and selected_test_option != "Select Test":
+            if st.button("🎓 Generate Certificate for Selected Test", use_container_width=True):
+                # Find the selected test row
+                test_type_from_option = selected_test_option.split(" - ")[0]
+                date_from_option = " - ".join(selected_test_option.split(" - ")[1:])
+                
+                selected_test_row = emp_passed_tests[
+                    (emp_passed_tests["Test Type"] == test_type_from_option) &
+                    (emp_passed_tests["Date / Time"] == date_from_option)
+                ]
+                
+                if not selected_test_row.empty:
+                    r = selected_test_row.iloc[0]
+                    
+                    # Normalize test type to find template
+                    norm_test_type = _norm(r["Test Type"])
+                    template_type = template_map.get(norm_test_type)
+                    
+                    # If no template in map, use a generic template name
+                    # generate_certificate function will handle fallback automatically
+                    if not template_type:
+                        template_type = "Generic_template"  # Will fallback to available template
+                    
+                    # Prepare data
+                    emp_id = r["ID"]
+                    emp_name = r["Name"]
+                    standard_text = str(r["Test Type"]).strip()
+                    
+                    # Normalize percentage
+                    pct_val = r["Percentage"]
+                    try:
+                        pct_val_num = float(str(pct_val).replace("%","").strip())
+                        percentage_text = f"{pct_val_num:.0f}%"
+                    except:
+                        percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
+                    
+                    # Normalize criteria
+                    crit_val = r["Criteria"]
+                    try:
+                        crit_val_num = float(str(crit_val).replace("%","").strip())
+                        criteria_text = f"{crit_val_num:.0f}%"
+                    except:
+                        criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
+                    
+                    # Generate certificate
+                    certificate_path, certificate_filename = generate_certificate(
+                        emp_id=emp_id,
+                        emp_name=emp_name,
+                        test_date=str(r["Date / Time"]),
+                        status=str(r["Status"]),
+                        template_type=template_type,
+                        standard_text=standard_text,
+                        percentage_text=percentage_text,
+                        criteria_text=criteria_text,
+                        skip_dates=True
+                    )
+                    
+                    if certificate_path:
+                        # Read the file and provide download
+                        with open(certificate_path, "rb") as f:
+                            cert_data = f.read()
+                        
+                        st.success(f"✅ Certificate generated successfully for {emp_name}!")
+                        st.download_button(
+                            label=f"📥 Download Certificate - {certificate_filename}",
+                            data=cert_data,
+                            file_name=certificate_filename,
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                    else:
+                        st.error("❌ Failed to generate certificate. Please check template availability.")
+                else:
+                    st.error("Selected test not found.")
         
         st.markdown("---")
         if st.button("Logout"):
