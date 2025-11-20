@@ -928,53 +928,6 @@ if st.session_state.admin_logged_in:
         if selected_test_type != "All":
             filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
 
-        if selected_emp_id != "All" or selected_emp_name != "All":
-            display_name = selected_emp_name if selected_emp_name != "All" else id_name_mapping.get(selected_emp_id, "Unknown")
-            display_id = selected_emp_id if selected_emp_id != "All" else name_id_mapping.get(selected_emp_name, "Unknown")
-            st.info(f"🔗 **Selected Employee**: ID: {display_id} | Name: {display_name}")
-
-        st.markdown("---")
-        st.subheader("📥 Individual Test Download")
-        
-        if selected_emp_id != "All" or selected_emp_name != "All":
-            if selected_emp_id != "All":
-                emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
-                emp_name_display = id_name_mapping.get(selected_emp_id, selected_emp_id)
-                emp_id_display = selected_emp_id
-            else:
-                emp_filtered = filtered_df[filtered_df["Name"] == selected_emp_name]
-                emp_name_display = selected_emp_name
-                emp_id_display = name_id_mapping.get(selected_emp_name, "Unknown")
-            
-            if not emp_filtered.empty:
-                st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}** (ID: {emp_id_display})")
-                emp_filtered = emp_filtered.sort_values("Date / Time", ascending=False).reset_index(drop=True)
-                
-                for idx, test_row in emp_filtered.iterrows():
-                    with st.expander(f"Test {idx+1}: {test_row['Test Type']} - {test_row['Date / Time']} ({test_row['Status']})", expanded=False):
-                        col1, col2 = st.columns([1, 1])
-                        with col1:
-                            st.metric("Score", f"{test_row['Right']}/{test_row['Total']}")
-                            st.metric("Percentage", f"{test_row['Percentage']:.1f}%")
-                        with col2:
-                            st.metric("Status", test_row['Status'])
-                        
-                        st.write("**Test Details:**")
-                        st.json({
-                            "Employee ID": test_row['ID'],
-                            "Employee Name": test_row['Name'],
-                            "Standard": test_row['Test Type'],
-                            "Total Questions": test_row['Total'],
-                            "Correct": test_row['Right'],
-                            "Wrong": test_row['Wrong'],
-                            "Passing Criteria": f"{test_row['Criteria']}%",
-                            "Completed": test_row['Date / Time']
-                        })
-            else:
-                st.warning("No test results found for the selected employee.")
-        else:
-            st.info("👆 **Select an Employee ID or Name** to view and download individual test reports")
-        
         st.markdown("---")
         st.subheader("📊 Test Summary")
         col1, col2, col3, col4 = st.columns(4)
