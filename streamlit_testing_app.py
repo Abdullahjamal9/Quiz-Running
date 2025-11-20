@@ -15,6 +15,7 @@ import traceback
 import fitz
 import re
 import tempfile
+import json
 
 # =====================
 # Paths / Files
@@ -127,7 +128,8 @@ def load_all_results():
             'Criteria': ['PASSING CRITERIA %', 'Passing Criteria', 'criteria', 'Criteria'],
             'Status': ['STATUS', 'Status', 'status', 'Result'],
             'Test Type': ['STANDARD', 'Standard', 'Test Type', 'test_type'],
-            'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time']
+            'Date / Time': ['DATE', 'Date', 'date', 'Timestamp', 'timestamp', 'Time', 'Date / Time'],
+            'Answers': ['ANSWERS', 'Answers', 'answers', 'Answer Data', 'ANSWER DATA']
         }
         
         for standard_name, possible_names in column_mapping.items():
@@ -141,6 +143,9 @@ def load_all_results():
             if col not in df.columns:
                 df[col] = ""
         
+        if "Answers" not in df.columns:
+            df["Answers"] = ""
+        
         for col in ["Total", "Right", "Wrong"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(int)
@@ -152,7 +157,8 @@ def load_all_results():
         df = df.sort_values('_original_order').drop('_original_order', axis=1)
         df = df.reset_index(drop=True)
         
-        return df[required_columns]
+        return_columns = required_columns + ["Answers"]
+        return df[return_columns]
         
     except Exception as e:
         st.error(f"Error loading results: {str(e)}")
@@ -238,26 +244,18 @@ def get_info_for_standard(standards, selected_standard):
 
 def get_template_path(template_type):
     """
-    Returns path to template pdf in /db or downloads a fallback.
+    Returns path to template pdf in db folder.
     Expected 'template_type' already includes the exact filename stem like:
       "Ds-1_template", "Cumulative_template", "API RP 7G-2_template", "API SPEC 5CT & 5A5_template"
     """
+    # Templates are in db subfolder
     template_path = os.path.join(DB_FOLDER, f"{template_type}.pdf")
     if os.path.exists(template_path):
+        print(f"✅ Found template: {template_path}")
         return template_path
-    
-    github_url = f"https://raw.githubusercontent.com/your_username/your_repo_name/main/db/{template_type}.pdf"
-    try:
-        response = requests.get(github_url, timeout=10)
-        if response.status_code == 200:
-            temp_path = os.path.join(tempfile.gettempdir(), f"{template_type}.pdf")
-            with open(temp_path, "wb") as file:
-                file.write(response.content)
-            return temp_path
-        else:
-            raise Exception(f"HTTP {response.status_code}")
-    except Exception as e:
-        st.error(f"Failed to load template '{template_type}': {str(e)}. Please add 'db/{template_type}.pdf' to your repo.")
+    else:
+        st.error(f"❌ Template not found: {template_path}")
+        st.info(f"Please ensure 'db/{template_type}.pdf' exists in the project folder")
         return None
 
 def generate_certificate(
@@ -702,6 +700,202 @@ def download_individual_test(emp_id, emp_name, test_data):
     
     return csv_data, filename
 
+def generate_test_sheet_pdf(emp_id, emp_name, standard, test_date, questions_data, answers_data, right, wrong, total, pct, criteria, status):
+    """
+    Generate a detailed PDF with all test questions, candidate answers, and correct answers
+    Using insert_text() method for reliable text rendering
+    """
+    try:
+        # Create PDF document
+        doc = fitz.open()
+        page_width = 595  # A4 width
+        page_height = 842  # A4 height
+        
+        # Add first page
+        page = doc.new_page(width=page_width, height=page_height)
+        
+        y_position = 50
+        margin_left = 50
+        margin_right = page_width - 50
+        
+        # Header - using insert_text with Point placement
+        header_text = "TEST ANSWER SHEET"
+        page.insert_text(
+            fitz.Point(page_width / 2 - 80, y_position),
+            header_text,
+            fontsize=18,
+            color=(0, 0, 0.5)
+        )
+        y_position += 40
+        
+        # Employee Info
+        info_lines = [
+            f"Employee ID: {emp_id}",
+            f"Employee Name: {emp_name}",
+            f"Test Standard: {standard}",
+            f"Test Date: {test_date}",
+            f"",
+            f"Total Questions: {total}",
+            f"Correct Answers: {right}",
+            f"Wrong Answers: {wrong}",
+            f"Score: {right - (wrong * 0.25):.2f}/{total}",
+            f"Percentage: {pct:.2f}%",
+            f"Passing Criteria: {criteria}%",
+            f"Status: {status}",
+        ]
+        
+        for line in info_lines:
+            if line:  # Skip empty lines
+                page.insert_text(
+                    fitz.Point(margin_left, y_position),
+                    line,
+                    fontsize=11,
+                    color=(0, 0, 0)
+                )
+            y_position += 18
+        
+        # Draw separator line
+        page.draw_line(
+            fitz.Point(margin_left, y_position),
+            fitz.Point(margin_right, y_position),
+            color=(0, 0, 0),
+            width=1
+        )
+        y_position += 20
+        
+        # Questions and Answers
+        for idx, (q_data, ans_info) in enumerate(zip(questions_data, answers_data), 1):
+            # Check if we need a new page
+            if y_position > page_height - 150:
+                page = doc.new_page(width=page_width, height=page_height)
+                y_position = 50
+            
+            # Question number and text
+            question_text = f"Q{idx}. {q_data['Question']}"
+            
+            # Wrap question text if too long
+            question_lines = []
+            words = question_text.split()
+            current_line = ""
+            max_chars_per_line = 85
+            
+            for word in words:
+                test_line = current_line + " " + word if current_line else word
+                if len(test_line) <= max_chars_per_line:
+                    current_line = test_line
+                else:
+                    if current_line:
+                        question_lines.append(current_line)
+                    current_line = word
+            if current_line:
+                question_lines.append(current_line)
+            
+            # Draw question lines
+            for line in question_lines:
+                page.insert_text(
+                    fitz.Point(margin_left, y_position),
+                    line,
+                    fontsize=10,
+                    color=(0, 0, 0)
+                )
+                y_position += 15
+            
+            y_position += 5
+            
+            # Options
+            options = [
+                ('A', q_data['A']),
+                ('B', q_data['B']),
+                ('C', q_data['C']),
+                ('D', q_data['D'])
+            ]
+            
+            correct_answer = str(q_data['Answer']).strip().upper()
+            candidate_choice = ans_info.get('choice', 'Not Attempted')
+            
+            # Extract candidate letter from choice
+            candidate_letter = None
+            if candidate_choice and candidate_choice not in ['Not Attempted', 'Not Stored']:
+                for opt_letter, opt_text in options:
+                    if opt_text == candidate_choice:
+                        candidate_letter = opt_letter
+                        break
+            
+            # Map correct answer to full text
+            correct_text = ""
+            for opt_letter, opt_text in options:
+                if opt_letter == correct_answer:
+                    correct_text = opt_text
+                    break
+            
+            for opt_letter, opt_text in options:
+                # Determine color and prefix based on answer
+                is_correct = (opt_letter == correct_answer)
+                is_selected = (opt_text == candidate_choice)
+                
+                if is_selected and is_correct:
+                    color = (0, 0.5, 0)  # Green - correct selection
+                    prefix = "[OK] "
+                elif is_selected and not is_correct:
+                    color = (0.8, 0, 0)  # Red - wrong selection
+                    prefix = "[X] "
+                elif is_correct:
+                    color = (0, 0.4, 0)  # Dark green - correct answer
+                    prefix = "[->] "
+                else:
+                    color = (0, 0, 0)  # Black - normal
+                    prefix = "[ ] "
+                
+                option_text = f"{prefix}{opt_letter}) {opt_text}"
+                
+                page.insert_text(
+                    fitz.Point(margin_left + 20, y_position),
+                    option_text,
+                    fontsize=9,
+                    color=color
+                )
+                y_position += 14
+            
+            # Show result for this question
+            if ans_info.get('is_correct'):
+                result_text = "[OK] CORRECT"
+                result_color = (0, 0.5, 0)
+            elif candidate_choice == 'Not Attempted' or candidate_choice == 'Not Stored':
+                result_text = f"[i] Candidate Answer Not Recorded | Correct Answer: {correct_answer}) {correct_text}"
+                result_color = (0.5, 0.5, 0.5)
+            elif candidate_letter == correct_answer:
+                result_text = "[OK] CORRECT"
+                result_color = (0, 0.5, 0)
+            else:
+                result_text = f"[X] Wrong | Correct Answer: {correct_answer}) {correct_text}"
+                result_color = (0.8, 0, 0)
+            
+            page.insert_text(
+                fitz.Point(margin_left + 20, y_position),
+                result_text,
+                fontsize=9,
+                color=result_color
+            )
+            y_position += 25
+        
+        # Save PDF
+        safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
+        timestamp = str(test_date).replace('/', '_').replace(' ', '_').replace(':', '-')
+        pdf_filename = f"Test_Sheet_{emp_id}_{safe_name}_{standard}_{timestamp}.pdf"
+        
+        temp_dir = tempfile.gettempdir()
+        output_path = os.path.join(temp_dir, pdf_filename)
+        
+        doc.save(output_path, garbage=3, deflate=True)
+        doc.close()
+        
+        return output_path, pdf_filename
+        
+    except Exception as e:
+        st.error(f"Error generating test sheet PDF: {str(e)}")
+        st.error(f"Traceback: {traceback.format_exc()}")
+        return None, None
+
 # =====================
 # Helpers
 # =====================
@@ -719,6 +913,8 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
     if len(cand) < total:
         total = len(cand)
     sampled = cand.sample(n=min(total, len(cand)), random_state=int(time.time())).reset_index(drop=True)
+    
+    sampled_questions = sampled.to_dict('records')
 
     st.session_state.quiz = {
         "emp_id": str(emp_id),
@@ -726,6 +922,7 @@ def start_quiz_session(emp_id, emp_name, standard, questions_df, total):
         "standard": str(standard),
         "total": int(total),
         "rows": sampled,
+        "sampled_questions": sampled_questions,
         "queue": list(range(int(total))),
         "right": 0,
         "wrong": 0,
@@ -743,7 +940,7 @@ def format_timer(h, m, s):
     except Exception:
         return 0
 
-def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type):
+def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, test_type, answers_json=None):
     try:
         sheet = client.open_by_url(GSHEET_URL)
         
@@ -796,7 +993,8 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                 'STATUS': str(status),
                 'STANDARD': str(test_type),
                 'DATE': now,
-                'DATE / TIME': now
+                'DATE / TIME': now,
+                'ANSWERS': str(answers_json) if answers_json else ''
             }
             
             new_row = []
@@ -824,6 +1022,8 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
                     new_row.append(str(test_type))
                 elif 'DATE' in header_upper or 'TIME' in header_upper or 'TIMESTAMP' in header_upper:
                     new_row.append(now)
+                elif 'ANSWER' in header_upper and header_upper != 'CORRECT ANSWER' and header_upper != 'WRONG ANSWER':
+                    new_row.append(str(answers_json) if answers_json else '')
                 else:
                     new_row.append('')
         else:
@@ -964,26 +1164,32 @@ if st.session_state.admin_logged_in:
                         del st.session_state[key]
                 st.rerun()
         
-        filtered_df = results_df.copy()
+        # Keep original data for internal use (with Answers column)
+        filtered_df_original = results_df.copy()
         if selected_emp_id != "All":
-            filtered_df = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
+            filtered_df_original = filtered_df_original[filtered_df_original["ID"].astype(str) == selected_emp_id]
         elif selected_emp_name != "All":
-            filtered_df = filtered_df[filtered_df["Name"] == selected_emp_name]
+            filtered_df_original = filtered_df_original[filtered_df_original["Name"] == selected_emp_name]
         
         if selected_status != "All":
-            filtered_df = filtered_df[filtered_df["Status"] == selected_status]
+            filtered_df_original = filtered_df_original[filtered_df_original["Status"] == selected_status]
         if selected_test_type != "All":
-            filtered_df = filtered_df[filtered_df["Test Type"] == selected_test_type]
+            filtered_df_original = filtered_df_original[filtered_df_original["Test Type"] == selected_test_type]
+        
+        # Create display version without internal columns
+        filtered_df = filtered_df_original.copy()
+        columns_to_hide = ['ANSWERS', 'Answers', 'answers']
+        for col in columns_to_hide:
+            if col in filtered_df.columns:
+                filtered_df = filtered_df.drop(columns=[col])
 
         if selected_emp_id != "All" or selected_emp_name != "All":
             display_name = selected_emp_name if selected_emp_name != "All" else id_name_mapping.get(selected_emp_id, "Unknown")
             display_id = selected_emp_id if selected_emp_id != "All" else name_id_mapping.get(selected_emp_name, "Unknown")
-            st.info(f"🔗 **Selected Employee**: ID: {display_id} | Name: {display_name}")
-
-        st.markdown("---")
-        st.subheader("📥 Individual Test Download")
-        
-        if selected_emp_id != "All" or selected_emp_name != "All":
+            
+            st.markdown("---")
+            st.info(f"� **Viewing Tests for**: {display_name} (ID: {display_id})")
+            
             if selected_emp_id != "All":
                 emp_filtered = filtered_df[filtered_df["ID"].astype(str) == selected_emp_id]
                 emp_name_display = id_name_mapping.get(selected_emp_id, selected_emp_id)
@@ -994,8 +1200,15 @@ if st.session_state.admin_logged_in:
                 emp_id_display = name_id_mapping.get(selected_emp_name, "Unknown")
             
             if not emp_filtered.empty:
-                st.info(f"Showing {len(emp_filtered)} test(s) for employee: **{emp_name_display}** (ID: {emp_id_display})")
+                
+                # Use filtered_df_original for accessing Answers column
+                if selected_emp_id != "All":
+                    emp_filtered_original = filtered_df_original[filtered_df_original["ID"].astype(str) == selected_emp_id]
+                else:
+                    emp_filtered_original = filtered_df_original[filtered_df_original["Name"] == selected_emp_name]
+                
                 emp_filtered = emp_filtered.sort_values("Date / Time", ascending=False).reset_index(drop=True)
+                emp_filtered_original = emp_filtered_original.sort_values("Date / Time", ascending=False).reset_index(drop=True)
                 
                 for idx, test_row in emp_filtered.iterrows():
                     with st.expander(f"Test {idx+1}: {test_row['Test Type']} - {test_row['Date / Time']} ({test_row['Status']})", expanded=False):
@@ -1029,10 +1242,113 @@ if st.session_state.admin_logged_in:
                             "Passing Criteria": f"{test_row['Criteria']}%",
                             "Completed": test_row['Date / Time']
                         })
+                        
+                        # Download Test Answer Sheet (Admin Only)
+                        st.markdown("---")
+                        st.write("**📋 Download Detailed Answer Sheet:**")
+                        
+                        if st.button(f"📥 Generate Answer Sheet PDF", key=f"gen_sheet_{idx}_{test_row['ID']}_{test_row['Date / Time']}", use_container_width=True):
+                            with st.spinner("Generating test answer sheet..."):
+                                # Get the corresponding row from original data (with Answers column)
+                                test_row_original = emp_filtered_original.iloc[idx]
+                                
+                                # Get questions for this standard
+                                test_standard = test_row['Test Type']
+                                total_questions = int(test_row['Total'])
+                                
+                                # Load questions for this standard
+                                if test_standard == "Cumulative":
+                                    test_questions = questions.copy()
+                                else:
+                                    test_questions = questions[
+                                        questions["Standard"].astype(str).str.strip().str.upper() 
+                                        == str(test_standard).strip().upper()
+                                    ]
+                                
+                                test_questions = test_questions.dropna(subset=["Question", "A", "B", "C", "D", "Answer"])
+                                
+                                # Try to load stored answers
+                                questions_data = []
+                                answers_data = []
+                                
+                                # Find the Answers column
+                                answers_col = None
+                                for col in ['Answers', 'ANSWERS', 'answers']:
+                                    if col in test_row_original.index:
+                                        answers_col = col
+                                        break
+                                
+                                try:
+                                    if answers_col and test_row_original[answers_col] and test_row_original[answers_col] != '[]':
+                                        stored_answers = json.loads(test_row_original[answers_col])
+                                        
+                                        # Load questions in SAME ORDER as stored answers (by Qno)
+                                        for ans in stored_answers:
+                                            qno = str(ans.get('qno', ''))
+                                            if qno:
+                                                matching_q = test_questions[test_questions['Qno'].astype(str) == qno]
+                                                if not matching_q.empty:
+                                                    questions_data.append(matching_q.iloc[0].to_dict())
+                                                    answers_data.append({
+                                                        "choice": ans.get("choice", "Not Stored"),
+                                                        "correct": ans.get("correct", ""),
+                                                        "is_correct": ans.get("is_correct", False)
+                                                    })
+                                except Exception:
+                                    pass
+                                
+                                # Fallback: if no stored answers, use empty answer data
+                                if not questions_data:
+                                    if not test_questions.empty and len(test_questions) >= total_questions:
+                                        sampled_questions = test_questions.head(total_questions)
+                                        questions_data = sampled_questions.to_dict('records')
+                                        answers_data = []
+                                        for _ in range(total_questions):
+                                            answers_data.append({
+                                                "choice": "Not Stored",
+                                                "correct": "",
+                                                "is_correct": False
+                                            })
+                                
+                                if questions_data and answers_data:
+                                    # Generate PDF
+                                    pct_value = str(test_row['Percentage']).replace('%', '').strip()
+                                    criteria_value = str(test_row['Criteria']).replace('%', '').strip()
+                                    
+                                    pdf_path, pdf_filename = generate_test_sheet_pdf(
+                                        emp_id=test_row['ID'],
+                                        emp_name=test_row['Name'],
+                                        standard=test_row['Test Type'],
+                                        test_date=test_row['Date / Time'],
+                                        questions_data=questions_data,
+                                        answers_data=answers_data,
+                                        right=int(test_row['Right']),
+                                        wrong=int(test_row['Wrong']),
+                                        total=int(test_row['Total']),
+                                        pct=float(pct_value),
+                                        criteria=float(criteria_value),
+                                        status=test_row['Status']
+                                    )
+                                    
+                                    if pdf_path and os.path.exists(pdf_path):
+                                        with open(pdf_path, "rb") as pdf_file:
+                                            pdf_data = pdf_file.read()
+                                        
+                                        st.success("✅ Answer sheet generated!")
+                                        st.download_button(
+                                            label="📥 Download Answer Sheet (PDF)",
+                                            data=pdf_data,
+                                            file_name=pdf_filename,
+                                            mime="application/pdf",
+                                            key=f"dl_sheet_{idx}_{test_row['ID']}",
+                                            use_container_width=True
+                                        )
+                                    else:
+                                        st.error("Failed to generate answer sheet PDF.")
+                                else:
+                                    st.error(f"Could not load questions for {test_standard}.")
             else:
                 st.warning("No test results found for the selected employee.")
-        else:
-            st.info("👆 **Select an Employee ID or Name** to view and download individual test reports")
         
         st.markdown("---")
         st.subheader("📊 Test Summary")
@@ -1295,22 +1611,22 @@ if st.session_state.admin_logged_in:
                 
                 # Only show "All" if there are multiple passed tests
                 if len(unique_tests) > 1:
-                    test_options = ["Select Standard", "All"] + unique_tests["Test Type"].tolist()
+                    test_options = ["Select Test", "All"] + unique_tests["Test Type"].tolist()
                 else:
-                    test_options = ["Select Standard"] + unique_tests["Test Type"].tolist()
+                    test_options = ["Select Test"] + unique_tests["Test Type"].tolist()
                 
                 selected_test_option = st.selectbox(
-                    "Select Standard",
+                    "Select Test",
                     test_options,
                     index=0,
                     key=f"ind_cert_test_{st.session_state.filter_reset_counter}"
                 )
             else:
-                selected_test_option = "Select Standard"
-                st.selectbox("Select Standard", ["Select Employee First"], index=0, disabled=True)
+                selected_test_option = "Select Test"
+                st.selectbox("Select Test", ["Select Employee First"], index=0, disabled=True)
         
         # Generate individual certificate button
-        if selected_ind_name != "Select Employee" and selected_test_option not in ["Select Standard", "Select Employee First"]:
+        if selected_ind_name != "Select Employee" and selected_test_option not in ["Select Test", "Select Employee First"]:
             # Change button text based on selection
             button_text = "Generate All Certificates (ZIP)" if selected_test_option == "All" else "Generate Certificate for Selected Test"
             
@@ -1552,9 +1868,24 @@ elif "quiz" in st.session_state:
             final_score = max(0, raw_score)
             pct = (final_score/total_q)*100 if total_q else 0.0
             
+            # Extract and prepare answers data
+            questions_data = qstate.get("sampled_questions", [])
+            answers_json_list = []
+            for idx, q in enumerate(questions_data):
+                qno = str(q.get("Qno", idx))
+                answer_dict = qstate.get("answers", {}).get(idx, None)
+                if answer_dict and isinstance(answer_dict, dict):
+                    answers_json_list.append({
+                        "qno": qno,
+                        "choice": answer_dict.get("choice"),
+                        "correct": answer_dict.get("correct"),
+                        "is_correct": answer_dict.get("is_correct")
+                    })
+            answers_json = json.dumps(answers_json_list)
+            
             status = "Pass" if pct >= float(criteria) else "Fail"
             ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], answers_json
             )
             st.session_state["submitted"] = True
             st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
@@ -1656,9 +1987,24 @@ elif "quiz" in st.session_state:
                 final_score = max(0, raw_score)
                 pct = (final_score/total_q)*100 if total_q else 0.0
                 
+                # Extract and prepare answers data
+                questions_data = qstate.get("sampled_questions", [])
+                answers_json_list = []
+                for idx, q in enumerate(questions_data):
+                    qno = str(q.get("Qno", idx))
+                    answer_dict = qstate.get("answers", {}).get(idx, None)
+                    if answer_dict and isinstance(answer_dict, dict):
+                        answers_json_list.append({
+                            "qno": qno,
+                            "choice": answer_dict.get("choice"),
+                            "correct": answer_dict.get("correct"),
+                            "is_correct": answer_dict.get("is_correct")
+                        })
+                answers_json = json.dumps(answers_json_list)
+                
                 status = "Pass" if pct >= float(criteria) else "Fail"
                 ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"], answers_json
                 )
                 st.session_state["submitted"] = True
                 st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
@@ -1795,17 +2141,104 @@ elif "quiz" in st.session_state:
 
         submit_clicked = st.button("Submit", use_container_width=True)
         if submit_clicked:
-            ok, msg = append_result(
-                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+            # Get questions data
+            questions_data = qstate.get("sampled_questions", [])
+            
+            # Prepare answers data from quiz state
+            answers_data = []
+            answers_json_list = []  # For storing in Google Sheet
+            
+            for idx, q in enumerate(questions_data):
+                # Get question ID from Qno field
+                qno = str(q.get("Qno", idx))  # Fallback to index if Qno not found
+                # Use index, not ID, to retrieve from qstate["answers"]
+                answer_dict = qstate.get("answers", {}).get(idx, None)
+                
+                if answer_dict and isinstance(answer_dict, dict):
+                    # User answered this question
+                    user_choice = answer_dict.get("choice", "Not Attempted")
+                    correct_ans = answer_dict.get("correct", "")
+                    is_correct = answer_dict.get("is_correct", False)
+                    
+                    answers_data.append({
+                        "choice": user_choice,
+                        "correct": correct_ans,
+                        "is_correct": is_correct
+                    })
+                    
+                    # Store as compact format for Google Sheet (use Qno as identifier)
+                    answers_json_list.append({
+                        "qno": qno,
+                        "choice": user_choice,
+                        "correct": correct_ans,
+                        "is_correct": is_correct
+                    })
+                else:
+                    # Question not attempted
+                    answers_data.append({
+                        "choice": "Not Attempted",
+                        "correct": q.get("Answer", ""),
+                        "is_correct": False
+                    })
+                    
+                    answers_json_list.append({
+                        "qno": qno,
+                        "choice": "Not Attempted",
+                        "correct": q.get("Answer", ""),
+                        "is_correct": False
+                    })
+            
+            # Convert answers to JSON string for storage
+            import json
+            answers_json = json.dumps(answers_json_list)
+            
+            # Save results to Google Sheet WITH answers
+            ok, msg, test_date = append_result(
+                qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, 
+                criteria, status, qstate["standard"], answers_json
             )
+            
+            # Generate answer sheet PDF automatically
+            pdf_path = None
+            pdf_filename = None
+            try:
+                
+                # Generate PDF
+                pdf_path, pdf_filename = generate_test_sheet_pdf(
+                    emp_id=qstate["emp_id"],
+                    emp_name=qstate["emp_name"],
+                    standard=qstate["standard"],
+                    test_date=test_date if test_date else datetime.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p"),
+                    questions_data=questions_data,
+                    answers_data=answers_data,
+                    right=right,
+                    wrong=wrong,
+                    total=total_q,
+                    pct=pct,
+                    criteria=criteria,
+                    status=status
+                )
+                
+                if pdf_path and os.path.exists(pdf_path):
+                    st.success(f"✅ Test answer sheet generated: {pdf_filename}")
+            except Exception as e:
+                st.warning(f"⚠️ Could not generate answer sheet: {str(e)}")
+            
             st.session_state["submitted"] = True
-            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+            st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score, pdf_path, pdf_filename)
             st.rerun()
 
     if "submitted" in st.session_state:
         if "submit_result" in st.session_state:
             result_data = st.session_state["submit_result"]
-            ok, msg, right, wrong, total_q, pct, criteria, status, final_score = result_data
+            
+            # Handle both old and new format
+            if len(result_data) == 9:
+                ok, msg, right, wrong, total_q, pct, criteria, status, final_score = result_data
+                pdf_path = None
+                pdf_filename = None
+            else:
+                ok, msg, right, wrong, total_q, pct, criteria, status, final_score, pdf_path, pdf_filename = result_data
             
             if not ok:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
@@ -1827,4 +2260,8 @@ elif "quiz" in st.session_state:
                 """,
                 unsafe_allow_html=True
             )
+            
+            # Answer sheet saved for admin to download
+            if pdf_path and pdf_filename and os.path.exists(pdf_path):
+                st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
