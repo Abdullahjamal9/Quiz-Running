@@ -636,8 +636,12 @@ def generate_certificate(
 
         # ---------- SAVE ----------
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
-        stamp = nice_date.replace("/", "-").replace(":", "-").replace(" ", "_")
-        certificate_filename = f"{template_type}_Certificate_{emp_id}_{safe_name}_{stamp}.pdf"
+        
+        # Clean template_type: remove "_template" suffix
+        cert_name = template_type.replace("_template", "").replace("_Template", "")
+        
+        # Certificate filename WITHOUT date: Standard_Certificate_ID_Name.pdf
+        certificate_filename = f"{cert_name}_Certificate_{emp_id}_{safe_name}.pdf"
         
         # Use tempfile module for cross-platform temp directory
         temp_dir = tempfile.gettempdir()
@@ -889,8 +893,9 @@ def generate_test_sheet_pdf(emp_id, emp_name, standard, test_date, questions_dat
         
         # Save PDF
         safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
-        timestamp = str(test_date).replace('/', '_').replace(' ', '_').replace(':', '-')
-        pdf_filename = f"Test_Sheet_{emp_id}_{safe_name}_{standard}_{timestamp}.pdf"
+        
+        # Answer sheet filename WITHOUT date: AnswerSheet_ID_Name_Standard.pdf
+        pdf_filename = f"AnswerSheet_{emp_id}_{safe_name}_{standard}.pdf"
         
         temp_dir = tempfile.gettempdir()
         output_path = os.path.join(temp_dir, pdf_filename)
