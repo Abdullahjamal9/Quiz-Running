@@ -1134,7 +1134,15 @@ if st.session_state.admin_logged_in:
         filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
         
         with filter_col1:
-            employee_ids = ["All"] + sorted(results_df["ID"].astype(str).unique().tolist())
+            # Sort IDs numerically (not alphabetically) - convert to int for sorting, back to str for display
+            unique_ids = results_df["ID"].astype(str).unique().tolist()
+            try:
+                # Try numeric sort first (works if all IDs are numeric)
+                sorted_ids = sorted(unique_ids, key=lambda x: int(x) if x.isdigit() else float('inf'))
+            except:
+                # Fallback to alphabetic sort if some IDs are not numeric
+                sorted_ids = sorted(unique_ids)
+            employee_ids = ["All"] + sorted_ids
             selected_emp_id = st.selectbox(
                 "Filter by Employee ID", 
                 employee_ids, 
@@ -1609,22 +1617,22 @@ if st.session_state.admin_logged_in:
                 
                 # Only show "All" if there are multiple passed tests
                 if len(unique_tests) > 1:
-                    test_options = ["Select Standard", "All"] + unique_tests["Test Type"].tolist()
+                    test_options = ["Select Test", "All"] + unique_tests["Test Type"].tolist()
                 else:
-                    test_options = ["Select Standard"] + unique_tests["Test Type"].tolist()
+                    test_options = ["Select Test"] + unique_tests["Test Type"].tolist()
                 
                 selected_test_option = st.selectbox(
-                    "Select Standard",
+                    "Select Test",
                     test_options,
                     index=0,
                     key=f"ind_cert_test_{st.session_state.filter_reset_counter}"
                 )
             else:
-                selected_test_option = "Select Standard"
-                st.selectbox("Select Standard", ["Select Employee First"], index=0, disabled=True)
+                selected_test_option = "Select Test"
+                st.selectbox("Select Test", ["Select Employee First"], index=0, disabled=True)
         
         # Generate individual certificate button
-        if selected_ind_name != "Select Employee" and selected_test_option not in ["Select Standard", "Select Employee First"]:
+        if selected_ind_name != "Select Employee" and selected_test_option not in ["Select Test", "Select Employee First"]:
             # Change button text based on selection
             button_text = "Generate All Certificates (ZIP)" if selected_test_option == "All" else "Generate Certificate for Selected Test"
             
