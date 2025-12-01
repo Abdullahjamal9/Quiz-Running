@@ -2196,8 +2196,6 @@ if st.session_state.admin_logged_in:
                             )
                         else:
                             st.error("❌ Failed to generate certificate. Please check template availability.")
-                    else:
-                        st.error("Selected test not found.")
         
         st.markdown("---")
         if st.button("Logout"):
@@ -2664,6 +2662,6 @@ elif "quiz" in st.session_state:
             )
             
             # Answer sheet saved for admin to download
-            # if pdf_path and pdf_filename and os.path.exists(pdf_path):
-                # st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+            if pdf_path and pdf_filename and os.path.exists(pdf_path):
+                st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
