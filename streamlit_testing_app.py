@@ -1881,6 +1881,8 @@ if st.session_state.admin_logged_in:
             s = re.sub(r'(VOLUME|EDITION)\s+\d+', '', s, flags=re.IGNORECASE)
             s = s.replace("&", " ")
             s = s.replace("-", " ")
+            s = s.replace("(", " ")  # Remove opening parenthesis
+            s = s.replace(")", " ")  # Remove closing parenthesis
             s = re.sub(r"\s+", " ", s)
             s = s.replace("CUMMULATIVE", "CUMULATIVE")
             return s.strip()
@@ -2713,6 +2715,6 @@ elif "quiz" in st.session_state:
             )
             
             # Answer sheet saved for admin to download
-            # if pdf_path and pdf_filename and os.path.exists(pdf_path):
-            #     st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+            if pdf_path and pdf_filename and os.path.exists(pdf_path):
+                st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
