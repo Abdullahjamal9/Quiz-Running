@@ -23,7 +23,7 @@ import datetime
 # =====================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Templates are in root folder, not in db subfolder
-DB_FOLDER = BASE_DIR
+DB_FOLDER = os.path.join(BASE_DIR, "db")
 QUESTIONS_FOLDER = os.path.join(BASE_DIR, "Questions")
 
 # =====================
@@ -31,28 +31,20 @@ QUESTIONS_FOLDER = os.path.join(BASE_DIR, "Questions")
 # =====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# Load Google Sheets credentials from JSON file
+# Load Google Sheets credentials from Streamlit secrets
 try:
-    # Path to your service account JSON file
-    json_keyfile_path = os.path.join(BASE_DIR, "ace-nomad-471110-q7-5650abc2dec1.json")
-    
-    if os.path.exists(json_keyfile_path):
-        creds = Credentials.from_service_account_file(json_keyfile_path, scopes=scope)
-        client = gspread.authorize(creds)
-        # Your Google Sheet URL
-        GSHEET_URL = "https://docs.google.com/spreadsheets/d/1r2ZObB3K8qqlkdZsXU-W3c-tqx3N4BdFxfhZQWGTQi4"
-        GSHEETS_AVAILABLE = True
-        print(f"✅ Successfully loaded credentials from {json_keyfile_path}")
-    else:
-        raise FileNotFoundError(f"Credentials file not found: {json_keyfile_path}")
-        
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=scope
+    )
+    client = gspread.authorize(creds)
+    GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+    GSHEETS_AVAILABLE = True
 except Exception as e:
     st.error(f"⚠️ Google Sheets credentials error: {str(e)}")
-    st.info("Please ensure 'ace-nomad-471110-q7-5650abc2dec1.json' exists in the project folder")
+    st.info("Please configure Google Sheets credentials in Streamlit secrets")
     client = None
     GSHEET_URL = None
     GSHEETS_AVAILABLE = False
-
 # =====================
 # Cached Loaders
 # =====================
@@ -2721,6 +2713,6 @@ elif "quiz" in st.session_state:
             )
             
             # Answer sheet saved for admin to download
-            if pdf_path and pdf_filename and os.path.exists(pdf_path):
-                st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+            # if pdf_path and pdf_filename and os.path.exists(pdf_path):
+            #     st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
