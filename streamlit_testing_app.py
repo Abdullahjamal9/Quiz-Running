@@ -2785,6 +2785,6 @@ elif "quiz" in st.session_state:
             )
             
             # Answer sheet saved for admin to download
-            if pdf_path and pdf_filename and os.path.exists(pdf_path):
-                st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+            # if pdf_path and pdf_filename and os.path.exists(pdf_path):
+            #     st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
