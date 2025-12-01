@@ -994,7 +994,7 @@ def generate_mpt_pt_certificate(
                 examiner_date_rect = fitz.Rect(
                     examiner_date_label.x0 - 2,
                     examiner_date_label.y0 - 0.5,  # Top padding: 0.5px
-                    examiner_date_label.x0 + 160,  # Width increased by 10px (160 → 170)
+                    examiner_date_label.x0 + 170,  # Width increased by 10px (160 → 170)
                     examiner_date_label.y1 + 0.5  # Bottom padding: 0.5px
                 )
                 page.add_redact_annot(
@@ -1002,7 +1002,7 @@ def generate_mpt_pt_certificate(
                     text=examiner_date_text,
                     fontname=arial_font,
                     fontsize=15,  # Font size increased by 2px (13 → 15)
-                    align=fitz.TEXT_ALIGN_LEFT,
+                    align=fitz.TEXT_ALIGN_CENTER,
                     text_color=(0, 0, 0),
                     fill=(1, 1, 1)
                 )
