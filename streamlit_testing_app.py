@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit as st
+import datetime
 import time
 import os
 import gspread
@@ -23,7 +23,7 @@ import datetime
 # =====================
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # Templates are in root folder, not in db subfolder
-DB_FOLDER = os.path.join(BASE_DIR, "db")
+DB_FOLDER = BASE_DIR
 QUESTIONS_FOLDER = os.path.join(BASE_DIR, "Questions")
 
 # =====================
@@ -31,17 +31,24 @@ QUESTIONS_FOLDER = os.path.join(BASE_DIR, "Questions")
 # =====================
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
 
-# Load Google Sheets credentials from Streamlit secrets
+# Load Google Sheets credentials from JSON file
 try:
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"], scopes=scope
-    )
-    client = gspread.authorize(creds)
-    GSHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
-    GSHEETS_AVAILABLE = True
+    # Path to your service account JSON file
+    json_keyfile_path = os.path.join(BASE_DIR, "ace-nomad-471110-q7-5650abc2dec1.json")
+    
+    if os.path.exists(json_keyfile_path):
+        creds = Credentials.from_service_account_file(json_keyfile_path, scopes=scope)
+        client = gspread.authorize(creds)
+        # Your Google Sheet URL
+        GSHEET_URL = "https://docs.google.com/spreadsheets/d/1r2ZObB3K8qqlkdZsXU-W3c-tqx3N4BdFxfhZQWGTQi4"
+        GSHEETS_AVAILABLE = True
+        print(f"✅ Successfully loaded credentials from {json_keyfile_path}")
+    else:
+        raise FileNotFoundError(f"Credentials file not found: {json_keyfile_path}")
+        
 except Exception as e:
     st.error(f"⚠️ Google Sheets credentials error: {str(e)}")
-    st.info("Please configure Google Sheets credentials in Streamlit secrets")
+    st.info("Please ensure 'ace-nomad-471110-q7-5650abc2dec1.json' exists in the project folder")
     client = None
     GSHEET_URL = None
     GSHEETS_AVAILABLE = False
@@ -1933,28 +1940,25 @@ if st.session_state.admin_logged_in:
                 passed_norm_set = set(_norm(t) for t in individual_tests)
                 test_options = ["Select Test"]
                 
-                # Check if eligible for combined MPT certificate
+                # Check for MPT certificate eligibility (both General + Specific passed)
                 if "MPT GENERAL" in passed_norm_set and "MPT SPECIFIC" in passed_norm_set:
-                    test_options.append("MPT Certificate")
+                    test_options.append("MPT")
                 
-                # Check if eligible for combined PT certificate
+                # Check for PT certificate eligibility
                 if "PENETRANT TESTING GENERAL" in passed_norm_set and "PENETRANT TESTING SPECIFIC" in passed_norm_set:
-                    test_options.append("PT Certificate")
+                    test_options.append("PT")
                 
-                # Add individual tests (skip General/Specific if combined cert available)
+                # Add "All" option if multiple tests
+                if len(test_options) > 2 or len(individual_tests) > 1:  # More than just "Select Test" + one option
+                    test_options.insert(1, "All")
+                
+                # Add individual test types (exclude MPT/PT General/Specific - they only work as combined)
                 for test in individual_tests:
                     norm_test = _norm(test)
-                    # Skip individual MPT tests if combined cert available
-                    if norm_test in ["MPT GENERAL", "MPT SPECIFIC"] and "MPT Certificate" in test_options:
-                        continue
-                    # Skip individual PT tests if combined cert available
-                    if norm_test in ["PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC"] and "PT Certificate" in test_options:
+                    # Always skip MPT/PT individual tests (they require both General + Specific for certificate)
+                    if norm_test in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC"]:
                         continue
                     test_options.append(test)
-                
-                # Add "All" option if multiple certificates available (excluding "Select Test")
-                if len(test_options) > 2:  # More than just "Select Test" and one certificate
-                    test_options.insert(1, "All")  # Insert after "Select Test"
                 
                 selected_test_option = st.selectbox(
                     "Select Test",
@@ -1976,13 +1980,69 @@ if st.session_state.admin_logged_in:
                     # Generate certificates for all passed tests of this employee
                     certificate_files = []
                     
+                    # Track which MPT/PT tests we've already processed as combined certs
+                    processed_combined = set()
+                    
+                    # Check and add MPT combined certificate if both tests passed
+                    passed_norm_set = set(emp_passed_tests["Test Type"].map(_norm))
+                    if "MPT GENERAL" in passed_norm_set and "MPT SPECIFIC" in passed_norm_set and "MPT" not in processed_combined:
+                        general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "MPT GENERAL"].iloc[0]
+                        specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "MPT SPECIFIC"].iloc[0]
+                        
+                        latest_date = max(general_row["Date / Time"], specific_row["Date / Time"])
+                        
+                        certificate_path, certificate_filename = generate_mpt_pt_certificate(
+                            emp_id=general_row["ID"],
+                            emp_name=general_row["Name"],
+                            test_date=str(latest_date),
+                            template_type="MT_template",
+                            general_standard=str(general_row["Test Type"]).strip(),
+                            general_percentage=str(general_row["Percentage"]).strip() if str(general_row["Percentage"]).endswith("%") else f"{general_row['Percentage']}%",
+                            general_criteria=str(general_row["Criteria"]).strip() if str(general_row["Criteria"]).endswith("%") else f"{general_row['Criteria']}%",
+                            specific_standard=str(specific_row["Test Type"]).strip(),
+                            specific_percentage=str(specific_row["Percentage"]).strip() if str(specific_row["Percentage"]).endswith("%") else f"{specific_row['Percentage']}%",
+                            specific_criteria=str(specific_row["Criteria"]).strip() if str(specific_row["Criteria"]).endswith("%") else f"{specific_row['Criteria']}%"
+                        )
+                        if certificate_path:
+                            certificate_files.append((certificate_path, certificate_filename))
+                        processed_combined.add("MPT")
+                    
+                    # Check and add PT combined certificate if both tests passed
+                    if "PENETRANT TESTING GENERAL" in passed_norm_set and "PENETRANT TESTING SPECIFIC" in passed_norm_set and "PT" not in processed_combined:
+                        general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "PENETRANT TESTING GENERAL"].iloc[0]
+                        specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "PENETRANT TESTING SPECIFIC"].iloc[0]
+                        
+                        latest_date = max(general_row["Date / Time"], specific_row["Date / Time"])
+                        
+                        certificate_path, certificate_filename = generate_mpt_pt_certificate(
+                            emp_id=general_row["ID"],
+                            emp_name=general_row["Name"],
+                            test_date=str(latest_date),
+                            template_type="PT_template",
+                            general_standard=str(general_row["Test Type"]).strip(),
+                            general_percentage=str(general_row["Percentage"]).strip() if str(general_row["Percentage"]).endswith("%") else f"{general_row['Percentage']}%",
+                            general_criteria=str(general_row["Criteria"]).strip() if str(general_row["Criteria"]).endswith("%") else f"{general_row['Criteria']}%",
+                            specific_standard=str(specific_row["Test Type"]).strip(),
+                            specific_percentage=str(specific_row["Percentage"]).strip() if str(specific_row["Percentage"]).endswith("%") else f"{specific_row['Percentage']}%",
+                            specific_criteria=str(specific_row["Criteria"]).strip() if str(specific_row["Criteria"]).endswith("%") else f"{specific_row['Criteria']}%"
+                        )
+                        if certificate_path:
+                            certificate_files.append((certificate_path, certificate_filename))
+                        processed_combined.add("PT")
+                    
+                    # Now process regular individual certificates (skip MPT/PT individual tests)
                     for _, r in emp_passed_tests.iterrows():
-                        # Normalize test type to find template
+                        # Normalize test type
                         norm_test_type = _norm(r["Test Type"])
+                        
+                        # Skip MPT/PT individual tests (already handled as combined)
+                        if norm_test_type in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC"]:
+                            continue
+                        
                         template_type = template_map.get(norm_test_type)
                         
                         if not template_type:
-                            template_type = "Generic_template"
+                            continue  # Skip if no template found
                         
                         # Prepare data
                         emp_id = r["ID"]
@@ -2041,69 +2101,60 @@ if st.session_state.admin_logged_in:
                         st.error("❌ Failed to generate any certificates. Please check template availability.")
                 
                 else:
-                    # Single certificate generation (including MPT/PT combined)
-                    if selected_test_option in ["MPT Certificate", "PT Certificate"]:
-                        # Combined MPT/PT certificate (2-row table)
-                        cert_type = "MT" if selected_test_option == "MPT Certificate" else "PT"
+                    # Check if this is MPT or PT combined certificate
+                    if selected_test_option in ["MPT", "PT"]:
+                        cert_type = "MT" if selected_test_option == "MPT" else "PT"
                         template_type = "MT_template" if cert_type == "MT" else "PT_template"
                         
-                        # Get General and Specific test rows
+                        # Get General and Specific test data
                         if cert_type == "MT":
-                            general_rows = emp_passed_tests[_norm(emp_passed_tests["Test Type"]) == "MPT GENERAL"]
-                            specific_rows = emp_passed_tests[_norm(emp_passed_tests["Test Type"]) == "MPT SPECIFIC"]
+                            general_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "MPT GENERAL"]
+                            specific_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "MPT SPECIFIC"]
                         else:  # PT
-                            general_rows = emp_passed_tests[_norm(emp_passed_tests["Test Type"]) == "PENETRANT TESTING GENERAL"]
-                            specific_rows = emp_passed_tests[_norm(emp_passed_tests["Test Type"]) == "PENETRANT TESTING SPECIFIC"]
+                            general_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "PENETRANT TESTING GENERAL"]
+                            specific_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "PENETRANT TESTING SPECIFIC"]
                         
-                        if general_rows.empty or specific_rows.empty:
-                            st.error(f"❌ Both General and Specific tests must be passed for {selected_test_option}")
-                        else:
-                            # Get latest of each
-                            general_row = general_rows.sort_values("Date / Time", ascending=False).iloc[0]
-                            specific_row = specific_rows.sort_values("Date / Time", ascending=False).iloc[0]
+                        if not general_rows.empty and not specific_rows.empty:
+                            # Get latest test for each
+                            general_test = general_rows.sort_values("Date / Time", ascending=False).iloc[0]
+                            specific_test = specific_rows.sort_values("Date / Time", ascending=False).iloc[0]
                             
                             # Use latest date between the two tests
-                            general_date = pd.to_datetime(general_row["Date / Time"], dayfirst=True)
-                            specific_date = pd.to_datetime(specific_row["Date / Time"], dayfirst=True)
-                            latest_date = max(general_date, specific_date)
+                            latest_date = max(general_test["Date / Time"], specific_test["Date / Time"])
                             
-                            # Extract data
-                            emp_id = general_row["ID"]
-                            emp_name = general_row["Name"]
+                            # Prepare data for both tests
+                            emp_id = general_test["ID"]
+                            emp_name = general_test["Name"]
                             
                             # General test data
-                            general_standard = str(general_row["Test Type"]).strip()
-                            general_pct = general_row["Percentage"]
+                            general_standard = str(general_test["Test Type"]).strip()
+                            general_pct = general_test["Percentage"]
                             try:
-                                general_pct_num = float(str(general_pct).replace("%","").strip())
-                                general_percentage = f"{general_pct_num:.0f}%"
+                                general_percentage = f"{float(str(general_pct).replace('%','').strip()):.0f}%"
                             except:
-                                general_percentage = str(general_pct) if str(general_pct).strip().endswith("%") else f"{str(general_pct).strip()}%"
+                                general_percentage = str(general_pct) if str(general_pct).endswith("%") else f"{general_pct}%"
                             
-                            general_crit = general_row["Criteria"]
+                            general_crit = general_test["Criteria"]
                             try:
-                                general_crit_num = float(str(general_crit).replace("%","").strip())
-                                general_criteria = f"{general_crit_num:.0f}%"
+                                general_criteria = f"{float(str(general_crit).replace('%','').strip()):.0f}%"
                             except:
-                                general_criteria = str(general_crit) if str(general_crit).strip().endswith("%") else f"{str(general_crit).strip()}%"
+                                general_criteria = str(general_crit) if str(general_crit).endswith("%") else f"{general_crit}%"
                             
                             # Specific test data
-                            specific_standard = str(specific_row["Test Type"]).strip()
-                            specific_pct = specific_row["Percentage"]
+                            specific_standard = str(specific_test["Test Type"]).strip()
+                            specific_pct = specific_test["Percentage"]
                             try:
-                                specific_pct_num = float(str(specific_pct).replace("%","").strip())
-                                specific_percentage = f"{specific_pct_num:.0f}%"
+                                specific_percentage = f"{float(str(specific_pct).replace('%','').strip()):.0f}%"
                             except:
-                                specific_percentage = str(specific_pct) if str(specific_pct).strip().endswith("%") else f"{str(specific_pct).strip()}%"
+                                specific_percentage = str(specific_pct) if str(specific_pct).endswith("%") else f"{specific_pct}%"
                             
-                            specific_crit = specific_row["Criteria"]
+                            specific_crit = specific_test["Criteria"]
                             try:
-                                specific_crit_num = float(str(specific_crit).replace("%","").strip())
-                                specific_criteria = f"{specific_crit_num:.0f}%"
+                                specific_criteria = f"{float(str(specific_crit).replace('%','').strip()):.0f}%"
                             except:
-                                specific_criteria = str(specific_crit) if str(specific_crit).strip().endswith("%") else f"{str(specific_crit).strip()}%"
+                                specific_criteria = str(specific_crit) if str(specific_crit).endswith("%") else f"{specific_crit}%"
                             
-                            # Generate combined certificate
+                            # Generate MPT/PT certificate with 2 rows
                             certificate_path, certificate_filename = generate_mpt_pt_certificate(
                                 emp_id=emp_id,
                                 emp_name=emp_name,
@@ -2118,20 +2169,25 @@ if st.session_state.admin_logged_in:
                             )
                             
                             if certificate_path:
-                                st.success(f"✅ Generated {selected_test_option} for {emp_name}!")
                                 with open(certificate_path, "rb") as f:
-                                    st.download_button(
-                                        label=f"Download {selected_test_option}",
-                                        data=f,
-                                        file_name=certificate_filename,
-                                        mime="application/pdf",
-                                        use_container_width=True
-                                    )
+                                    cert_data = f.read()
+                                
+                                st.success(f"✅ {selected_test_option} generated successfully for {emp_name}!")
+                                st.download_button(
+                                    label=f"Download {selected_test_option} - {emp_name}",
+                                    data=cert_data,
+                                    file_name=certificate_filename,
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
                             else:
-                                st.error(f"❌ Failed to generate {selected_test_option}. Check template availability.")
+                                st.error("❌ Failed to generate certificate. Please check template availability.")
+                        else:
+                            st.error("❌ Both General and Specific tests must be passed to generate this certificate.")
+                    
                     
                     else:
-                        # Regular single certificate
+                        # Single certificate generation for regular tests
                         # Find the selected test row (latest one for this test type)
                         selected_test_row = emp_passed_tests[emp_passed_tests["Test Type"] == selected_test_option]
                         selected_test_row = selected_test_row.sort_values("Date / Time", ascending=False)
@@ -2143,10 +2199,10 @@ if st.session_state.admin_logged_in:
                             norm_test_type = _norm(r["Test Type"])
                             template_type = template_map.get(norm_test_type)
                             
-                            # If no template in map, use a generic template name
-                            # generate_certificate function will handle fallback automatically
+                            # If no template in map, skip certificate generation
                             if not template_type:
-                                template_type = "Generic_template"  # Will fallback to available template
+                                st.error(f"❌ No template found for test type: {r['Test Type']}")
+                                st.stop()
                             
                             # Prepare data
                             emp_id = r["ID"]
@@ -2189,7 +2245,7 @@ if st.session_state.admin_logged_in:
                             
                             st.success(f"✅ Certificate generated successfully for {emp_name}!")
                             st.download_button(
-                                label=f"Download Certificate {emp_name}",
+                                label=f"Download Certificate - {emp_name}",
                                 data=cert_data,
                                 file_name=certificate_filename,
                                 mime="application/pdf",
@@ -2197,6 +2253,8 @@ if st.session_state.admin_logged_in:
                             )
                         else:
                             st.error("❌ Failed to generate certificate. Please check template availability.")
+                    else:
+                        st.error("Selected test not found.")
         
         st.markdown("---")
         if st.button("Logout"):
