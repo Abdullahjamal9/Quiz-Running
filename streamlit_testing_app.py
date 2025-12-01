@@ -2237,24 +2237,24 @@ if st.session_state.admin_logged_in:
                                 criteria_text=criteria_text,
                                 skip_dates=True
                             )
-                        
-                        if certificate_path:
-                            # Read the file and provide download
-                            with open(certificate_path, "rb") as f:
-                                cert_data = f.read()
                             
-                            st.success(f"✅ Certificate generated successfully for {emp_name}!")
-                            st.download_button(
-                                label=f"Download Certificate - {emp_name}",
-                                data=cert_data,
-                                file_name=certificate_filename,
-                                mime="application/pdf",
-                                use_container_width=True
-                            )
+                            if certificate_path:
+                                # Read the file and provide download
+                                with open(certificate_path, "rb") as f:
+                                    cert_data = f.read()
+                                
+                                st.success(f"✅ Certificate generated successfully for {emp_name}!")
+                                st.download_button(
+                                    label=f"Download Certificate - {emp_name}",
+                                    data=cert_data,
+                                    file_name=certificate_filename,
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                            else:
+                                st.error("❌ Failed to generate certificate. Please check template availability.")
                         else:
-                            st.error("❌ Failed to generate certificate. Please check template availability.")
-                    else:
-                        st.error("Selected test not found.")
+                            st.error("Selected test not found.")
         
         st.markdown("---")
         if st.button("Logout"):
@@ -2721,6 +2721,6 @@ elif "quiz" in st.session_state:
             )
             
             # Answer sheet saved for admin to download
-            # if pdf_path and pdf_filename and os.path.exists(pdf_path):
-            #     st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+            if pdf_path and pdf_filename and os.path.exists(pdf_path):
+                st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
