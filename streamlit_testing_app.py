@@ -661,6 +661,377 @@ def generate_certificate(
         st.error(f"Error generating {template_type} certificate: {e}")
         st.error(f"Traceback: {traceback.format_exc()}")
         return None, None
+
+def generate_mpt_pt_certificate(
+    emp_id,
+    emp_name,
+    test_date,
+    template_type,
+    general_standard,
+    general_percentage,
+    general_criteria,
+    specific_standard,
+    specific_percentage,
+    specific_criteria,
+):
+    """
+    Generate MPT/PT certificates with 2-row table (General + Specific)
+    Certificate generated only when both tests are passed
+    """
+    template_path = get_template_path(template_type)
+    
+    if not template_path:
+        fallback_templates = ["MT_template", "PT_template"]
+        for fallback in fallback_templates:
+            template_path = get_template_path(fallback)
+            if template_path:
+                st.warning(f"⚠️ Using fallback template '{fallback}' for '{template_type}'")
+                break
+    
+    if not template_path:
+        st.error(f"No template available for '{template_type}'. Cannot generate certificate.")
+        return None, None
+
+    def _nice_date(dt_str):
+        try:
+            d = pd.to_datetime(str(dt_str), errors="coerce", dayfirst=True)
+            if pd.isna(d):
+                d = pd.to_datetime(str(dt_str), errors="coerce", utc=True)
+            if pd.isna(d):
+                return str(dt_str).split(" ")[0]
+            return d.strftime("%d-%B-%Y")
+        except Exception:
+            return str(dt_str).split(" ")[0]
+
+    try:
+        doc = fitz.open(template_path)
+        page = doc[0]
+        pw, ph = page.rect.width, page.rect.height
+
+        # ---------- Load fonts ----------
+        arial_font = "helv"
+        name_font = "times-bolditalic"
+
+        try:
+            arial_fontfile = os.path.join(DB_FOLDER, "arial.ttf")
+            if os.path.exists(arial_fontfile):
+                doc.insert_font(fontname="Arial", fontfile=arial_fontfile)
+                arial_font = "Arial"
+        except:
+            pass
+
+        try:
+            corsiva_fontfile = os.path.join(DB_FOLDER, "monotype_corsiva.ttf")
+            if os.path.exists(corsiva_fontfile):
+                doc.insert_font(fontname="MonotypeCorsiva", fontfile=corsiva_fontfile)
+                name_font = "MonotypeCorsiva"
+            else:
+                name_font = "times-bolditalic"
+        except:
+            name_font = "times-bolditalic"
+
+        # ---------- REPLACE TEMPLATE NAME "Israr Hussain" ----------
+        template_name_hits = page.search_for("Israr Hussain")
+        if template_name_hits:
+            for hit in template_name_hits:
+                replace_fontsize = 22
+                estimated_width = len(str(emp_name)) * replace_fontsize * 0.6
+                rect_height = replace_fontsize * 1.2
+                center_x = (hit.x0 + hit.x1) / 2
+                center_y = (hit.y0 + hit.y1) / 2
+                
+                name_replace_rect = fitz.Rect(
+                    center_x - estimated_width / 2,
+                    center_y - rect_height / 2,
+                    center_x + estimated_width / 2,
+                    center_y + rect_height / 2
+                )
+                
+                page.add_redact_annot(
+                    name_replace_rect,
+                    text=str(emp_name),
+                    fontname="times-bolditalic",
+                    fontsize=replace_fontsize,
+                    align=fitz.TEXT_ALIGN_CENTER,
+                    text_color=(0, 0, 0),
+                    fill=(1, 1, 1)
+                )
+
+        # ---------- CREATE 2-ROW TABLE (Clear old table and redraw) ----------
+        # Find "EXAMINATION RESULT" position
+        exam_hits = page.search_for("EXAMINATION RESULT")
+        if exam_hits:
+            exam_rect = exam_hits[0]
+            
+            # Table position (moved up)
+            table_clear_y = exam_rect.y1 + 2
+            table_left = pw * 0.06
+            table_width = pw * 0.88
+            table_top = table_clear_y + 2
+            header_h = 18
+            row_h = 18
+            
+            col1_w = table_width * 0.33
+            col2_w = table_width * 0.33
+            col3_w = table_width * 0.34
+            
+            # Clear old table area
+            clear_height = header_h + row_h * 2 + 4
+            clear_rect = fitz.Rect(table_left - 2, table_top - 2, table_left + table_width + 2, table_top + clear_height)
+            page.draw_rect(clear_rect, color=(1, 1, 1), fill=(1, 1, 1))
+            
+            # Draw table structure
+            table_rect = fitz.Rect(table_left, table_top, table_left + table_width, table_top + header_h + row_h * 2)
+            page.draw_rect(table_rect, color=(0, 0, 0), width=1.0)
+            
+            # Horizontal lines
+            page.draw_line(
+                fitz.Point(table_left, table_top + header_h),
+                fitz.Point(table_left + table_width, table_top + header_h),
+                color=(0, 0, 0), width=0.5
+            )
+            page.draw_line(
+                fitz.Point(table_left, table_top + header_h + row_h),
+                fitz.Point(table_left + table_width, table_top + header_h + row_h),
+                color=(0, 0, 0), width=0.5
+            )
+            
+            # Vertical lines
+            x1 = table_left + col1_w
+            x2 = table_left + col1_w + col2_w
+            for x in [x1, x2]:
+                page.draw_line(
+                    fitz.Point(x, table_top),
+                    fitz.Point(x, table_top + header_h + row_h * 2),
+                    color=(0, 0, 0), width=0.5
+                )
+            
+            # Headers - centered
+            hdr1_text = "Standard"
+            hdr1_width = fitz.get_text_length(hdr1_text, fontname="times-bold", fontsize=12)
+            page.insert_text(
+                fitz.Point(table_left + (col1_w - hdr1_width)/2, table_top + header_h/2 + 4),
+                hdr1_text,
+                fontname="times-bold",
+                fontsize=12,
+                color=(0, 0, 0)
+            )
+            
+            hdr2_text = "Achieved Percentage"
+            hdr2_width = fitz.get_text_length(hdr2_text, fontname="times-bold", fontsize=12)
+            page.insert_text(
+                fitz.Point(table_left + col1_w + (col2_w - hdr2_width)/2, table_top + header_h/2 + 4),
+                hdr2_text,
+                fontname="times-bold",
+                fontsize=12,
+                color=(0, 0, 0)
+            )
+            
+            hdr3_text = "Passing Criteria"
+            hdr3_width = fitz.get_text_length(hdr3_text, fontname="times-bold", fontsize=12)
+            page.insert_text(
+                fitz.Point(table_left + col1_w + col2_w + (col3_w - hdr3_width)/2, table_top + header_h/2 + 4),
+                hdr3_text,
+                fontname="times-bold",
+                fontsize=12,
+                color=(0, 0, 0)
+            )
+            
+            # Row 1 - General (centered)
+            row1_y = table_top + header_h
+            std1_text = str(general_standard)
+            std1_width = fitz.get_text_length(std1_text, fontname=arial_font, fontsize=13)
+            page.insert_text(
+                fitz.Point(table_left + (col1_w - std1_width)/2, row1_y + row_h/2 + 4),
+                std1_text,
+                fontname=arial_font,
+                fontsize=13,
+                color=(0, 0, 0)
+            )
+            
+            pct1_text = str(general_percentage)
+            pct1_width = fitz.get_text_length(pct1_text, fontname=arial_font, fontsize=13)
+            page.insert_text(
+                fitz.Point(table_left + col1_w + (col2_w - pct1_width)/2, row1_y + row_h/2 + 4),
+                pct1_text,
+                fontname=arial_font,
+                fontsize=13,
+                color=(0, 0, 0)
+            )
+            
+            crit1_text = str(general_criteria)
+            crit1_width = fitz.get_text_length(crit1_text, fontname=arial_font, fontsize=13)
+            page.insert_text(
+                fitz.Point(table_left + col1_w + col2_w + (col3_w - crit1_width)/2, row1_y + row_h/2 + 4),
+                crit1_text,
+                fontname=arial_font,
+                fontsize=13,
+                color=(0, 0, 0)
+            )
+            
+            # Row 2 - Specific (centered)
+            row2_y = table_top + header_h + row_h
+            std2_text = str(specific_standard)
+            std2_width = fitz.get_text_length(std2_text, fontname=arial_font, fontsize=13)
+            page.insert_text(
+                fitz.Point(table_left + (col1_w - std2_width)/2, row2_y + row_h/2 + 4),
+                std2_text,
+                fontname=arial_font,
+                fontsize=13,
+                color=(0, 0, 0)
+            )
+            
+            pct2_text = str(specific_percentage)
+            pct2_width = fitz.get_text_length(pct2_text, fontname=arial_font, fontsize=13)
+            page.insert_text(
+                fitz.Point(table_left + col1_w + (col2_w - pct2_width)/2, row2_y + row_h/2 + 4),
+                pct2_text,
+                fontname=arial_font,
+                fontsize=13,
+                color=(0, 0, 0)
+            )
+            
+            crit2_text = str(specific_criteria)
+            crit2_width = fitz.get_text_length(crit2_text, fontname=arial_font, fontsize=13)
+            page.insert_text(
+                fitz.Point(table_left + col1_w + col2_w + (col3_w - crit2_width)/2, row2_y + row_h/2 + 4),
+                crit2_text,
+                fontname=arial_font,
+                fontsize=13,
+                color=(0, 0, 0)
+            )
+
+        # ---------- CERTIFICATE NO ----------
+        cert_tag = "MPT" if "MT" in template_type else "PT"
+        cert_value = f"CERTIFICATE NO: {emp_id}/PTIS/{cert_tag}/2025"
+        
+        # Search for "CERTIFICATE NO:" label and replace entire line
+        cert_no_hits = page.search_for("CERTIFICATE NO:")
+        if cert_no_hits:
+            cert_label = cert_no_hits[0]
+            # Wide rect with minimal height
+            cert_replace_rect = fitz.Rect(
+                cert_label.x0 - 2,
+                cert_label.y0,
+                cert_label.x0 + 250,
+                cert_label.y1
+            )
+            page.add_redact_annot(
+                cert_replace_rect,
+                text=cert_value,
+                fontname=arial_font,
+                fontsize=13,
+                align=fitz.TEXT_ALIGN_LEFT,
+                text_color=(0, 0, 0),
+                fill=(1, 1, 1)
+            )
+
+        # ---------- DATE OF CERTIFICATION ----------
+        nice_date = _nice_date(test_date)
+        
+        # Search for "Date of Certification:" label
+        date_cert_hits = page.search_for("Date of Certification:")
+        if date_cert_hits:
+            date_label = date_cert_hits[0]
+            # Wide rect with minimal height
+            date_cert_text = f"Date of Certification: {nice_date}"
+            date_replace_rect = fitz.Rect(
+                date_label.x0 - 2,
+                date_label.y0,
+                date_label.x0 + 250,
+                date_label.y1
+            )
+            page.add_redact_annot(
+                date_replace_rect,
+                text=date_cert_text,
+                fontname=arial_font,
+                fontsize=13,
+                align=fitz.TEXT_ALIGN_LEFT,
+                text_color=(0, 0, 0),
+                fill=(1, 1, 1)
+            )
+
+        # ---------- VALIDITY (5 years from test date) ----------
+        try:
+            cert_date = pd.to_datetime(test_date, dayfirst=True)
+            validity_date = cert_date + pd.DateOffset(years=5)
+            validity_str = validity_date.strftime("%d-%B-%Y")
+        except:
+            validity_str = "N/A"
+        
+        # Search for "Validity:" label
+        validity_hits = page.search_for("Validity:")
+        if validity_hits:
+            validity_label = validity_hits[0]
+            # Narrow rect with minimal height (reduced width to avoid border cut)
+            validity_text = f"Validity: {validity_str}"
+            validity_replace_rect = fitz.Rect(
+                validity_label.x0 - 2,
+                validity_label.y0,
+                validity_label.x0 + 180,  # Reduced from 250
+                validity_label.y1
+            )
+            page.add_redact_annot(
+                validity_replace_rect,
+                text=validity_text,
+                fontname=arial_font,
+                fontsize=13,
+                align=fitz.TEXT_ALIGN_LEFT,
+                text_color=(0, 0, 0),
+                fill=(1, 1, 1)
+            )
+        
+        # ---------- EXAMINER DATE (bottom right - same as certification date) ----------
+        # Search for "DATE:" in bottom section
+        date_hits = page.search_for("DATE:")
+        if date_hits:
+            # Find the one near bottom (Y position > 75% of page height)
+            bottom_date_hits = [h for h in date_hits if h.y0 > ph * 0.75]
+            if bottom_date_hits:
+                examiner_date_label = bottom_date_hits[0]
+                # Narrow rect with minimal height (reduced width to avoid border cut)
+                examiner_date_text = f"DATE: {nice_date}"
+                examiner_date_rect = fitz.Rect(
+                    examiner_date_label.x0 - 2,
+                    examiner_date_label.y0,
+                    examiner_date_label.x0 + 160,  # Reduced from 200
+                    examiner_date_label.y1
+                )
+                page.add_redact_annot(
+                    examiner_date_rect,
+                    text=examiner_date_text,
+                    fontname=arial_font,
+                    fontsize=13,
+                    align=fitz.TEXT_ALIGN_CENTER,
+                    text_color=(0, 0, 0),
+                    fill=(1, 1, 1)
+                )
+
+        # ---------- APPLY FINAL REDACTIONS ----------
+        page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE)
+
+        # ---------- SAVE ----------
+        safe_name = "".join(c for c in emp_name if c.isalnum() or c in (" ", "-", "_")).rstrip()
+        cert_name = template_type.replace("_template", "").replace("_Template", "")
+        certificate_filename = f"{cert_name}_Certificate_{emp_id}_{safe_name}.pdf"
+        
+        temp_dir = tempfile.gettempdir()
+        output_path = os.path.join(temp_dir, certificate_filename)
+
+        doc.save(output_path, garbage=3, deflate=True)
+        doc.close()
+
+        st.success(f"Generated certificate: {certificate_filename}")
+        return output_path, certificate_filename
+
+    except Exception as e:
+        try:
+            doc.close()
+        except:
+            pass
+        st.error(f"Error generating {template_type} certificate: {e}")
+        st.error(f"Traceback: {traceback.format_exc()}")
+        return None, None
         
 # =====================
 # Individual Test Downloads
@@ -1582,6 +1953,8 @@ if st.session_state.admin_logged_in:
             s = re.sub(r'(VOLUME|EDITION)\s+\d+', '', s, flags=re.IGNORECASE)
             s = s.replace("&", " ")
             s = s.replace("-", " ")
+            s = s.replace("(", " ")  # Remove opening parenthesis
+            s = s.replace(")", " ")  # Remove closing parenthesis
             s = re.sub(r"\s+", " ", s)
             s = s.replace("CUMMULATIVE", "CUMULATIVE")
             return s.strip()
@@ -1591,6 +1964,16 @@ if st.session_state.admin_logged_in:
             "CUMULATIVE": "Cumulative_template",
             "API RP 7G 2": "API RP 7G-2_template",
             "API SPEC 5CT 5A5": "API SPEC 5CT & 5A5_template",
+            "MPT GENERAL": "MT_template",
+            "MPT SPECIFIC": "MT_template",
+            "PENETRANT TESTING GENERAL": "PT_template",
+            "PENETRANT TESTING SPECIFIC": "PT_template",
+        }
+        
+        # MPT/PT certificate pairs - require both General and Specific
+        mpt_pt_pairs = {
+            "MT": ["MPT (GENERAL)", "MPT (SPECIFIC)"],
+            "PT": ["PENETRANT TESTING (GENERAL)", "PENETRANT TESTING (SPECIFIC)"]
         }
         
         # Filter for individual certificate
@@ -1611,15 +1994,36 @@ if st.session_state.admin_logged_in:
                 emp_passed_tests = passed_results[passed_results["Name"] == selected_ind_name].copy()
                 emp_passed_tests = emp_passed_tests.sort_values("Date / Time", ascending=False)
                 
-                # Create options: "All" (only if more than 1 test) + Test Types
-                # Get unique test types (take latest for each type)
-                unique_tests = emp_passed_tests.drop_duplicates(subset=["Test Type"], keep="first")
+                # Normalize passed test types
+                emp_passed_tests["Test Type (norm)"] = emp_passed_tests["Test Type"].map(_norm)
+                passed_norm_set = set(emp_passed_tests["Test Type (norm)"].dropna().tolist())
                 
-                # Only show "All" if there are multiple passed tests
-                if len(unique_tests) > 1:
-                    test_options = ["Select Test", "All"] + unique_tests["Test Type"].tolist()
-                else:
-                    test_options = ["Select Test"] + unique_tests["Test Type"].tolist()
+                # Build test options
+                test_options = ["Select Test"]
+                
+                # Check for MPT certificate eligibility (both General + Specific passed)
+                if "MPT GENERAL" in passed_norm_set and "MPT SPECIFIC" in passed_norm_set:
+                    test_options.append("MPT")
+                
+                # Check for PT certificate eligibility
+                if "PENETRANT TESTING GENERAL" in passed_norm_set and "PENETRANT TESTING SPECIFIC" in passed_norm_set:
+                    test_options.append("PT")
+                
+                # Get unique individual test types
+                unique_tests = emp_passed_tests.drop_duplicates(subset=["Test Type"], keep="first")
+                individual_tests = unique_tests["Test Type"].tolist()
+                
+                # Add "All" option if multiple tests
+                if len(test_options) > 2 or len(individual_tests) > 1:  # More than just "Select Test" + one option
+                    test_options.insert(1, "All")
+                
+                # Add individual test types (exclude MPT/PT General/Specific - they only work as combined)
+                for test in individual_tests:
+                    norm_test = _norm(test)
+                    # Always skip MPT/PT individual tests (they require both General + Specific for certificate)
+                    if norm_test in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC"]:
+                        continue
+                    test_options.append(test)
                 
                 selected_test_option = st.selectbox(
                     "Select Test",
@@ -1641,13 +2045,69 @@ if st.session_state.admin_logged_in:
                     # Generate certificates for all passed tests of this employee
                     certificate_files = []
                     
+                    # Track which MPT/PT tests we've already processed as combined certs
+                    processed_combined = set()
+                    
+                    # Check and add MPT combined certificate if both tests passed
+                    passed_norm_set = set(emp_passed_tests["Test Type"].map(_norm))
+                    if "MPT GENERAL" in passed_norm_set and "MPT SPECIFIC" in passed_norm_set and "MPT" not in processed_combined:
+                        general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "MPT GENERAL"].iloc[0]
+                        specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "MPT SPECIFIC"].iloc[0]
+                        
+                        latest_date = max(general_row["Date / Time"], specific_row["Date / Time"])
+                        
+                        certificate_path, certificate_filename = generate_mpt_pt_certificate(
+                            emp_id=general_row["ID"],
+                            emp_name=general_row["Name"],
+                            test_date=str(latest_date),
+                            template_type="MT_template",
+                            general_standard=str(general_row["Test Type"]).strip(),
+                            general_percentage=str(general_row["Percentage"]).strip() if str(general_row["Percentage"]).endswith("%") else f"{general_row['Percentage']}%",
+                            general_criteria=str(general_row["Criteria"]).strip() if str(general_row["Criteria"]).endswith("%") else f"{general_row['Criteria']}%",
+                            specific_standard=str(specific_row["Test Type"]).strip(),
+                            specific_percentage=str(specific_row["Percentage"]).strip() if str(specific_row["Percentage"]).endswith("%") else f"{specific_row['Percentage']}%",
+                            specific_criteria=str(specific_row["Criteria"]).strip() if str(specific_row["Criteria"]).endswith("%") else f"{specific_row['Criteria']}%"
+                        )
+                        if certificate_path:
+                            certificate_files.append((certificate_path, certificate_filename))
+                        processed_combined.add("MPT")
+                    
+                    # Check and add PT combined certificate if both tests passed
+                    if "PENETRANT TESTING GENERAL" in passed_norm_set and "PENETRANT TESTING SPECIFIC" in passed_norm_set and "PT" not in processed_combined:
+                        general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "PENETRANT TESTING GENERAL"].iloc[0]
+                        specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "PENETRANT TESTING SPECIFIC"].iloc[0]
+                        
+                        latest_date = max(general_row["Date / Time"], specific_row["Date / Time"])
+                        
+                        certificate_path, certificate_filename = generate_mpt_pt_certificate(
+                            emp_id=general_row["ID"],
+                            emp_name=general_row["Name"],
+                            test_date=str(latest_date),
+                            template_type="PT_template",
+                            general_standard=str(general_row["Test Type"]).strip(),
+                            general_percentage=str(general_row["Percentage"]).strip() if str(general_row["Percentage"]).endswith("%") else f"{general_row['Percentage']}%",
+                            general_criteria=str(general_row["Criteria"]).strip() if str(general_row["Criteria"]).endswith("%") else f"{general_row['Criteria']}%",
+                            specific_standard=str(specific_row["Test Type"]).strip(),
+                            specific_percentage=str(specific_row["Percentage"]).strip() if str(specific_row["Percentage"]).endswith("%") else f"{specific_row['Percentage']}%",
+                            specific_criteria=str(specific_row["Criteria"]).strip() if str(specific_row["Criteria"]).endswith("%") else f"{specific_row['Criteria']}%"
+                        )
+                        if certificate_path:
+                            certificate_files.append((certificate_path, certificate_filename))
+                        processed_combined.add("PT")
+                    
+                    # Now process regular individual certificates (skip MPT/PT individual tests)
                     for _, r in emp_passed_tests.iterrows():
-                        # Normalize test type to find template
+                        # Normalize test type
                         norm_test_type = _norm(r["Test Type"])
+                        
+                        # Skip MPT/PT individual tests (already handled as combined)
+                        if norm_test_type in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC"]:
+                            continue
+                        
                         template_type = template_map.get(norm_test_type)
                         
                         if not template_type:
-                            template_type = "Generic_template"
+                            continue  # Skip if no template found
                         
                         # Prepare data
                         emp_id = r["ID"]
@@ -1706,74 +2166,159 @@ if st.session_state.admin_logged_in:
                         st.error("❌ Failed to generate any certificates. Please check template availability.")
                 
                 else:
-                    # Single certificate generation
-                    # Find the selected test row (latest one for this test type)
-                    selected_test_row = emp_passed_tests[emp_passed_tests["Test Type"] == selected_test_option]
-                    selected_test_row = selected_test_row.sort_values("Date / Time", ascending=False)
-                    
-                    if not selected_test_row.empty:
-                        r = selected_test_row.iloc[0]
+                    # Check if this is MPT or PT combined certificate
+                    if selected_test_option in ["MPT", "PT"]:
+                        cert_type = "MT" if selected_test_option == "MPT" else "PT"
+                        template_type = "MT_template" if cert_type == "MT" else "PT_template"
                         
-                        # Normalize test type to find template
-                        norm_test_type = _norm(r["Test Type"])
-                        template_type = template_map.get(norm_test_type)
+                        # Get General and Specific test data
+                        if cert_type == "MT":
+                            general_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "MPT GENERAL"]
+                            specific_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "MPT SPECIFIC"]
+                        else:  # PT
+                            general_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "PENETRANT TESTING GENERAL"]
+                            specific_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "PENETRANT TESTING SPECIFIC"]
                         
-                        # If no template in map, use a generic template name
-                        # generate_certificate function will handle fallback automatically
-                        if not template_type:
-                            template_type = "Generic_template"  # Will fallback to available template
-                        
-                        # Prepare data
-                        emp_id = r["ID"]
-                        emp_name = r["Name"]
-                        standard_text = str(r["Test Type"]).strip()
-                        
-                        # Normalize percentage
-                        pct_val = r["Percentage"]
-                        try:
-                            pct_val_num = float(str(pct_val).replace("%","").strip())
-                            percentage_text = f"{pct_val_num:.0f}%"
-                        except:
-                            percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
-                        
-                        # Normalize criteria
-                        crit_val = r["Criteria"]
-                        try:
-                            crit_val_num = float(str(crit_val).replace("%","").strip())
-                            criteria_text = f"{crit_val_num:.0f}%"
-                        except:
-                            criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
-                        
-                        # Generate certificate
-                        certificate_path, certificate_filename = generate_certificate(
-                            emp_id=emp_id,
-                            emp_name=emp_name,
-                            test_date=str(r["Date / Time"]),
-                            status=str(r["Status"]),
-                            template_type=template_type,
-                            standard_text=standard_text,
-                            percentage_text=percentage_text,
-                            criteria_text=criteria_text,
-                            skip_dates=True
-                        )
-                        
-                        if certificate_path:
-                            # Read the file and provide download
-                            with open(certificate_path, "rb") as f:
-                                cert_data = f.read()
+                        if not general_rows.empty and not specific_rows.empty:
+                            # Get latest test for each
+                            general_test = general_rows.sort_values("Date / Time", ascending=False).iloc[0]
+                            specific_test = specific_rows.sort_values("Date / Time", ascending=False).iloc[0]
                             
-                            st.success(f"✅ Certificate generated successfully for {emp_name}!")
-                            st.download_button(
-                                label=f"Download Certificate {emp_name}",
-                                data=cert_data,
-                                file_name=certificate_filename,
-                                mime="application/pdf",
-                                use_container_width=True
+                            # Use latest date between the two tests
+                            latest_date = max(general_test["Date / Time"], specific_test["Date / Time"])
+                            
+                            # Prepare data for both tests
+                            emp_id = general_test["ID"]
+                            emp_name = general_test["Name"]
+                            
+                            # General test data
+                            general_standard = str(general_test["Test Type"]).strip()
+                            general_pct = general_test["Percentage"]
+                            try:
+                                general_percentage = f"{float(str(general_pct).replace('%','').strip()):.0f}%"
+                            except:
+                                general_percentage = str(general_pct) if str(general_pct).endswith("%") else f"{general_pct}%"
+                            
+                            general_crit = general_test["Criteria"]
+                            try:
+                                general_criteria = f"{float(str(general_crit).replace('%','').strip()):.0f}%"
+                            except:
+                                general_criteria = str(general_crit) if str(general_crit).endswith("%") else f"{general_crit}%"
+                            
+                            # Specific test data
+                            specific_standard = str(specific_test["Test Type"]).strip()
+                            specific_pct = specific_test["Percentage"]
+                            try:
+                                specific_percentage = f"{float(str(specific_pct).replace('%','').strip()):.0f}%"
+                            except:
+                                specific_percentage = str(specific_pct) if str(specific_pct).endswith("%") else f"{specific_pct}%"
+                            
+                            specific_crit = specific_test["Criteria"]
+                            try:
+                                specific_criteria = f"{float(str(specific_crit).replace('%','').strip()):.0f}%"
+                            except:
+                                specific_criteria = str(specific_crit) if str(specific_crit).endswith("%") else f"{specific_crit}%"
+                            
+                            # Generate MPT/PT certificate with 2 rows
+                            certificate_path, certificate_filename = generate_mpt_pt_certificate(
+                                emp_id=emp_id,
+                                emp_name=emp_name,
+                                test_date=str(latest_date),
+                                template_type=template_type,
+                                general_standard=general_standard,
+                                general_percentage=general_percentage,
+                                general_criteria=general_criteria,
+                                specific_standard=specific_standard,
+                                specific_percentage=specific_percentage,
+                                specific_criteria=specific_criteria
                             )
+                            
+                            if certificate_path:
+                                with open(certificate_path, "rb") as f:
+                                    cert_data = f.read()
+                                
+                                st.success(f"✅ {selected_test_option} generated successfully for {emp_name}!")
+                                st.download_button(
+                                    label=f"Download {selected_test_option} - {emp_name}",
+                                    data=cert_data,
+                                    file_name=certificate_filename,
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                            else:
+                                st.error("❌ Failed to generate certificate. Please check template availability.")
                         else:
-                            st.error("❌ Failed to generate certificate. Please check template availability.")
+                            st.error("❌ Both General and Specific tests must be passed to generate this certificate.")
+                    
                     else:
-                        st.error("Selected test not found.")
+                        # Single certificate generation for regular tests
+                        # Find the selected test row (latest one for this test type)
+                        selected_test_row = emp_passed_tests[emp_passed_tests["Test Type"] == selected_test_option]
+                        selected_test_row = selected_test_row.sort_values("Date / Time", ascending=False)
+                        
+                        if not selected_test_row.empty:
+                            r = selected_test_row.iloc[0]
+                            
+                            # Normalize test type to find template
+                            norm_test_type = _norm(r["Test Type"])
+                            template_type = template_map.get(norm_test_type)
+                            
+                            # If no template in map, skip certificate generation
+                            if not template_type:
+                                st.error(f"❌ No template found for test type: {r['Test Type']}")
+                                st.stop()
+                            
+                            # Prepare data
+                            emp_id = r["ID"]
+                            emp_name = r["Name"]
+                            standard_text = str(r["Test Type"]).strip()
+                            
+                            # Normalize percentage
+                            pct_val = r["Percentage"]
+                            try:
+                                pct_val_num = float(str(pct_val).replace("%","").strip())
+                                percentage_text = f"{pct_val_num:.0f}%"
+                            except:
+                                percentage_text = str(pct_val) if str(pct_val).strip().endswith("%") else f"{str(pct_val).strip()}%"
+                            
+                            # Normalize criteria
+                            crit_val = r["Criteria"]
+                            try:
+                                crit_val_num = float(str(crit_val).replace("%","").strip())
+                                criteria_text = f"{crit_val_num:.0f}%"
+                            except:
+                                criteria_text = str(crit_val) if str(crit_val).strip().endswith("%") else f"{str(crit_val).strip()}%"
+                            
+                            # Generate certificate
+                            certificate_path, certificate_filename = generate_certificate(
+                                emp_id=emp_id,
+                                emp_name=emp_name,
+                                test_date=str(r["Date / Time"]),
+                                status=str(r["Status"]),
+                                template_type=template_type,
+                                standard_text=standard_text,
+                                percentage_text=percentage_text,
+                                criteria_text=criteria_text,
+                                skip_dates=True
+                            )
+                            
+                            if certificate_path:
+                                # Read the file and provide download
+                                with open(certificate_path, "rb") as f:
+                                    cert_data = f.read()
+                                
+                                st.success(f"✅ Certificate generated successfully for {emp_name}!")
+                                st.download_button(
+                                    label=f"Download Certificate - {emp_name}",
+                                    data=cert_data,
+                                    file_name=certificate_filename,
+                                    mime="application/pdf",
+                                    use_container_width=True
+                                )
+                            else:
+                                st.error("❌ Failed to generate certificate. Please check template availability.")
+                        else:
+                            st.error("Selected test not found.")
         
         st.markdown("---")
         if st.button("Logout"):
@@ -2240,5 +2785,6 @@ elif "quiz" in st.session_state:
             )
             
             # Answer sheet saved for admin to download
-            # if pdf_path and pdf_filename and os.path.exists(pdf_path):
-            #     st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+            if pdf_path and pdf_filename and os.path.exists(pdf_path):
+                st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+
