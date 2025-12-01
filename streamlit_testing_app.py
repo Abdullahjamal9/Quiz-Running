@@ -1002,7 +1002,7 @@ def generate_mpt_pt_certificate(
                     text=examiner_date_text,
                     fontname=arial_font,
                     fontsize=15,  # Font size increased by 2px (13 → 15)
-                    align=fitz.TEXT_ALIGN_CENTER,
+                    align=fitz.TEXT_ALIGN_LEFT,
                     text_color=(0, 0, 0),
                     fill=(1, 1, 1)
                 )
