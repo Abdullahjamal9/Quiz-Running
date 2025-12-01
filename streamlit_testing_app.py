@@ -912,15 +912,15 @@ def generate_mpt_pt_certificate(
             # Wide rect with minimal height
             cert_replace_rect = fitz.Rect(
                 cert_label.x0 - 2,
-                cert_label.y0,
-                cert_label.x0 + 250,
-                cert_label.y1
+                cert_label.y0 - 0.5,  # Top padding: 0.5px
+                cert_label.x0 + 260,  # Width increased by 10px (250 → 260)
+                cert_label.y1 + 0.5  # Bottom padding: 0.5px
             )
             page.add_redact_annot(
                 cert_replace_rect,
                 text=cert_value,
                 fontname=arial_font,
-                fontsize=13,
+                fontsize=15,  # Font size increased by 2px (13 → 15)
                 align=fitz.TEXT_ALIGN_LEFT,
                 text_color=(0, 0, 0),
                 fill=(1, 1, 1)
@@ -937,15 +937,15 @@ def generate_mpt_pt_certificate(
             date_cert_text = f"Date of Certification: {nice_date}"
             date_replace_rect = fitz.Rect(
                 date_label.x0 - 2,
-                date_label.y0,
-                date_label.x0 + 250,
-                date_label.y1
+                date_label.y0 - 1,  # Top padding: 1px
+                date_label.x0 + 260,  # Width increased by 10px (250 → 260)
+                date_label.y1 + 1  # Bottom padding: 1px
             )
             page.add_redact_annot(
                 date_replace_rect,
                 text=date_cert_text,
                 fontname=arial_font,
-                fontsize=13,
+                fontsize=15,  # Font size increased by 2px (13 → 15)
                 align=fitz.TEXT_ALIGN_LEFT,
                 text_color=(0, 0, 0),
                 fill=(1, 1, 1)
@@ -967,15 +967,15 @@ def generate_mpt_pt_certificate(
             validity_text = f"Validity: {validity_str}"
             validity_replace_rect = fitz.Rect(
                 validity_label.x0 - 2,
-                validity_label.y0,
-                validity_label.x0 + 180,  # Reduced from 250
-                validity_label.y1
+                validity_label.y0 - 1,  # Top padding: 1px
+                validity_label.x0 + 190,  # Width increased by 10px (180 → 190)
+                validity_label.y1 + 1  # Bottom padding: 1px
             )
             page.add_redact_annot(
                 validity_replace_rect,
                 text=validity_text,
                 fontname=arial_font,
-                fontsize=13,
+                fontsize=15,  # Font size increased by 2px (13 → 15)
                 align=fitz.TEXT_ALIGN_LEFT,
                 text_color=(0, 0, 0),
                 fill=(1, 1, 1)
@@ -993,15 +993,15 @@ def generate_mpt_pt_certificate(
                 examiner_date_text = f"DATE: {nice_date}"
                 examiner_date_rect = fitz.Rect(
                     examiner_date_label.x0 - 2,
-                    examiner_date_label.y0,
-                    examiner_date_label.x0 + 160,  # Reduced from 200
-                    examiner_date_label.y1
+                    examiner_date_label.y0 - 0.5,  # Top padding: 0.5px
+                    examiner_date_label.x0 + 170,  # Width increased by 10px (160 → 170)
+                    examiner_date_label.y1 + 0.5  # Bottom padding: 0.5px
                 )
                 page.add_redact_annot(
                     examiner_date_rect,
                     text=examiner_date_text,
                     fontname=arial_font,
-                    fontsize=13,
+                    fontsize=15,  # Font size increased by 2px (13 → 15)
                     align=fitz.TEXT_ALIGN_CENTER,
                     text_color=(0, 0, 0),
                     fill=(1, 1, 1)
@@ -2786,5 +2786,5 @@ elif "quiz" in st.session_state:
             
             # Answer sheet saved for admin to download
             # if pdf_path and pdf_filename and os.path.exists(pdf_path):
-            #     st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
+                # st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
