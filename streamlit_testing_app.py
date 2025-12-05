@@ -681,7 +681,7 @@ def generate_mpt_pt_certificate(
     template_path = get_template_path(template_type)
     
     if not template_path:
-        fallback_templates = ["MT_template", "PT_template"]
+        fallback_templates = ["MT_template", "PT_template", "UT_template"]
         for fallback in fallback_templates:
             template_path = get_template_path(fallback)
             if template_path:
@@ -902,7 +902,15 @@ def generate_mpt_pt_certificate(
             )
 
         # ---------- CERTIFICATE NO ----------
-        cert_tag = "MPT" if "MT" in template_type else "PT"
+        if "MT" in template_type:
+            cert_tag = "MPT"
+        elif "PT" in template_type:
+            cert_tag = "PT"
+        elif "UT" in template_type:
+            cert_tag = "UT LEVEL II"
+        else:
+            cert_tag = "UNKNOWN"
+        
         cert_value = f"CERTIFICATE NO: {emp_id}/PTIS/{cert_tag}/2025"
         
         # Search for "CERTIFICATE NO:" label and replace entire line
@@ -994,7 +1002,7 @@ def generate_mpt_pt_certificate(
                 examiner_date_rect = fitz.Rect(
                     examiner_date_label.x0 - 2,
                     examiner_date_label.y0 - 0.5,  # Top padding: 0.5px
-                    examiner_date_label.x0 + 170,  # Width increased by 10px (160 → 170)
+                    examiner_date_label.x0 + 160,  # Width increased by 10px (160 → 170)
                     examiner_date_label.y1 + 0.5  # Bottom padding: 0.5px
                 )
                 page.add_redact_annot(
@@ -1968,12 +1976,15 @@ if st.session_state.admin_logged_in:
             "MPT SPECIFIC": "MT_template",
             "PENETRANT TESTING GENERAL": "PT_template",
             "PENETRANT TESTING SPECIFIC": "PT_template",
+            "UT GENERAL": "UT_template",
+            "UT SPECIFIC": "UT_template",
         }
         
-        # MPT/PT certificate pairs - require both General and Specific
+        # MPT/PT/UT certificate pairs - require both General and Specific
         mpt_pt_pairs = {
             "MT": ["MPT (GENERAL)", "MPT (SPECIFIC)"],
-            "PT": ["PENETRANT TESTING (GENERAL)", "PENETRANT TESTING (SPECIFIC)"]
+            "PT": ["PENETRANT TESTING (GENERAL)", "PENETRANT TESTING (SPECIFIC)"],
+            "UT": ["UT (GENERAL)", "UT (SPECIFIC)"]
         }
         
         # Filter for individual certificate
@@ -2009,19 +2020,33 @@ if st.session_state.admin_logged_in:
                 if "PENETRANT TESTING GENERAL" in passed_norm_set and "PENETRANT TESTING SPECIFIC" in passed_norm_set:
                     test_options.append("PT")
                 
+                # Check for UT certificate eligibility
+                if "UT GENERAL" in passed_norm_set and "UT SPECIFIC" in passed_norm_set:
+                    test_options.append("UT")
+                
                 # Get unique individual test types
                 unique_tests = emp_passed_tests.drop_duplicates(subset=["Test Type"], keep="first")
                 individual_tests = unique_tests["Test Type"].tolist()
                 
-                # Add "All" option if multiple tests
-                if len(test_options) > 2 or len(individual_tests) > 1:  # More than just "Select Test" + one option
-                    test_options.insert(1, "All")
-                
-                # Add individual test types (exclude MPT/PT General/Specific - they only work as combined)
+                # Count how many individual certificates would be generated (excluding MPT/PT/UT partials)
+                individual_cert_count = 0
                 for test in individual_tests:
                     norm_test = _norm(test)
-                    # Always skip MPT/PT individual tests (they require both General + Specific for certificate)
-                    if norm_test in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC"]:
+                    if norm_test not in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", "UT GENERAL", "UT SPECIFIC"]:
+                        individual_cert_count += 1
+                
+                # Calculate total available certificates (MPT + PT + UT + individual tests)
+                total_certs = len(test_options) - 1 + individual_cert_count  # Subtract 1 for "Select Test"
+                
+                # Add "All" option only if at least 2 certificates are available
+                if total_certs >= 2:
+                    test_options.insert(1, "All")
+                
+                # Add individual test types (exclude MPT/PT/UT General/Specific - they only work as combined)
+                for test in individual_tests:
+                    norm_test = _norm(test)
+                    # Always skip MPT/PT/UT individual tests (they require both General + Specific for certificate)
+                    if norm_test in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", "UT GENERAL", "UT SPECIFIC"]:
                         continue
                     test_options.append(test)
                 
@@ -2095,13 +2120,36 @@ if st.session_state.admin_logged_in:
                             certificate_files.append((certificate_path, certificate_filename))
                         processed_combined.add("PT")
                     
-                    # Now process regular individual certificates (skip MPT/PT individual tests)
+                    # Check and add UT combined certificate if both tests passed
+                    if "UT GENERAL" in passed_norm_set and "UT SPECIFIC" in passed_norm_set and "UT" not in processed_combined:
+                        general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "UT GENERAL"].iloc[0]
+                        specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "UT SPECIFIC"].iloc[0]
+                        
+                        latest_date = max(general_row["Date / Time"], specific_row["Date / Time"])
+                        
+                        certificate_path, certificate_filename = generate_mpt_pt_certificate(
+                            emp_id=general_row["ID"],
+                            emp_name=general_row["Name"],
+                            test_date=str(latest_date),
+                            template_type="UT_template",
+                            general_standard=str(general_row["Test Type"]).strip(),
+                            general_percentage=str(general_row["Percentage"]).strip() if str(general_row["Percentage"]).endswith("%") else f"{general_row['Percentage']}%",
+                            general_criteria=str(general_row["Criteria"]).strip() if str(general_row["Criteria"]).endswith("%") else f"{general_row['Criteria']}%",
+                            specific_standard=str(specific_row["Test Type"]).strip(),
+                            specific_percentage=str(specific_row["Percentage"]).strip() if str(specific_row["Percentage"]).endswith("%") else f"{specific_row['Percentage']}%",
+                            specific_criteria=str(specific_row["Criteria"]).strip() if str(specific_row["Criteria"]).endswith("%") else f"{specific_row['Criteria']}%"
+                        )
+                        if certificate_path:
+                            certificate_files.append((certificate_path, certificate_filename))
+                        processed_combined.add("UT")
+                    
+                    # Now process regular individual certificates (skip MPT/PT/UT individual tests)
                     for _, r in emp_passed_tests.iterrows():
                         # Normalize test type
                         norm_test_type = _norm(r["Test Type"])
                         
-                        # Skip MPT/PT individual tests (already handled as combined)
-                        if norm_test_type in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC"]:
+                        # Skip MPT/PT/UT individual tests (already handled as combined)
+                        if norm_test_type in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", "UT GENERAL", "UT SPECIFIC"]:
                             continue
                         
                         template_type = template_map.get(norm_test_type)
@@ -2595,7 +2643,7 @@ elif "quiz" in st.session_state:
 
     st.markdown(
         f"""
-        <div style="padding: 12px 15px; border-radius: 8px; background: linear-gradient(135deg, #1E3A8A, #3B82F6); color: white; text-align: center; font-size: 17px; margin-bottom: 20px; white-space: nowrap; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+        <div style="padding: 12px 15px; border-radius: 8px; background: linear-gradient(135deg, #1E3A8A, #3B82F6); color: white; text-align: center; font-size: 17px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); word-wrap: break-word; white-space: normal; line-height: 1.5;">
             <b>ID :</b> {qstate['emp_id']} &nbsp;•&nbsp; <b>Name :</b> {qstate['emp_name']} &nbsp;•&nbsp; <b>Standard :</b> {qstate['standard']} &nbsp;•&nbsp; <b>Progress :</b> {answered_count}/{qstate['total']}
         </div>
         """,
@@ -2784,7 +2832,7 @@ elif "quiz" in st.session_state:
                 unsafe_allow_html=True
             )
             
-            # # Answer sheet saved for admin to download
+            # Answer sheet saved for admin to download
             # if pdf_path and pdf_filename and os.path.exists(pdf_path):
             #     st.info("📋 Your test answer sheet has been saved. Contact admin to download.")
 
