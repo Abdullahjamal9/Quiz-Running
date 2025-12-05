@@ -2650,7 +2650,7 @@ elif "quiz" in st.session_state:
         unsafe_allow_html=True
     )
 
-    st.info("📌 **Scoring System**: +1 Mark for Correct Answer and -0.25 Marks for Wrong Answer.")
+    st.info("📌 **Scoring System** : +1 Mark for Correct Answer and -0.25 Marks for Wrong Answer.")
 
     if len(qstate["queue"]) > 0:
         current_qid = qstate["queue"][0]
