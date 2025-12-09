@@ -1978,6 +1978,8 @@ if st.session_state.admin_logged_in:
             "PENETRANT TESTING SPECIFIC": "PT_template",
             "UT GENERAL": "UT_template",
             "UT SPECIFIC": "UT_template",
+            "ULTRASONIC TESTING LEVEL II GENERAL": "UT_template",
+            "ULTRASONIC TESTING LEVEL II SPECIFIC": "UT_template",
         }
         
         # MPT/PT/UT certificate pairs - require both General and Specific
@@ -2021,8 +2023,9 @@ if st.session_state.admin_logged_in:
                     test_options.append("PT")
                 
                 # Check for UT certificate eligibility
-                if "UT GENERAL" in passed_norm_set and "UT SPECIFIC" in passed_norm_set:
-                    test_options.append("UT")
+                if ("UT GENERAL" in passed_norm_set and "UT SPECIFIC" in passed_norm_set) or \
+                   ("ULTRASONIC TESTING LEVEL II GENERAL" in passed_norm_set and "ULTRASONIC TESTING LEVEL II SPECIFIC" in passed_norm_set):
+                    test_options.append("Ultrasonic Testing")
                 
                 # Get unique individual test types
                 unique_tests = emp_passed_tests.drop_duplicates(subset=["Test Type"], keep="first")
@@ -2032,7 +2035,8 @@ if st.session_state.admin_logged_in:
                 individual_cert_count = 0
                 for test in individual_tests:
                     norm_test = _norm(test)
-                    if norm_test not in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", "UT GENERAL", "UT SPECIFIC"]:
+                    if norm_test not in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", 
+                                        "UT GENERAL", "UT SPECIFIC", "ULTRASONIC TESTING LEVEL II GENERAL", "ULTRASONIC TESTING LEVEL II SPECIFIC"]:
                         individual_cert_count += 1
                 
                 # Calculate total available certificates (MPT + PT + UT + individual tests)
@@ -2046,7 +2050,8 @@ if st.session_state.admin_logged_in:
                 for test in individual_tests:
                     norm_test = _norm(test)
                     # Always skip MPT/PT/UT individual tests (they require both General + Specific for certificate)
-                    if norm_test in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", "UT GENERAL", "UT SPECIFIC"]:
+                    if norm_test in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", 
+                                    "UT GENERAL", "UT SPECIFIC", "ULTRASONIC TESTING LEVEL II GENERAL", "ULTRASONIC TESTING LEVEL II SPECIFIC"]:
                         continue
                     test_options.append(test)
                 
@@ -2121,9 +2126,15 @@ if st.session_state.admin_logged_in:
                         processed_combined.add("PT")
                     
                     # Check and add UT combined certificate if both tests passed
-                    if "UT GENERAL" in passed_norm_set and "UT SPECIFIC" in passed_norm_set and "UT" not in processed_combined:
-                        general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "UT GENERAL"].iloc[0]
-                        specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "UT SPECIFIC"].iloc[0]
+                    if (("UT GENERAL" in passed_norm_set and "UT SPECIFIC" in passed_norm_set) or \
+                        ("ULTRASONIC TESTING LEVEL II GENERAL" in passed_norm_set and "ULTRASONIC TESTING LEVEL II SPECIFIC" in passed_norm_set)) and "UT" not in processed_combined:
+                        # Try both naming conventions
+                        if "UT GENERAL" in passed_norm_set:
+                            general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "UT GENERAL"].iloc[0]
+                            specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "UT SPECIFIC"].iloc[0]
+                        else:
+                            general_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "ULTRASONIC TESTING LEVEL II GENERAL"].iloc[0]
+                            specific_row = emp_passed_tests[emp_passed_tests["Test Type"].map(_norm) == "ULTRASONIC TESTING LEVEL II SPECIFIC"].iloc[0]
                         
                         latest_date = max(general_row["Date / Time"], specific_row["Date / Time"])
                         
@@ -2149,7 +2160,8 @@ if st.session_state.admin_logged_in:
                         norm_test_type = _norm(r["Test Type"])
                         
                         # Skip MPT/PT/UT individual tests (already handled as combined)
-                        if norm_test_type in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", "UT GENERAL", "UT SPECIFIC"]:
+                        if norm_test_type in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC", 
+                                             "UT GENERAL", "UT SPECIFIC", "ULTRASONIC TESTING LEVEL II GENERAL", "ULTRASONIC TESTING LEVEL II SPECIFIC"]:
                             continue
                         
                         template_type = template_map.get(norm_test_type)
@@ -2214,18 +2226,29 @@ if st.session_state.admin_logged_in:
                         st.error("❌ Failed to generate any certificates. Please check template availability.")
                 
                 else:
-                    # Check if this is MPT or PT combined certificate
-                    if selected_test_option in ["MPT", "PT"]:
-                        cert_type = "MT" if selected_test_option == "MPT" else "PT"
-                        template_type = "MT_template" if cert_type == "MT" else "PT_template"
+                    # Check if this is MPT, PT, or Ultrasonic Testing combined certificate
+                    if selected_test_option in ["MPT", "PT", "Ultrasonic Testing"]:
+                        if selected_test_option == "MPT":
+                            cert_type = "MT"
+                            template_type = "MT_template"
+                        elif selected_test_option == "PT":
+                            cert_type = "PT"
+                            template_type = "PT_template"
+                        else:  # Ultrasonic Testing
+                            cert_type = "UT"
+                            template_type = "UT_template"
                         
                         # Get General and Specific test data
                         if cert_type == "MT":
                             general_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "MPT GENERAL"]
                             specific_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "MPT SPECIFIC"]
-                        else:  # PT
+                        elif cert_type == "PT":
                             general_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "PENETRANT TESTING GENERAL"]
                             specific_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"] == "PENETRANT TESTING SPECIFIC"]
+                        else:  # UT
+                            # Try both naming conventions
+                            general_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"].isin(["UT GENERAL", "ULTRASONIC TESTING LEVEL II GENERAL"])]
+                            specific_rows = emp_passed_tests[emp_passed_tests["Test Type (norm)"].isin(["UT SPECIFIC", "ULTRASONIC TESTING LEVEL II SPECIFIC"])]
                         
                         if not general_rows.empty and not specific_rows.empty:
                             # Get latest test for each
@@ -2650,7 +2673,7 @@ elif "quiz" in st.session_state:
         unsafe_allow_html=True
     )
 
-    st.info("📌 **Scoring System** : +1 Mark for Correct Answer and -0.25 Marks for Wrong Answer.")
+    st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
 
     if len(qstate["queue"]) > 0:
         current_qid = qstate["queue"][0]
