@@ -1993,7 +1993,41 @@ if st.session_state.admin_logged_in:
         ind_cert_col1, ind_cert_col2 = st.columns(2)
         
         with ind_cert_col1:
-            ind_cert_names = ["Select Employee"] + sorted(passed_results["Name"].dropna().unique().tolist())
+            # Filter employees who have at least one complete certificate
+            eligible_employees = []
+            for emp_name in passed_results["Name"].dropna().unique():
+                emp_tests = passed_results[passed_results["Name"] == emp_name].copy()
+                emp_tests["Test Type (norm)"] = emp_tests["Test Type"].map(_norm)
+                passed_norm = set(emp_tests["Test Type (norm)"].dropna().tolist())
+                
+                # Check if employee has at least one complete certificate
+                has_cert = False
+                
+                # Check MPT (both tests)
+                if "MPT GENERAL" in passed_norm and "MPT SPECIFIC" in passed_norm:
+                    has_cert = True
+                
+                # Check PT (both tests)
+                if "PENETRANT TESTING GENERAL" in passed_norm and "PENETRANT TESTING SPECIFIC" in passed_norm:
+                    has_cert = True
+                
+                # Check UT (both tests - either naming convention)
+                if ("UT GENERAL" in passed_norm and "UT SPECIFIC" in passed_norm) or \
+                   ("ULTRASONIC TESTING LEVEL II GENERAL" in passed_norm and "ULTRASONIC TESTING LEVEL II SPECIFIC" in passed_norm):
+                    has_cert = True
+                
+                # Check individual tests (not part of MPT/PT/UT pairs)
+                for norm_test in passed_norm:
+                    if norm_test not in ["MPT GENERAL", "MPT SPECIFIC", "PENETRANT TESTING GENERAL", "PENETRANT TESTING SPECIFIC",
+                                        "UT GENERAL", "UT SPECIFIC", "ULTRASONIC TESTING LEVEL II GENERAL", "ULTRASONIC TESTING LEVEL II SPECIFIC"]:
+                        # Has at least one individual certificate
+                        has_cert = True
+                        break
+                
+                if has_cert:
+                    eligible_employees.append(emp_name)
+            
+            ind_cert_names = ["Select Employee"] + sorted(eligible_employees)
             selected_ind_name = st.selectbox(
                 "Select Employee Name",
                 ind_cert_names,
