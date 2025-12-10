@@ -1650,7 +1650,7 @@ if st.session_state.admin_logged_in:
                         
                         with col2:
                             # Generate answer sheet button
-                            if st.button(f"📥 Download Answer Sheet", key=f"dl_sheet_{idx}_{test_row['ID']}", use_container_width=True):
+                            if st.button(f"📄 Generate Answer Sheet", key=f"dl_sheet_{idx}_{test_row['ID']}", use_container_width=True):
                                 with st.spinner("Generating answer sheet..."):
                                     # Get questions for this standard
                                     test_standard = test_row['Test Type']
