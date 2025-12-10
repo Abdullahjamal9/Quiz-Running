@@ -1045,6 +1045,12 @@ def generate_mpt_pt_certificate(
 # Individual Test Downloads
 # =====================
 def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status):
+    # Calculate score with or without negative marking
+    if "Basic Fire Fighting" in test_type or "Fire Safety" in test_type:
+        final_display_score = right
+    else:
+        final_display_score = right - (wrong * 0.25)
+    
     report_data = {
         'Test Information': [
             ['Employee ID', emp_id],
@@ -1054,7 +1060,7 @@ def create_individual_test_report(emp_id, emp_name, test_date, test_type, total,
             ['Total Questions', total],
             ['Correct Answers', right],
             ['Wrong Answers', wrong],
-            ['Final Score', f"{right - (wrong * 0.25):.2f}/{total}"],
+            ['Final Score', f"{final_display_score:.2f}/{total}"],
             ['Percentage', f"{pct:.2f}%"],
             ['Passing Criteria', f"{criteria}%"],
             ['Status', status]
@@ -1115,6 +1121,12 @@ def generate_test_sheet_pdf(emp_id, emp_name, standard, test_date, questions_dat
         )
         y_position += 40
         
+        # Calculate score with or without negative marking
+        if "Basic Fire Fighting" in standard or "Fire Safety" in standard:
+            display_score = right
+        else:
+            display_score = right - (wrong * 0.25)
+        
         # Employee Info
         info_lines = [
             f"Employee ID: {emp_id}",
@@ -1125,7 +1137,7 @@ def generate_test_sheet_pdf(emp_id, emp_name, standard, test_date, questions_dat
             f"Total Questions: {total}",
             f"Correct Answers: {right}",
             f"Wrong Answers: {wrong}",
-            f"Score: {right - (wrong * 0.25):.2f}/{total}",
+            f"Score: {display_score:.2f}/{total}",
             f"Percentage: {pct:.2f}%",
             f"Passing Criteria: {criteria}%",
             f"Status: {status}",
@@ -1366,7 +1378,11 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = datetime.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
         
-        raw_score = right - (wrong * 0.25)
+        # No negative marking for Basic Fire Fighting & Fire Safety
+        if "Basic Fire Fighting" in test_type or "Fire Safety" in test_type:
+            raw_score = right
+        else:
+            raw_score = right - (wrong * 0.25)
         final_score = max(0, raw_score)
         pct = (final_score / total) * 100 if total else 0.0
 
@@ -2520,7 +2536,11 @@ elif "quiz" in st.session_state:
             st.session_state.quiz = qstate
             
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            raw_score = right - (wrong * 0.25)
+            # No negative marking for Basic Fire Fighting & Fire Safety
+            if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
+                raw_score = right
+            else:
+                raw_score = right - (wrong * 0.25)
             final_score = max(0, raw_score)
             pct = (final_score/total_q)*100 if total_q else 0.0
             
@@ -2624,7 +2644,11 @@ elif "quiz" in st.session_state:
                 st.session_state.quiz = qstate
                 
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                raw_score = right - (wrong * 0.25)
+                # No negative marking for Basic Fire Fighting & Fire Safety
+                if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
+                    raw_score = right
+                else:
+                    raw_score = right - (wrong * 0.25)
                 final_score = max(0, raw_score)
                 pct = (final_score/total_q)*100 if total_q else 0.0
                 
@@ -2707,7 +2731,11 @@ elif "quiz" in st.session_state:
         unsafe_allow_html=True
     )
 
-    st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
+    # Show scoring system based on test type
+    if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
+        st.info("📌 **Scoring System**: +1 mark for correct answer, 0 marks for wrong/unattempted questions (No negative marking)")
+    else:
+        st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
 
     if len(qstate["queue"]) > 0:
         current_qid = qstate["queue"][0]
@@ -2760,7 +2788,11 @@ elif "quiz" in st.session_state:
 
     if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-        raw_score = right - (wrong * 0.25)
+        # No negative marking for Basic Fire Fighting & Fire Safety
+        if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
+            raw_score = right
+        else:
+            raw_score = right - (wrong * 0.25)
         final_score = max(0, raw_score)
         pct = (final_score/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
@@ -2872,6 +2904,12 @@ elif "quiz" in st.session_state:
                 st.error(f"Failed to save results to Google Sheets: {msg}")
 
             color = "#10B981" if status == "Pass" else "#DC2626"
+            
+            # Get test type to check for negative marking
+            test_standard = st.session_state.quiz.get("standard", "")
+            has_negative_marking = not ("Basic Fire Fighting" in test_standard or "Fire Safety" in test_standard)
+            negative_text = "Negative marking: -0.25 marks per wrong answer" if has_negative_marking else "No negative marking"
+            
             st.markdown(
                 f"""
                 <div style="padding:20px; border-radius:12px; background: linear-gradient(135deg, #1E3A8A, #2563EB); color:white; text-align:center; margin-top:20px;">
@@ -2883,7 +2921,7 @@ elif "quiz" in st.session_state:
                         <b>Percentage :</b> {pct:.2f}%<br>
                         <b>Passing Criteria :</b> {criteria:.0f}%
                     </p>
-                    <small style="opacity: 0.8;">Negative marking: -0.25 marks per wrong answer</small>
+                    <small style="opacity: 0.8;">{negative_text}</small>
                 </div>
                 """,
                 unsafe_allow_html=True
