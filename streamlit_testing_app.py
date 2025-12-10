@@ -2733,10 +2733,11 @@ elif "quiz" in st.session_state:
 
     # Show scoring system based on test type
     if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
-        st.info("📌 **Scoring System**: +1 mark for correct answer, 0 marks for wrong/unattempted questions (No negative marking)")
-    else:
-        # st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
+        # st.info("📌 **Scoring System**: +1 mark for correct answer, 0 marks for wrong/unattempted questions (No negative marking)")
         st.info()
+    else:
+        st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
+        
         
     if len(qstate["queue"]) > 0:
         current_qid = qstate["queue"][0]
