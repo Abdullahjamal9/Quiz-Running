@@ -1046,10 +1046,17 @@ def generate_mpt_pt_certificate(
 # =====================
 def create_individual_test_report(emp_id, emp_name, test_date, test_type, total, right, wrong, pct, criteria, status):
     # Calculate score with or without negative marking
-    if "Basic Fire Fighting" in test_type or "Fire Safety" in test_type:
-        final_display_score = right
-    else:
+    no_negative_tests = [
+        "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+        "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+        "Basic Personal Protective Equipment", "Permit to Work"
+    ]
+    has_negative_marking = not any(test in test_type for test in no_negative_tests)
+    
+    if has_negative_marking:
         final_display_score = right - (wrong * 0.25)
+    else:
+        final_display_score = right
     
     report_data = {
         'Test Information': [
@@ -1122,10 +1129,17 @@ def generate_test_sheet_pdf(emp_id, emp_name, standard, test_date, questions_dat
         y_position += 40
         
         # Calculate score with or without negative marking
-        if "Basic Fire Fighting" in standard or "Fire Safety" in standard:
-            display_score = right
-        else:
+        no_negative_tests = [
+            "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+            "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+            "Basic Personal Protective Equipment", "Permit to Work"
+        ]
+        has_negative_marking = not any(test in standard for test in no_negative_tests)
+        
+        if has_negative_marking:
             display_score = right - (wrong * 0.25)
+        else:
+            display_score = right
         
         # Employee Info
         info_lines = [
@@ -1378,11 +1392,18 @@ def append_result(emp_id, emp_name, total, right, wrong, criteria_pct, status, t
         pkt_tz = pytz.timezone('Asia/Karachi')
         now = datetime.datetime.now(pkt_tz).strftime("%d-%m-%Y %I:%M:%S %p")
         
-        # No negative marking for Basic Fire Fighting & Fire Safety
-        if "Basic Fire Fighting" in test_type or "Fire Safety" in test_type:
-            raw_score = right
-        else:
+        # No negative marking for specific safety standards
+        no_negative_tests = [
+            "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+            "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+            "Basic Personal Protective Equipment", "Permit to Work"
+        ]
+        has_negative_marking = not any(test in test_type for test in no_negative_tests)
+        
+        if has_negative_marking:
             raw_score = right - (wrong * 0.25)
+        else:
+            raw_score = right
         final_score = max(0, raw_score)
         pct = (final_score / total) * 100 if total else 0.0
 
@@ -2536,11 +2557,18 @@ elif "quiz" in st.session_state:
             st.session_state.quiz = qstate
             
             right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-            # No negative marking for Basic Fire Fighting & Fire Safety
-            if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
-                raw_score = right
-            else:
+            # No negative marking for specific safety standards
+            no_negative_tests = [
+                "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+                "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+                "Basic Personal Protective Equipment", "Permit to Work"
+            ]
+            has_negative_marking = not any(test in qstate["standard"] for test in no_negative_tests)
+            
+            if has_negative_marking:
                 raw_score = right - (wrong * 0.25)
+            else:
+                raw_score = right
             final_score = max(0, raw_score)
             pct = (final_score/total_q)*100 if total_q else 0.0
             
@@ -2644,11 +2672,18 @@ elif "quiz" in st.session_state:
                 st.session_state.quiz = qstate
                 
                 right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                # No negative marking for Basic Fire Fighting & Fire Safety
-                if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
-                    raw_score = right
-                else:
+                # No negative marking for specific safety standards
+                no_negative_tests = [
+                    "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+                    "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+                    "Basic Personal Protective Equipment", "Permit to Work"
+                ]
+                has_negative_marking = not any(test in qstate["standard"] for test in no_negative_tests)
+                
+                if has_negative_marking:
                     raw_score = right - (wrong * 0.25)
+                else:
+                    raw_score = right
                 final_score = max(0, raw_score)
                 pct = (final_score/total_q)*100 if total_q else 0.0
                 
@@ -2730,15 +2765,17 @@ elif "quiz" in st.session_state:
         """,
         unsafe_allow_html=True
     )
+    # Show scoring info only for tests with negative marking
+    no_negative_tests = [
+        "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+        "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+        "Basic Personal Protective Equipment", "Permit to Work"
+    ]
+    has_negative_marking = not any(test in qstate["standard"] for test in no_negative_tests)
+    
+    if has_negative_marking:
+        st.info("📌 **Scoring System**: +1 Mark for Correct Answer, and -0.25 Marks for Wrong Answer.")
 
-    # Show scoring system based on test type
-    # if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
-    #     st.info("📌 **Scoring System**: +1 mark for correct answer, 0 marks for wrong/unattempted questions (No negative marking)")
-    #     st.info()
-    # else:
-    #     st.info("📌 **Scoring System**: +1 mark for correct answer, -0.25 marks for wrong answer, 0 marks for unattempted questions")
-        
-        
     if len(qstate["queue"]) > 0:
         current_qid = qstate["queue"][0]
         row = qstate["rows"].iloc[current_qid]
@@ -2790,11 +2827,18 @@ elif "quiz" in st.session_state:
 
     if len(qstate["queue"]) == 0 and "submitted" not in st.session_state:
         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-        # No negative marking for Basic Fire Fighting & Fire Safety
-        if "Basic Fire Fighting" in qstate["standard"] or "Fire Safety" in qstate["standard"]:
-            raw_score = right
-        else:
+        # No negative marking for specific safety standards
+        no_negative_tests = [
+            "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+            "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+            "Basic Personal Protective Equipment", "Permit to Work"
+        ]
+        has_negative_marking = not any(test in qstate["standard"] for test in no_negative_tests)
+        
+        if has_negative_marking:
             raw_score = right - (wrong * 0.25)
+        else:
+            raw_score = right
         final_score = max(0, raw_score)
         pct = (final_score/total_q)*100 if total_q else 0.0
         status = "Pass" if pct >= float(criteria) else "Fail"
@@ -2909,7 +2953,12 @@ elif "quiz" in st.session_state:
             
             # Get test type to check for negative marking
             test_standard = st.session_state.quiz.get("standard", "")
-            has_negative_marking = not ("Basic Fire Fighting" in test_standard or "Fire Safety" in test_standard)
+            no_negative_tests = [
+                "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+                "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+                "Basic Personal Protective Equipment", "Permit to Work"
+            ]
+            has_negative_marking = not any(test in test_standard for test in no_negative_tests)
             negative_text = "Negative marking: -0.25 marks per wrong answer" if has_negative_marking else "No negative marking"
             
             st.markdown(
