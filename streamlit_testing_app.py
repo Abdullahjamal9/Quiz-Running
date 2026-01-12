@@ -2609,92 +2609,133 @@ elif "quiz" in st.session_state:
             margin-bottom: 20px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2); border: 3px solid rgba(255, 255, 255, 0.1);
         }}
         </style>
-        <div id="timer_container" class="timer-container {pulse_class}" style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
+        
+        <div id="timer_container" class="timer-container {pulse_class}"
+             style="background: linear-gradient(135deg, {bg_color}, {bg_color}CC); color: {text_color};">
             <div style="display: flex; align-items: center; justify-content: center; gap: 15px;">
                 <span id="timer_icon" style="font-size: 28px;">{icon}</span>
                 <span>Time Remaining :</span>
-                <span id="timer_display" style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2); padding: 5px 15px; border-radius: 8px;">
+                <span id="timer_display"
+                      style="font-family: 'Courier New', monospace; font-size: 28px; background: rgba(0,0,0,0.2);
+                             padding: 5px 15px; border-radius: 8px;">
                     {rem_h:02d}:{rem_m:02d}:{rem_s:02d}
                 </span>
             </div>
-            <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px; overflow: hidden; margin-top: 15px;">
-                <div id="progress_bar" style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399); width: {progress_percent:.1f}%; border-radius: 3px; transition: width 0.5s ease-in-out;"></div>
+        
+            <div style="width: 100%; height: 6px; background-color: rgba(255,255,255,0.3); border-radius: 3px;
+                        overflow: hidden; margin-top: 15px;">
+                <div id="progress_bar"
+                     style="height: 100%; background: linear-gradient(90deg, #10B981, #34D399);
+                            width: {progress_percent:.1f}%; border-radius: 3px; transition: width 0.5s ease-in-out;">
+                </div>
             </div>
         </div>
+        
         <script>
-        (function() {{
-            var remaining = {remaining};
-            var total_secs = {total_secs};
-            var interval = null;
+        (function () {{
+            // ✅ IMPORTANT: Prevent interval accumulation across Streamlit reruns
+            if (window.__ptis_timer_interval) {{
+                clearInterval(window.__ptis_timer_interval);
+                window.__ptis_timer_interval = null;
+            }}
+        
+            let remaining = {remaining};
+            const total_secs = {total_secs};
+        
             function updateTimer() {{
-                if (remaining <= 0) {{
-                    document.getElementById('timer_display').innerText = '00:00:00';
-                    document.getElementById('progress_bar').style.width = '0%';
-                    clearInterval(interval);
-                    var form = document.createElement('form');
-                    form.method = 'POST'; form.action = window.location.href;
-                    var input = document.createElement('input');
-                    input.type = 'hidden'; input.name = 'timeout'; input.value = 'true';
-                    form.appendChild(input); document.body.appendChild(form); form.submit(); return;
+                const display = document.getElementById('timer_display');
+                const bar = document.getElementById('progress_bar');
+                const container = document.getElementById('timer_container');
+                const iconElem = document.getElementById('timer_icon');
+        
+                // If component is unmounted, stop the interval
+                if (!display || !bar || !container || !iconElem) {{
+                    if (window.__ptis_timer_interval) {{
+                        clearInterval(window.__ptis_timer_interval);
+                        window.__ptis_timer_interval = null;
+                    }}
+                    return;
                 }}
-                var h = Math.floor(remaining / 3600);
-                var m = Math.floor((remaining % 3600) / 60);
-                var s = remaining % 60;
-                document.getElementById('timer_display').innerText = `${{h.toString().padStart(2, '0')}}:${{m.toString().padStart(2, '0')}}:${{s.toString().padStart(2, '0')}}`;
-                var progress = (remaining / total_secs) * 100;
-                document.getElementById('progress_bar').style.width = progress + '%';
-                var container = document.getElementById('timer_container');
-                var iconElem = document.getElementById('timer_icon');
-                var bg_color, text_color, icon, pulse_class = '';
+        
+                if (remaining <= 0) {{
+                    display.innerText = '00:00:00';
+                    bar.style.width = '0%';
+                    if (window.__ptis_timer_interval) {{
+                        clearInterval(window.__ptis_timer_interval);
+                        window.__ptis_timer_interval = null;
+                    }}
+                    return;
+                }}
+        
+                const h = Math.floor(remaining / 3600);
+                const m = Math.floor((remaining % 3600) / 60);
+                const s = remaining % 60;
+        
+                display.innerText =
+                    String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+        
+                const progress = (remaining / total_secs) * 100;
+                bar.style.width = progress + '%';
+        
+                // Update styling thresholds (same as your python logic)
+                let bg_color, text_color, icon, pulse_class = '';
                 if (remaining <= 300) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '🚨'; pulse_class = 'timer-pulse'; }}
                 else if (remaining <= 900) {{ bg_color = '#DC2626'; text_color = 'white'; icon = '⚠️'; }}
                 else if (remaining <= 1200) {{ bg_color = '#D97706'; text_color = 'white'; icon = '⏰'; }}
                 else {{ bg_color = '#1E3A8A'; text_color = 'white'; icon = '⏰'; }}
+        
                 container.style.background = `linear-gradient(135deg, ${bg_color}, ${bg_color}CC)`;
-                container.style.color = text_color; iconElem.innerText = icon;
-                if (pulse_class) {{ container.classList.add(pulse_class); }} else {{ container.classList.remove('timer-pulse'); }}
+                container.style.color = text_color;
+                iconElem.innerText = icon;
+        
+                if (pulse_class) container.classList.add(pulse_class);
+                else container.classList.remove('timer-pulse');
+        
                 remaining--;
             }}
-            if (interval) {{ clearInterval(interval); }}
-            updateTimer(); interval = setInterval(updateTimer, 1000);
+        
+            updateTimer();
+            window.__ptis_timer_interval = setInterval(updateTimer, 1000);
         }})();
         </script>
         """
-        components.html(timer_html, height=150)
+        
+        # ✅ IMPORTANT: Add a fixed key so Streamlit replaces the component instead of stacking
+        components.html(timer_html, height=150, key="timer")
 
-        if st.query_params.get("timeout", ["false"])[0] == "true":
-            if len(qstate["queue"]) > 0:
-                st.error("Time is up! Auto-submitting your test...")
-                for qid in qstate["queue"]:
-                    if qid not in qstate.get("attempted", set()):
-                        qstate["wrong"] += 1
-                qstate["queue"] = []
-                st.session_state.quiz = qstate
+        # if st.query_params.get("timeout", ["false"])[0] == "true":
+        #     if len(qstate["queue"]) > 0:
+        #         st.error("Time is up! Auto-submitting your test...")
+        #         for qid in qstate["queue"]:
+        #             if qid not in qstate.get("attempted", set()):
+        #                 qstate["wrong"] += 1
+        #         qstate["queue"] = []
+        #         st.session_state.quiz = qstate
                 
-                right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
-                # No negative marking for specific safety standards
-                no_negative_tests = [
-                    "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
-                    "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
-                    "Basic Personal Protective Equipment", "Permit to Work"
-                ]
-                has_negative_marking = not any(test in qstate["standard"] for test in no_negative_tests)
+        #         right, wrong, total_q = qstate["right"], qstate["wrong"], qstate["total"]
+        #         # No negative marking for specific safety standards
+        #         no_negative_tests = [
+        #             "Basic Fire Fighting", "Fire Safety", "Stop Cards", "Emergency Response Plan",
+        #             "Basic First Aid", "Hazard Identification", "Risk Assessment", "Housekeeping",
+        #             "Basic Personal Protective Equipment", "Permit to Work"
+        #         ]
+        #         has_negative_marking = not any(test in qstate["standard"] for test in no_negative_tests)
                 
-                if has_negative_marking:
-                    raw_score = right - (wrong * 0.25)
-                else:
-                    raw_score = right
-                final_score = max(0, raw_score)
-                pct = (final_score/total_q)*100 if total_q else 0.0
+        #         if has_negative_marking:
+        #             raw_score = right - (wrong * 0.25)
+        #         else:
+        #             raw_score = right
+        #         final_score = max(0, raw_score)
+        #         pct = (final_score/total_q)*100 if total_q else 0.0
                 
-                status = "Pass" if pct >= float(criteria) else "Fail"
-                ok, msg = append_result(
-                    qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
-                )
-                st.session_state["submitted"] = True
-                st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
-                st.query_params.clear()
-                st.rerun()
+        #         status = "Pass" if pct >= float(criteria) else "Fail"
+        #         ok, msg = append_result(
+        #             qstate["emp_id"], qstate["emp_name"], total_q, right, wrong, criteria, status, qstate["standard"]
+        #         )
+        #         st.session_state["submitted"] = True
+        #         st.session_state["submit_result"] = (ok, msg, right, wrong, total_q, pct, criteria, status, final_score)
+        #         st.query_params.clear()
+        #         st.rerun()
 
         if remaining <= 300:
             st.markdown('<div style="margin-bottom: 8px;"></div>', unsafe_allow_html=True)
