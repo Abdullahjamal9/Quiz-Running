@@ -2516,12 +2516,23 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
     options = sorted(options)
     if "Cumulative" not in options:
         options = ["Cumulative"] + options
-    selected_standard = st.selectbox("Select Standard", options, index=0 if options else None, key=f"std_{st.session_state.reset_counter}")
-    total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
-    c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Total Questions", total)
-    with c2: st.metric("Passing Criteria (%)", criteria)
-    with c3: st.metric("Timer (HH:MM:SS)", f"{h:02d}:{m:02d}:{s:02d}")
+    
+    selected_standard = st.selectbox(
+        "Select Standard", 
+        options, 
+        index=None,
+        placeholder="Choose a Standard...",
+        key=f"std_{st.session_state.reset_counter}"
+    )
+    
+    # Only show test details if a valid standard is selected
+    if selected_standard:
+        total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
+        c1, c2, c3 = st.columns(3)
+        with c1: st.metric("Total Questions", total)
+        with c2: st.metric("Passing Criteria (%)", criteria)
+        with c3: st.metric("Timer (HH:MM:SS)", f"{h:02d}:{m:02d}:{s:02d}")
+    
     st.markdown("---")
     with st.form("start_form"):
         st.markdown("### Ready to start your test?")
@@ -2529,9 +2540,12 @@ if not st.session_state.admin_logged_in and "quiz" not in st.session_state:
         with col2:
             submitted = st.form_submit_button("🚀 Start Test", use_container_width=True)
     if submitted:
-        if not emp_id or not name or not selected_standard:
-            st.error("Please enter ID, Name and select a Standard.")
+        if not emp_id or not name:
+            st.error("Please enter ID and Name.")
+        elif not selected_standard:
+            st.error("Please select a Standard before starting the test.")
         else:
+            total, criteria, h, m, s = get_info_for_standard(standards, selected_standard)
             ok, msg = start_quiz_session(emp_id, name, selected_standard, questions, total)
             if not ok:
                 st.error(msg)
