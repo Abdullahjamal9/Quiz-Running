@@ -1649,6 +1649,67 @@ if st.session_state.admin_logged_in:
         if len(filtered_df) != len(results_df):
             st.info(f"Showing {len(filtered_df)} of {len(results_df)} total records")
         
+        # Visual Analytics Section
+        st.markdown("---")
+        st.subheader("📈 Visual Analytics")
+        
+        # Row 1: Pass/Fail Distribution and Test Type Distribution
+        chart_col1, chart_col2 = st.columns(2)
+        
+        with chart_col1:
+            st.markdown("#### Pass/Fail Distribution")
+            if "Status" in filtered_df.columns and len(filtered_df) > 0:
+                status_counts = filtered_df["Status"].value_counts()
+                st.bar_chart(status_counts, color="#1E3A8A")
+            else:
+                st.info("No data available")
+        
+        with chart_col2:
+            st.markdown("#### Performance by Standard")
+            if "Test Type" in filtered_df.columns and "Status" in filtered_df.columns and len(filtered_df) > 0:
+                # Create a pivot table for Pass/Fail by Standard
+                performance_by_standard = filtered_df.groupby(['Test Type', 'Status']).size().unstack(fill_value=0)
+                
+                # Get top 10 standards by total tests
+                top_standards = filtered_df['Test Type'].value_counts().head(10).index
+                performance_by_standard = performance_by_standard.loc[performance_by_standard.index.isin(top_standards)]
+                
+                # Ensure both Pass and Fail columns exist
+                if 'Pass' not in performance_by_standard.columns:
+                    performance_by_standard['Pass'] = 0
+                if 'Fail' not in performance_by_standard.columns:
+                    performance_by_standard['Fail'] = 0
+                
+                # Reorder columns: Pass first, then Fail
+                performance_by_standard = performance_by_standard[['Pass', 'Fail']]
+                
+                st.bar_chart(performance_by_standard)
+            else:
+                st.info("No data available")
+        
+        # Row 2: Score Distribution and Performance Trend
+        chart_col3, chart_col4 = st.columns(2)
+        
+        with chart_col3:
+            st.markdown("#### Score Distribution")
+            if "Percentage" in filtered_df.columns and len(filtered_df) > 0:
+                # Create bins for score ranges
+                score_bins = pd.cut(filtered_df["Percentage"], bins=[0, 40, 60, 80, 100], 
+                                   labels=["0-40%", "40-60%", "60-80%", "80-100%"])
+                score_distribution = score_bins.value_counts().sort_index()
+                st.bar_chart(score_distribution, color="#10B981")
+            else:
+                st.info("No data available")
+        
+        with chart_col4:
+            st.markdown("#### Performance Trend (Latest 20 Tests)")
+            if "Percentage" in filtered_df.columns and len(filtered_df) > 0:
+                # Show trend of latest tests
+                trend_df = filtered_df.tail(20)[["Percentage"]].reset_index(drop=True)
+                st.line_chart(trend_df, color="#D97706")
+            else:
+                st.info("No data available")
+        
         # Individual Test Answer Sheets
         st.markdown("---")
         st.subheader("📋 Download Test Answer Sheets")
